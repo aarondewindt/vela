@@ -11,8 +11,6 @@ export default async function HomePage() {
     <>
       <Welcome />
       <ColorSchemeToggle /> 
-      { `${user}` } 
-      {user && (user.name)}    
     </>
   );
 }

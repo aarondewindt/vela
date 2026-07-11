@@ -22,15 +22,25 @@
     "contract:emit": "prisma-next contract emit"
   },
   "dependencies": {
+    "@mantine/charts": "^9.4.1",
+    "@mantine/code-highlight": "^9.4.1",
     "@mantine/core": "9.4.0",
+    "@mantine/dates": "^9.4.1",
+    "@mantine/dropzone": "^9.4.1",
     "@mantine/hooks": "9.4.0",
+    "@mantine/modals": "^9.4.1",
+    "@mantine/notifications": "^9.4.1",
+    "@mantine/nprogress": "^9.4.1",
+    "@mantine/schedule": "^9.4.1",
     "@next/bundle-analyzer": "^16.0.0",
     "@prisma-next/postgres": "^0.14.0",
     "@tabler/icons-react": "^3.35.0",
+    "dayjs": "^1.11.21",
     "dotenv": "^17.4.2",
     "next": "16.2.9",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@babel/core": "^8.0.0",
