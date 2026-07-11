@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:18-alpine
+    env_file:
+      - ../vela_db.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - vela-postgres-data:/var/lib/postgresql
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    env_file:
+      - ../vela_pgadmin.env
+    depends_on:
+      - db
+    ports:
+      - "5050:80"
+    volumes:
+      - vela-pgadmin-data:/var/lib/pgadmin
+
+volumes:
+  vela-postgres-data:
+    name: vela-postgres-data
+  vela-pgadmin-data:
+    name: vela-pgadmin-data

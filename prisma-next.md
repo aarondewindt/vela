@@ -27,12 +27,12 @@ Every model you define in your contract can be queried from your app. Your edito
 ```typescript
 import { db } from './prisma/db';
 
-const user = await db.orm.User
+const user = await db.orm.public.User
   .where({ email: 'alice@example.com' })
   .first();
 
 // Your editor will show the type of user as
-// { id: number; email: string; username: string | null; name: string | null; createdAt: Date; posts: Post[] } | null
+// { id: number; email: string; username: string | null; name: string | null; createdAt: Date; updatedAt: Date } | null
 ```
 
 Your contract has two companion files in the same directory:

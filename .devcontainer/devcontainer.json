@@ -6,9 +6,9 @@
 	"service": "dev",
 	"workspaceFolder": "/workspaces/vela",
 	"shutdownAction": "stopCompose",
-	"runServices": ["db", "pgadmin"],
 	"postCreateCommand": "yarn install",
-	"forwardPorts": [3000, 5432, 5050],
+	"postStartCommand": "docker compose -f .devcontainer/docker-compose.inner.yml up -d",
+	"forwardPorts": [3000, 5050],
 	"customizations": {
 		"vscode": {
 			"extensions": []
