@@ -1,0 +1,18 @@
+{
+  "recommendations": [
+    "tamasfe.even-better-toml",
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+    "eamodio.gitlens",
+    "DavidAnson.vscode-markdownlint",
+    "unifiedjs.vscode-mdx",
+    "mohsen1.prettify-json",
+    "marclipovsky.string-manipulation",
+    "adamhartford.vscode-base64",
+    "redhat.vscode-xml",
+    "dbaeumer.vscode-eslint",
+    "ms-vscode.vscode-typescript-next",
+		"ms-vscode.js-debug-nightly",
+    "vunguyentuan.vscode-css-variables"
+  ]
+}
