@@ -1,0 +1,24 @@
+services:
+  dev:
+    image: mcr.microsoft.com/devcontainers/typescript-node:4-24-trixie
+    env_file:
+      - ../vela.env
+    volumes:
+      - ..:/workspaces/vela:cached
+    command: sleep infinity
+    depends_on:
+      - db
+    ports:
+      - "3000:3000"
+
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - ../vela_db.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - vela-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  vela-postgres-data:

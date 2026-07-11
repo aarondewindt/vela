@@ -131,3 +131,6 @@ dist
 
 .DS_Store
 next-env.d.ts
+dist/
+
+*.env
