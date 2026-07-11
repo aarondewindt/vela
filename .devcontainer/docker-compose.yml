@@ -1,6 +1,6 @@
 services:
   dev:
-    image: mcr.microsoft.com/devcontainers/typescript-node:4-24-trixie
+    image: mcr.microsoft.com/devcontainers/typescript-node:4-24-bullseye
     env_file:
       - ../vela.env
     volumes:
@@ -10,15 +10,28 @@ services:
       - db
     ports:
       - "3000:3000"
+      - "5050:5050"
 
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     env_file:
       - ../vela_db.env
     ports:
       - "5432:5432"
     volumes:
-      - vela-postgres-data:/var/lib/postgresql/data
+      - vela-postgres-data:/var/lib/postgresql
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    env_file:
+      - ../vela_pgadmin.env
+    depends_on:
+      - db
+    ports:
+      - "5050:80"
+    volumes:
+      - vela-pgadmin-data:/var/lib/pgadmin
 
 volumes:
   vela-postgres-data:
+  vela-pgadmin-data:

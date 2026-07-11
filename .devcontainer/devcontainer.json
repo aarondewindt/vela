@@ -6,12 +6,17 @@
 	"service": "dev",
 	"workspaceFolder": "/workspaces/vela",
 	"shutdownAction": "stopCompose",
-	"runServices": ["db"],
+	"runServices": ["db", "pgadmin"],
 	"postCreateCommand": "yarn install",
-	"forwardPorts": [3000, 5432],
+	"forwardPorts": [3000, 5432, 5050],
 	"customizations": {
 		"vscode": {
 			"extensions": []
+		}
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:4.0.0": {
+			"dockerDashComposeVersion": "none"
 		}
 	}
 }
