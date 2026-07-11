@@ -1,0 +1,27 @@
+{
+	"servers": {
+		"mantine-mcp-server": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"@mantine/mcp-server"
+			],
+			"env": {
+				"MANTINE_MCP_DATA_URL": "${input:dataUrl}",
+				"MANTINE_MCP_TIMEOUT_MS": 10000
+			}
+		},
+		"next-devtools": {
+      "command": "npx",
+      "args": ["-y", "next-devtools-mcp@latest"]
+    }
+	},
+	
+	"inputs": [
+		{
+			"id": "dataUrl",
+			"type": "promptString",
+			"description": "MANTINE_MCP_DATA_URL"
+		}
+	]
+}
