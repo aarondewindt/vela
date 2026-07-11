@@ -35,12 +35,16 @@
     "@next/bundle-analyzer": "^16.0.0",
     "@prisma-next/postgres": "^0.14.0",
     "@tabler/icons-react": "^3.35.0",
+    "@tanstack/react-query": "^5.101.2",
     "dayjs": "^1.11.21",
     "dotenv": "^17.4.2",
+    "immer": "^11.1.11",
     "next": "16.2.9",
+    "nuqs": "^2.9.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
-    "recharts": "^3.9.2"
+    "recharts": "^3.9.2",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@babel/core": "^8.0.0",
