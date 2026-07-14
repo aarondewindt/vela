@@ -13,6 +13,7 @@ import { NavigationProgress } from '@mantine/nprogress';
 import { ModalsProvider } from '@mantine/modals';
 import React from 'react';
 import { theme } from '../theme';
+import ClientLayout from './client_layout';
 
 export const metadata = {
   title: 'Mantine Next.js template',
@@ -34,7 +35,11 @@ export default function RootLayout({ children }: { children: any }) {
         <MantineProvider theme={theme} forceColorScheme="dark">
           <Notifications />
           <NavigationProgress />
-          <ModalsProvider>{children}</ModalsProvider>          
+          <ModalsProvider>
+            <ClientLayout>
+              {children}
+            </ClientLayout>
+          </ModalsProvider>          
         </MantineProvider>
       </body>
     </html>
