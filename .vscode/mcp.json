@@ -1,5 +1,8 @@
 {
 	"servers": {
+		"better-auth": {
+    	"url": "https://mcp.better-auth.com/mcp"
+  	},	
 		"mantine-mcp-server": {
 			"type": "stdio",
 			"command": "npx",

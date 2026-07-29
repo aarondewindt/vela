@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: any }) {
           <NavigationProgress />
           <ModalsProvider>
             <ClientLayout>
-              {children}
+              { children }
             </ClientLayout>
           </ModalsProvider>          
         </MantineProvider>
