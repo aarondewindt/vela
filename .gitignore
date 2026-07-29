@@ -134,3 +134,4 @@ next-env.d.ts
 dist/
 
 *.env
+/generated/prisma
