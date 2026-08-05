@@ -4,6 +4,7 @@ import { AppShell, Box, Burger, Group, Stack, Title } from '@mantine/core';
 import { useAppShellStore } from '@/store/app_shell_store';
 import { ParallelogramIcon } from '@phosphor-icons/react';
 import CurrentUserBadge from '@/components/CurrentUserBadge';
+import { NavbarNested } from '../NavbarNested/NavbarNested';
 
 
 export default function ApplicationShell({ children }: { children: React.ReactNode }) {
@@ -12,7 +13,9 @@ export default function ApplicationShell({ children }: { children: React.ReactNo
   return (
     <AppShell
       padding="md"
-      header={{ height: 60 }}
+      header={{ 
+        height: 60,
+      }}
       navbar={{
         width: 300,
         breakpoint: 'sm',
@@ -28,20 +31,14 @@ export default function ApplicationShell({ children }: { children: React.ReactNo
             size="sm"
             style={{ padding: '0.5rem' }}
           />
-
           <ParallelogramIcon size={32}/>
-
           <Title order={2}>Vela</Title>
         </Group>
         
       </AppShell.Header>
 
       <AppShell.Navbar>
-        <Stack gap="md" style={{ padding: '1rem', height: '100%' }}>
-          <Box mt="auto">
-            <CurrentUserBadge/>
-          </Box>
-        </Stack>
+        <NavbarNested/>
       </AppShell.Navbar>
 
       <AppShell.Main>
