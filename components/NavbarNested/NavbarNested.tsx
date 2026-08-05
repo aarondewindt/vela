@@ -8,15 +8,16 @@ import { GaugeIcon, KanbanIcon } from '@phosphor-icons/react';
 const navbar_map = [
   { label: 'Dashboard', icon: GaugeIcon, link: '/' },
   { label: 'Tasks', icon: KanbanIcon, link: '/tasks' },
-  // {
-  //   label: 'Tasks',
-  //   icon: KanbanIcon,
-  //   initiallyOpened: true,
-  //   links: [
-  //     { label: 'All Tasks', link: '/tasks' },
-  //     { label: 'This week', link: '/' },
-  //   ],
-  // },
+
+  {
+    label: 'Taskssdfd',
+    icon: KanbanIcon,
+    initiallyOpened: true,
+    links: [
+      { label: 'All Tasks', link: '/tasks' },
+      { label: 'This week', link: '/' },
+    ],
+  },
 ];
 
 export function NavbarNested() {
