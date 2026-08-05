@@ -5,8 +5,7 @@ import { Welcome } from '../components/Welcome/Welcome';
 export default async function HomePage() {
   return (
     <>
-      <Welcome />
-      <ColorSchemeToggle /> 
+      
     </>
   );
 }
