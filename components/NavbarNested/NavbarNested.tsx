@@ -1,57 +1,26 @@
-import {
-  IconAdjustments,
-  IconCalendarStats,
-  IconFileAnalytics,
-  IconGauge,
-  IconLock,
-  IconNotes,
-  IconPresentationAnalytics,
-} from '@tabler/icons-react';
 import { Box, Code, Group, ScrollArea, Title } from '@mantine/core';
 import { LinksGroup } from '../NavbarLinksGroup/NavbarLinksGroup';
 import { Logo } from './Logo';
 import classes from './NavbarNested.module.css';
 import CurrentUserBadge from '../CurrentUserBadge';
-import { ParallelogramIcon } from '@phosphor-icons/react';
+import { GaugeIcon, KanbanIcon } from '@phosphor-icons/react';
 
-const mockdata = [
-  { label: 'Dashboard', icon: IconGauge },
-  {
-    label: 'Market news',
-    icon: IconNotes,
-    initiallyOpened: true,
-    links: [
-      { label: 'Overview', link: '/' },
-      { label: 'Forecasts', link: '/' },
-      { label: 'Outlook', link: '/' },
-      { label: 'Real time', link: '/' },
-    ],
-  },
-  {
-    label: 'Releases',
-    icon: IconCalendarStats,
-    links: [
-      { label: 'Upcoming releases', link: '/' },
-      { label: 'Previous releases', link: '/' },
-      { label: 'Releases schedule', link: '/' },
-    ],
-  },
-  { label: 'Analytics', icon: IconPresentationAnalytics },
-  { label: 'Contracts', icon: IconFileAnalytics },
-  { label: 'Settings', icon: IconAdjustments },
-  {
-    label: 'Security',
-    icon: IconLock,
-    links: [
-      { label: 'Enable 2FA', link: '/' },
-      { label: 'Change password', link: '/' },
-      { label: 'Recovery codes', link: '/' },
-    ],
-  },
+const navbar_map = [
+  { label: 'Dashboard', icon: GaugeIcon, link: '/' },
+  { label: 'Tasks', icon: KanbanIcon, link: '/tasks' },
+  // {
+  //   label: 'Tasks',
+  //   icon: KanbanIcon,
+  //   initiallyOpened: true,
+  //   links: [
+  //     { label: 'All Tasks', link: '/tasks' },
+  //     { label: 'This week', link: '/' },
+  //   ],
+  // },
 ];
 
 export function NavbarNested() {
-  const links = mockdata.map((item) => <LinksGroup {...item} key={item.label} />);
+  const links = navbar_map.map((item) => <LinksGroup {...item} key={item.label} />);
 
   return (
     <nav className={classes.navbar}>

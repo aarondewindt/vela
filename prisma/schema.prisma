@@ -22,6 +22,17 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  themes        Theme[]
+  locations     Location[]
+  tasks         Task[]
+  taskDependencies TaskDependency[]
+  taskOccurrences TaskOccurrence[]
+  dailyPlans    DailyPlan[]
+  dailyBlocks   DailyBlock[]
+  dayOverrides  DayOverride[]
+  calendarEvents CalendarEvent[]
+  checkins      Checkin[]
+  automationRuns AutomationRun[]
 
   @@unique([email])
   @@map("user")
@@ -73,4 +84,367 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+enum TaskStatus {
+  BACKLOG
+  PAUSED
+  IN_PROGRESS
+  DONE
+  ARCHIVED
+}
+
+enum DependencyType {
+  FINISH_TO_START
+  START_TO_START
+}
+
+enum OccurrenceStatus {
+  PENDING
+  SCHEDULED
+  DONE
+  SKIPPED
+  CANCELED
+}
+
+enum OccurrenceOrigin {
+  MANUAL
+  RECURRENCE
+  IMPORT
+}
+
+enum DailyPlanStatus {
+  DRAFT
+  ACTIVE
+  FINALIZED
+  ARCHIVED
+}
+
+enum PlanGenerationSource {
+  MANUAL
+  MORNING_RUN
+  REPLAN
+  AUTOMATION
+}
+
+enum BlockStatus {
+  PLANNED
+  IN_PROGRESS
+  DONE
+  SKIPPED
+  CANCELED
+}
+
+enum BlockSource {
+  MANUAL
+  PLANNER
+  REPLAN
+  AUTOMATION
+}
+
+enum DayWorkMode {
+  NORMAL
+  WFH
+  PTO
+  NO_WORK
+  CUSTOM
+}
+
+enum CalendarEventSource {
+  HA
+  GOOGLE
+  ICS
+  MANUAL
+}
+
+enum AutomationRunType {
+  PLAN_INIT
+  MORNING_RUN
+  REPLAN
+  CALENDAR_SYNC
+  HA_PROJECTION
+}
+
+enum AutomationRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELED
+}
+
+model Theme {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(120)
+  brief     String?
+  content   Json?    @db.JsonB
+  color     String?  @db.VarChar(32)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tasks     Task[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("themes")
+}
+
+model Location {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String   @db.VarChar(120)
+  brief       String?
+  content     Json?    @db.JsonB
+  timezone    String?  @db.VarChar(64)
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tasks       Task[]
+  dayOverrides DayOverride[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("locations")
+}
+
+model Task {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  themeId         String?     @db.Uuid
+  theme           Theme?      @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  locationId      String?     @db.Uuid
+  location        Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  title           String      @db.VarChar(240)
+  brief           String?
+  content         Json?       @db.JsonB
+  priority        Int         @default(3)
+  size            Int         @default(3)
+  status          TaskStatus  @default(BACKLOG)
+  firstStep       String?
+  dueDate         DateTime?   @db.Date
+  earliestStartAt DateTime?
+  estimatedMinutes Int?
+  isRecurring     Boolean     @default(false)
+  recurrenceRule  String?
+  recurrenceTz    String?     @db.VarChar(64)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  archivedAt      DateTime?
+
+  dependenciesBlocking  TaskDependency[] @relation("TaskBlocked")
+  dependenciesDependsOn TaskDependency[] @relation("TaskDependsOn")
+  occurrences           TaskOccurrence[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@index([userId, priority])
+  @@index([themeId])
+  @@index([locationId])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  id              String         @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  blockedTaskId   String         @db.Uuid
+  blockedTask     Task           @relation("TaskBlocked", fields: [blockedTaskId], references: [id], onDelete: Cascade)
+  dependsOnTaskId String         @db.Uuid
+  dependsOnTask   Task           @relation("TaskDependsOn", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+  dependencyType  DependencyType @default(FINISH_TO_START)
+  isHardBlock     Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+
+  @@unique([blockedTaskId, dependsOnTaskId])
+  @@index([userId])
+  @@index([blockedTaskId])
+  @@index([dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+model TaskOccurrence {
+  id                   String           @id @default(uuid()) @db.Uuid
+  userId               String
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId               String           @db.Uuid
+  task                 Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  occurrenceDate       DateTime         @db.Date
+  dueAt                DateTime?
+  status               OccurrenceStatus @default(PENDING)
+  origin               OccurrenceOrigin @default(RECURRENCE)
+  generatedRuleVersion Int              @default(1)
+  completedAt          DateTime?
+  skippedAt            DateTime?
+  canceledAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  dailyBlocks          DailyBlock[]
+  checkins             Checkin[]
+
+  @@unique([taskId, occurrenceDate])
+  @@index([userId])
+  @@index([taskId])
+  @@index([userId, occurrenceDate])
+  @@index([userId, status])
+  @@map("task_occurrences")
+}
+
+model DailyPlan {
+  id              String               @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDate        DateTime             @db.Date
+  timezone        String               @default("UTC") @db.VarChar(64)
+  status          DailyPlanStatus      @default(DRAFT)
+  version         Int                  @default(1)
+  isCurrent       Boolean              @default(true)
+  generatedBy     PlanGenerationSource @default(MANUAL)
+  explanationJson Json?                @db.JsonB
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  finalizedAt     DateTime?
+  dailyBlocks     DailyBlock[]
+  checkins        Checkin[]
+
+  @@unique([userId, planDate, version])
+  @@index([userId])
+  @@index([userId, planDate])
+  @@index([userId, planDate, isCurrent])
+  @@map("daily_plans")
+}
+
+model DailyBlock {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId           String          @db.Uuid
+  plan             DailyPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  taskOccurrenceId String?         @db.Uuid
+  taskOccurrence   TaskOccurrence? @relation(fields: [taskOccurrenceId], references: [id], onDelete: SetNull)
+  title            String          @db.VarChar(240)
+  brief            String?
+  content          Json?           @db.JsonB
+  startsAt         DateTime
+  endsAt           DateTime
+  durationMinutes  Int
+  status           BlockStatus     @default(PLANNED)
+  source           BlockSource     @default(MANUAL)
+  position         Int?
+  isFixed          Boolean         @default(false)
+  completedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  checkins         Checkin[]
+
+  @@index([userId])
+  @@index([planId])
+  @@index([taskOccurrenceId])
+  @@index([userId, startsAt])
+  @@index([planId, position])
+  @@index([planId, startsAt])
+  @@map("daily_blocks")
+}
+
+model DayOverride {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overrideDate    DateTime    @db.Date
+  workMode        DayWorkMode @default(CUSTOM)
+  startTime       DateTime?   @db.Time(6)
+  endTime         DateTime?   @db.Time(6)
+  capacityMinutes Int?
+  locationId      String?     @db.Uuid
+  location        Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  brief           String?
+  content         Json?       @db.JsonB
+  source          String      @default("manual") @db.VarChar(64)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([userId, overrideDate])
+  @@index([userId])
+  @@index([locationId])
+  @@map("day_overrides")
+}
+
+model CalendarEvent {
+  id                 String              @id @default(uuid()) @db.Uuid
+  userId             String
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  externalCalendarId String              @db.VarChar(200)
+  externalEventId    String              @db.VarChar(200)
+  title              String              @db.VarChar(240)
+  brief              String?
+  content            Json?               @db.JsonB
+  startsAt           DateTime
+  endsAt             DateTime
+  isAllDay           Boolean             @default(false)
+  isBusy             Boolean             @default(true)
+  source             CalendarEventSource @default(MANUAL)
+  ownershipMarker    String?             @db.VarChar(120)
+  rawPayload         Json?               @db.JsonB
+  syncedAt           DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([userId, externalCalendarId, externalEventId])
+  @@index([userId])
+  @@index([userId, startsAt])
+  @@index([userId, endsAt])
+  @@map("calendar_events")
+}
+
+model Checkin {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId           String?         @db.Uuid
+  plan             DailyPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  taskOccurrenceId String?         @db.Uuid
+  taskOccurrence   TaskOccurrence? @relation(fields: [taskOccurrenceId], references: [id], onDelete: SetNull)
+  blockId          String?         @db.Uuid
+  block            DailyBlock?     @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  checkinAt        DateTime        @default(now())
+  energyLevel      Int?
+  focusLevel       Int?
+  moodLevel        Int?
+  brief            String?
+  content          Json?           @db.JsonB
+  commandText      String?
+  parsedCommandJson Json?          @db.JsonB
+  applied          Boolean         @default(false)
+
+  @@index([userId])
+  @@index([planId])
+  @@index([taskOccurrenceId])
+  @@index([blockId])
+  @@index([userId, checkinAt])
+  @@map("checkins")
+}
+
+model AutomationRun {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runType        AutomationRunType
+  status         AutomationRunStatus @default(RUNNING)
+  triggerSource  String              @default("system") @db.VarChar(64)
+  startedAt      DateTime            @default(now())
+  finishedAt     DateTime?
+  requestPayload Json?               @db.JsonB
+  resultPayload  Json?               @db.JsonB
+  errorText      String?
+
+  @@index([userId])
+  @@index([userId, runType])
+  @@index([userId, startedAt])
+  @@index([status])
+  @@map("automation_runs")
 }

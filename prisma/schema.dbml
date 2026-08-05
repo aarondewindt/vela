@@ -1,0 +1,348 @@
+////////////////////////////////////////////////////////////
+// Vela planning core proposal (Day and task scheduling)
+//
+// Notes:
+// - References existing auth user table as "user" (from schema.prisma @@map("user")).
+// - Uses Postgres-oriented types and JSONB for explainability/audit payloads.
+// - This is a review-first DBML draft, not yet a Prisma migration.
+////////////////////////////////////////////////////////////
+
+Enum task_status {
+	backlog
+	paused
+	in_progress
+	done
+	archived
+}
+
+Enum dependency_type {
+	FINISH_TO_START
+	START_TO_START
+}
+
+Enum occurrence_status {
+	PENDING
+	SCHEDULED
+	DONE
+	SKIPPED
+	CANCELED
+}
+
+Enum occurrence_origin {
+	MANUAL
+	RECURRENCE
+	IMPORT
+}
+
+Enum daily_plan_status {
+	DRAFT
+	ACTIVE
+	FINALIZED
+	ARCHIVED
+}
+
+Enum plan_generation_source {
+	MANUAL
+	MORNING_RUN
+	REPLAN
+	AUTOMATION
+}
+
+Enum block_status {
+	PLANNED
+	IN_PROGRESS
+	DONE
+	SKIPPED
+	CANCELED
+}
+
+Enum block_source {
+	MANUAL
+	PLANNER
+	REPLAN
+	AUTOMATION
+}
+
+Enum day_work_mode {
+	NORMAL
+	WFH
+	PTO
+	NO_WORK
+	CUSTOM
+}
+
+Enum calendar_event_source {
+	HA
+	GOOGLE
+	ICS
+	MANUAL
+}
+
+Enum automation_run_type {
+	PLAN_INIT
+	MORNING_RUN
+	REPLAN
+	CALENDAR_SYNC
+	HA_PROJECTION
+}
+
+Enum automation_run_status {
+	RUNNING
+	SUCCESS
+	FAILED
+	CANCELED
+}
+
+Table themes {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	name varchar(120) [not null]
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	color varchar(32)
+	is_active boolean [not null, default: true]
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(user_id, name) [unique]
+	}
+}
+
+Table locations {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	name varchar(120) [not null]
+  brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	timezone varchar(64)
+	latitude decimal(9,6)
+	longitude decimal(9,6)
+	is_active boolean [not null, default: true]
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(user_id, name) [unique]
+	}
+}
+
+Table tasks {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	theme_id uuid [ref: > themes.id]
+	location_id uuid [ref: > locations.id]
+	title varchar(240) [not null]
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	priority int [not null, default: 3, note: '1 (highest) to 5 (lowest)']
+	size int [not null, default: 3, note: '1 (largest) to 5 (smallest)']
+	status task_status [not null, default: 'backlog']
+	first_step text
+	due_date date
+	earliest_start_at timestamptz
+	estimated_minutes int
+	is_recurring boolean [not null, default: false]
+	recurrence_rule text
+	recurrence_tz varchar(64)
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+	archived_at timestamptz
+
+	Indexes {
+		(user_id)
+		(user_id, status)
+		(user_id, due_date)
+		(user_id, priority)
+		(theme_id)
+		(location_id)
+	}
+}
+
+Table task_dependencies {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	blocked_task_id uuid [not null, ref: > tasks.id]
+	depends_on_task_id uuid [not null, ref: > tasks.id]
+	dependency_type dependency_type [not null, default: 'FINISH_TO_START']
+	is_hard_block boolean [not null, default: true]
+	created_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(blocked_task_id)
+		(depends_on_task_id)
+		(blocked_task_id, depends_on_task_id) [unique]
+	}
+}
+
+Table task_occurrences {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	task_id uuid [not null, ref: > tasks.id]
+	occurrence_date date [not null]
+	due_at timestamptz
+	status occurrence_status [not null, default: 'PENDING']
+	origin occurrence_origin [not null, default: 'RECURRENCE']
+	generated_rule_version int [not null, default: 1]
+	completed_at timestamptz
+	skipped_at timestamptz
+	canceled_at timestamptz
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(task_id)
+		(user_id, occurrence_date)
+		(task_id, occurrence_date) [unique]
+		(user_id, status)
+	}
+}
+
+Table daily_plans {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	plan_date date [not null]
+	timezone varchar(64) [not null, default: 'UTC']
+	status daily_plan_status [not null, default: 'DRAFT']
+	version int [not null, default: 1]
+	is_current boolean [not null, default: true]
+	generated_by plan_generation_source [not null, default: 'MANUAL']
+	explanation_json jsonb
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+	finalized_at timestamptz
+
+	Indexes {
+		(user_id)
+		(user_id, plan_date)
+		(user_id, plan_date, version) [unique]
+		(user_id, plan_date, is_current)
+	}
+}
+
+Table daily_blocks {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	plan_id uuid [not null, ref: > daily_plans.id]
+	task_occurrence_id uuid [ref: > task_occurrences.id]
+	title varchar(240) [not null]
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	starts_at timestamptz [not null]
+	ends_at timestamptz [not null]
+	duration_minutes int [not null]
+	status block_status [not null, default: 'PLANNED']
+	source block_source [not null, default: 'MANUAL']
+	position int
+	is_fixed boolean [not null, default: false]
+	completed_at timestamptz
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(plan_id)
+		(task_occurrence_id)
+		(user_id, starts_at)
+		(plan_id, position)
+		(plan_id, starts_at)
+	}
+}
+
+Table day_overrides {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	override_date date [not null]
+	work_mode day_work_mode [not null, default: 'CUSTOM']
+	start_time time
+	end_time time
+	capacity_minutes int
+	location_id uuid [ref: > locations.id]
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	source varchar(64) [not null, default: 'manual']
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(user_id, override_date) [unique]
+		(location_id)
+	}
+}
+
+Table calendar_events {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	external_calendar_id varchar(200) [not null]
+	external_event_id varchar(200) [not null]
+	title varchar(240) [not null]
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	starts_at timestamptz [not null]
+	ends_at timestamptz [not null]
+	is_all_day boolean [not null, default: false]
+	is_busy boolean [not null, default: true]
+	source calendar_event_source [not null, default: 'MANUAL']
+	ownership_marker varchar(120)
+	raw_payload jsonb
+	synced_at timestamptz
+	created_at timestamptz [not null, default: `now()`]
+	updated_at timestamptz [not null, default: `now()`]
+
+	Indexes {
+		(user_id)
+		(user_id, starts_at)
+		(user_id, ends_at)
+		(user_id, external_calendar_id, external_event_id) [unique]
+	}
+}
+
+Table checkins {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	plan_id uuid [ref: > daily_plans.id]
+	task_occurrence_id uuid [ref: > task_occurrences.id]
+	block_id uuid [ref: > daily_blocks.id]
+	checkin_at timestamptz [not null, default: `now()`]
+	energy_level smallint
+	focus_level smallint
+	mood_level smallint
+	brief text
+	content jsonb [note: 'BlockNote content as JSON array of blocks']
+	command_text text
+	parsed_command_json jsonb
+	applied boolean [not null, default: false]
+
+	Indexes {
+		(user_id)
+		(plan_id)
+		(task_occurrence_id)
+		(block_id)
+		(user_id, checkin_at)
+	}
+}
+
+Table automation_runs {
+	id uuid [pk]
+	user_id text [not null, ref: > user.id]
+	run_type automation_run_type [not null]
+	status automation_run_status [not null, default: 'RUNNING']
+	trigger_source varchar(64) [not null, default: 'system']
+	started_at timestamptz [not null, default: `now()`]
+	finished_at timestamptz
+	request_payload jsonb
+	result_payload jsonb
+	error_text text
+
+	Indexes {
+		(user_id)
+		(user_id, run_type)
+		(user_id, started_at)
+		(status)
+	}
+}
