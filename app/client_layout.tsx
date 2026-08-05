@@ -1,7 +1,10 @@
 'use client';
 
-import { AppShell, Burger } from '@mantine/core';
+import { AppShell, Box, Burger, Stack } from '@mantine/core';
 import { useAppShellStore } from '@/store/app_shell_store';
+import { useAuth } from '@/hooks/auth';
+import Anchor from '@/components/anchor';
+import CurrentUserBadge from '@/components/current_user_badge';
 
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -29,7 +32,13 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <div>Logo</div>
       </AppShell.Header>
 
-      <AppShell.Navbar>Navbar</AppShell.Navbar>
+      <AppShell.Navbar>
+        <Stack gap="md" style={{ padding: '1rem', height: '100%' }}>
+          <Box mt="auto">
+            <CurrentUserBadge/>
+          </Box>
+        </Stack>
+      </AppShell.Navbar>
 
       <AppShell.Main>
         { children}

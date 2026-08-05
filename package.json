@@ -33,6 +33,7 @@
     "@mantine/nprogress": "^9.4.1",
     "@mantine/schedule": "^9.4.1",
     "@next/bundle-analyzer": "^16.0.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@tabler/icons-react": "^3.35.0",

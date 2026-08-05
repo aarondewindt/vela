@@ -3,6 +3,25 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { createAuthMiddleware, APIError } from "better-auth/api";
 import { prisma } from '@/lib/prisma';
 
+const defaultTrustedOrigins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
+const trustedOriginsFromEnv = [
+  process.env.BETTER_AUTH_TRUSTED_ORIGINS,
+  process.env.BETTER_AUTH_TRUSTED_ORIGIN,
+]
+  .filter(Boolean)
+  .flatMap((value) => value!.split(','))
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const trustedOrigins = Array.from(new Set([
+  ...trustedOriginsFromEnv,
+  ...defaultTrustedOrigins,
+]));
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: 'postgresql',
@@ -17,9 +36,7 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
   basePath: '/api/auth',
   secret: process.env.BETTER_AUTH_SECRET || 'your-secret-key',
-  trustedOrigins: [
-    process.env.BETTER_AUTH_TRUSTED_ORIGIN || 'http://localhost:3000',
-  ],
+  trustedOrigins,
   session: {
     expiresIn: 60 * 60 * 24 * 30, // 30 days
     updateAge: 60 * 60 * 24, // Update every 24 hours
@@ -50,3 +67,4 @@ export const auth = betterAuth({
 });
 
 export type Session = typeof auth.$Infer.Session;
+export type User = Session["user"];

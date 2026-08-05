@@ -1,13 +1,15 @@
 'use client';
 
-import { authClient } from '@/app/lib/auth-client';
+import { authClient } from '@/lib/auth-client';
 import { redirect } from 'next/navigation';
 import { useCallback } from 'react';
 import { nprogress } from '@mantine/nprogress';
 
 export function useAuth() {
+  const session = authClient.useSession();
+
   return {
-    session: authClient.useSession(),
+    session: session,
 
     signUp: useCallback(async (email: string, password: string, name: string) => {
       authClient.signUp.email({
@@ -20,16 +22,18 @@ export function useAuth() {
         },
         onSuccess: (ctx) => {
           nprogress.complete();
+          session.refetch();
           redirect('/');
         },
         onError: (ctx) => {
           nprogress.complete();
-          alert(ctx.error.message);
+          session.refetch();
+          alert(ctx.error.message);          
         },
       });
-    }, []),
+    }, [authClient]),
 
-    signIn: useCallback(async (email: string, password: string, callbackURL: string="/", rememberMe: boolean=true) => {
+    signIn: useCallback(async (email: string, password: string, callbackURL: string="/", rememberMe: boolean=true, onSuccess?: () => void) => {
       await authClient.signIn.email({
         email,
         password,
@@ -41,22 +45,30 @@ export function useAuth() {
         },
         onSuccess: (ctx) => {
           nprogress.complete();
-          redirect('/');
+          session.refetch();
+          if (onSuccess) onSuccess();
+          redirect('/');          
         },
         onError: (ctx) => {
           nprogress.complete();
+          session.refetch();
           alert(ctx.error.message);
         },
       })
-    }, []),
+    }, [authClient]),
 
     signOut: useCallback(async () => {
       await authClient.signOut({
       fetchOptions: {
         onSuccess: () => {
-          redirect("/login"); // redirect to login page
+          session.refetch();
+          redirect("/"); // redirect to login page
         },
+        onError: (ctx) => {
+          session.refetch();
+          alert(ctx.error.message);
+        }
       }});
-    }, []),
+    }, [authClient]),
   }
 }
