@@ -1,6 +1,7 @@
 'use client';
 
-import { AppShell, Box, Burger, Group, Stack, Title } from '@mantine/core';
+import { useEffect } from 'react';
+import { AppShell, Box, Burger, Group, Stack, Title, useAppShellResize } from '@mantine/core';
 import { useAppShellStore } from '@/store/app_shell_store';
 import { ParallelogramIcon } from '@phosphor-icons/react';
 import CurrentUserBadge from '@/components/CurrentUserBadge';
@@ -9,10 +10,20 @@ import ApplicationShellHeader from './ApplicationShellHeader';
 
 
 export default function ApplicationShell({ children }: { children: React.ReactNode }) {
-  const { navbar_opened, aside_opened } = useAppShellStore();
+  const { navbar_opened, aside_opened, sizes, set_sizes } = useAppShellStore();
+  useEffect(() => {
+    useAppShellStore.persist.rehydrate();
+  }, []);
+  const resize = useAppShellResize({
+    navbar: { min: 200, max: 500, label: 'Resize navigation' },
+    aside: { min: 300, max: 1200, label: 'Resize inspector' },
+    initialSizes: sizes,
+    onResizeEnd: set_sizes,
+  });
 
   return (
     <AppShell padding="md"
+              resize={resize}
               header={{ 
                 height: 32,
               }}
