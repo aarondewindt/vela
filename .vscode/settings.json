@@ -16,6 +16,10 @@
     "**/*.sass",
     "**/*.less",
     "node_modules/@mantine/core/styles.css"
-  ]
+  ],
+  "chat.tools.terminal.autoApprove": {
+    "yarn oxfmt": true,
+    "yarn exec": true
+  }
   
 }

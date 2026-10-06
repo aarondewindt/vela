@@ -7,17 +7,7 @@ import { GaugeIcon, KanbanIcon } from '@phosphor-icons/react';
 
 const navbar_map = [
   { label: 'Dashboard', icon: GaugeIcon, link: '/' },
-  { label: 'Tasks', icon: KanbanIcon, link: '/tasks' },
-
-  {
-    label: 'Taskssdfd',
-    icon: KanbanIcon,
-    initiallyOpened: true,
-    links: [
-      { label: 'All Tasks', link: '/tasks' },
-      { label: 'This week', link: '/' },
-    ],
-  },
+  { label: 'Planner', icon: KanbanIcon, link: '/planner' },
 ];
 
 export function NavbarNested() {
@@ -25,16 +15,6 @@ export function NavbarNested() {
 
   return (
     <nav className={classes.navbar}>
-      {/* <div className={classes.header}>
-        <Group justify="space-between">
-          <Group>
-            <ParallelogramIcon size={32}/>
-            <Title order={2}>Vela</Title>
-          </Group>          
-          <Code fw={700}>v3.1.2</Code>
-        </Group>
-      </div> */}
-
       <ScrollArea className={classes.links}>
         <div className={classes.linksInner}>{links}</div>
       </ScrollArea>

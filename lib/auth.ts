@@ -8,6 +8,8 @@ const defaultTrustedOrigins = [
   'http://127.0.0.1:3000',
 ];
 
+const testEmailDomain = "@test-email.aarondewindt.space";
+
 const trustedOriginsFromEnv = [
   process.env.BETTER_AUTH_TRUSTED_ORIGINS,
   process.env.BETTER_AUTH_TRUSTED_ORIGIN,
@@ -56,9 +58,9 @@ export const auth = betterAuth({
       if (ctx.path !== "/sign-up/email") {
         return;
       }
-      if (!ctx.body?.email.endsWith("@example.com")) {
+      if (!ctx.body?.email.endsWith(testEmailDomain)) {
         throw new APIError("BAD_REQUEST", {
-          message: "Email must end with @example.com",
+          message: `Email must end with ${testEmailDomain}`,
         });
       }
     }),

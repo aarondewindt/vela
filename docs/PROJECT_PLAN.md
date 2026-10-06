@@ -39,9 +39,11 @@ Recommended stack:
 - Prisma ORM
 - Mantine UI
 - Docker Compose
-- REST API first
-- MCP later as a thin wrapper over the same service layer
+- tRPC with TanStack Query for web UI communication and server state
+- REST API for external clients; MCP later as a thin wrapper over the same service layer
 - Local LLM and embedding services later, preferably on the desktop
+
+Use Zustand only for client/UI state, and keep reusable application logic in services. See [FRONTEND_API.md](FRONTEND_API.md) for the frontend API and state architecture.
 
 ## 4. Deployment Assumptions
 

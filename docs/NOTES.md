@@ -3,6 +3,7 @@
 ## Prima commands
 
 ```sh
-yarn dlx prisma migrate dev --name <name_here>
-yarn dlx prisma studio
+yarn prisma migrate dev --name <name_here>
+yarn prisma generate
+yarn prisma studio
 ```

@@ -5442,6 +5442,42 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@trpc/client@npm:^11.19.0":
+  version: 11.19.0
+  resolution: "@trpc/client@npm:11.19.0"
+  peerDependencies:
+    "@trpc/server": 11.19.0
+    typescript: ">=5.7.2"
+  bin:
+    intent: bin/intent.js
+  checksum: 10c0/343aeb48bc71940049e2829a2b1e832c504a03e204e3f24a724d6f2248b3267a266029a38fdf0c2d1bdbf7b732e21bec75f264f06c1a278128cc5930ee5ffc08
+  languageName: node
+  linkType: hard
+
+"@trpc/react-query@npm:^11.19.0":
+  version: 11.19.0
+  resolution: "@trpc/react-query@npm:11.19.0"
+  peerDependencies:
+    "@tanstack/react-query": ^5.80.3
+    "@trpc/client": 11.19.0
+    "@trpc/server": 11.19.0
+    react: ">=18.2.0"
+    typescript: ">=5.7.2"
+  checksum: 10c0/9a68061c81d5680a52019bcea0eca792242771c1a3e40212f269210e913f74440c78ca440fa0bc7cbb14abc4510595412f0a1159a1e1cd0a79d4b0d71f9bd72a
+  languageName: node
+  linkType: hard
+
+"@trpc/server@npm:^11.19.0":
+  version: 11.19.0
+  resolution: "@trpc/server@npm:11.19.0"
+  peerDependencies:
+    typescript: ">=5.7.2"
+  bin:
+    intent: bin/intent.js
+  checksum: 10c0/5f38ffdbbc308fb71bc1ea00bf58012c0c319ec2f94dc3bffc1c9f4f9811e15b87c30405c43e9c55d05a3c8d9de1de104323cea3029ada3b4da7150ba2815273
+  languageName: node
+  linkType: hard
+
 "@tybys/wasm-util@npm:^0.10.1":
   version: 0.10.2
   resolution: "@tybys/wasm-util@npm:0.10.2"
@@ -7715,6 +7751,13 @@ __metadata:
   version: 2.0.0
   resolution: "convert-source-map@npm:2.0.0"
   checksum: 10c0/8f2f7a27a1a011cc6cc88cc4da2d7d0cfa5ee0369508baae3d98c260bb3ac520691464e5bbe4ae7cdf09860c1d69ecc6f70c63c6e7c7f7e3f18ec08484dc7d9b
+  languageName: node
+  linkType: hard
+
+"copy-anything@npm:^4":
+  version: 4.1.5
+  resolution: "copy-anything@npm:4.1.5"
+  checksum: 10c0/e28e92c7fafbaf666be1ebd96762fc185783d01026f3117f931791e51f0b1cf9501dfb48beb9ce8d0c353d29d10526d6422901f99779f0c241be23467d08e71c
   languageName: node
   linkType: hard
 
@@ -11325,6 +11368,9 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.9.1"
     "@testing-library/react": "npm:^16.3.0"
     "@testing-library/user-event": "npm:^14.6.1"
+    "@trpc/client": "npm:^11.19.0"
+    "@trpc/react-query": "npm:^11.19.0"
+    "@trpc/server": "npm:^11.19.0"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^26.0.0"
     "@types/pg": "npm:^8.20.0"
@@ -11353,8 +11399,10 @@ __metadata:
     storybook: "npm:^10.0.0"
     stylelint: "npm:^17.0.0"
     stylelint-config-standard-scss: "npm:^17.0.0"
+    superjson: "npm:^2.2.6"
     ts-jest: "npm:^29.4.4"
     typescript: "npm:6.0.3"
+    zod: "npm:^4.6.5"
     zustand: "npm:^5.0.14"
   languageName: unknown
   linkType: soft
@@ -14976,6 +15024,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"superjson@npm:^2.2.6":
+  version: 2.2.6
+  resolution: "superjson@npm:2.2.6"
+  dependencies:
+    copy-anything: "npm:^4"
+  checksum: 10c0/b63587656cc27effd12c9e13a66da673a7a1b3e1af41f17820fd37f07a4f29503e1f58eae6bd229039331b475e1be6990336fa887654e6adc80684ae4eed7965
+  languageName: node
+  linkType: hard
+
 "supports-color@npm:^10.2.2":
   version: 10.2.2
   resolution: "supports-color@npm:10.2.2"
@@ -16194,6 +16251,13 @@ __metadata:
   version: 4.4.3
   resolution: "zod@npm:4.4.3"
   checksum: 10c0/7ea31b558e88f9faf44f31dd185e2e1cbf51fed3081787fb96cc2534749b50c0acfc6da7f0922a7353ed092dd358c7d50c28ea96c94d04af64191bd33152eca3
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.6.5":
+  version: 4.6.5
+  resolution: "zod@npm:4.6.5"
+  checksum: 10c0/32eb6c5e98becbe045675b2141c3611451c16ba567f9779231d79af41c4d651ca1c22f154aef7e6c6e77b929f23e43f1154ca05b82e119e922353725d6776af5
   languageName: node
   linkType: hard
 
