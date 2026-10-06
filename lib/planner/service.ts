@@ -2,6 +2,7 @@ import 'server-only';
 
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '../../generated/prisma/client';
 import type { TaskRow } from './tasks';
 import type { ViewConfig } from '@/lib/views/types';
 
@@ -94,6 +95,24 @@ export const plannerService = {
 
   async deleteTask(userId: string, id: string) {
     await prisma.task.deleteMany({ where: { id, userId } });
+  },
+
+  async getTaskContent(userId: string, id: string) {
+    const task = await prisma.task.findFirst({ where: { id, userId }, select: { content: true } });
+    if (!task) {
+      throw new TRPCError({ code: 'NOT_FOUND' });
+    }
+    return task.content as unknown[] | null;
+  },
+
+  async updateTaskContent(userId: string, id: string, content: unknown[]) {
+    const result = await prisma.task.updateMany({
+      where: { id, userId },
+      data: { content: content as Prisma.InputJsonValue },
+    });
+    if (!result.count) {
+      throw new TRPCError({ code: 'NOT_FOUND' });
+    }
   },
 
   listThemes(userId: string) {

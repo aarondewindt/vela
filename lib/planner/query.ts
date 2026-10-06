@@ -38,6 +38,19 @@ export function useDeleteTaskMutation() {
   });
 }
 
+export function useTaskContentQuery(id: string) {
+  return trpc.planner.getTaskContent.useQuery({ id }, { staleTime: Infinity });
+}
+
+export function useUpdateTaskContentMutation() {
+  const utils = trpc.useUtils();
+
+  // Keep the cached document in sync so reopening a task shows the latest edit.
+  return trpc.planner.updateTaskContent.useMutation({
+    onMutate: ({ id, content }) => utils.planner.getTaskContent.setData({ id }, content),
+  });
+}
+
 export function useCreateThemeMutation() {
   const utils = trpc.useUtils();
 

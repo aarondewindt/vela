@@ -37,6 +37,14 @@ export const plannerRouter = router({
   deleteTask: protectedProcedure
     .input(z.object({ id }))
     .mutation(({ ctx, input }) => plannerService.deleteTask(ctx.userId, input.id)),
+  getTaskContent: protectedProcedure
+    .input(z.object({ id }))
+    .query(({ ctx, input }) => plannerService.getTaskContent(ctx.userId, input.id)),
+  updateTaskContent: protectedProcedure
+    .input(z.object({ id, content: z.array(z.record(z.string(), z.unknown())).max(5000) }))
+    .mutation(({ ctx, input }) =>
+      plannerService.updateTaskContent(ctx.userId, input.id, input.content)
+    ),
 
   listThemes: protectedProcedure.query(({ ctx }) => plannerService.listThemes(ctx.userId)),
   createTheme: protectedProcedure

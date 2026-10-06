@@ -23,6 +23,7 @@ import {
   type ThemeRow,
 } from '@/lib/planner/tasks';
 import { formatDate, formatDateTime, toDateInput } from './format';
+import { TaskContentEditor } from './TaskContentEditor';
 
 type Props = {
   task: TaskRow;
@@ -140,6 +141,8 @@ export function TaskView({ task, themes, tagSuggestions, onClose }: Props) {
               Updated {formatDateTime(task.updatedAt)}
             </Text>
           </Stack>
+
+          <TaskContentEditor taskId={task.id} />
 
           <Button
             color="red"

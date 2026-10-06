@@ -21,9 +21,9 @@
     "storybook:build": "storybook build"
   },
   "dependencies": {
-    "@blocknote/core": "^0.52.1",
-    "@blocknote/mantine": "^0.52.1",
-    "@blocknote/react": "^0.52.1",
+    "@blocknote/core": "^0.55.0",
+    "@blocknote/mantine": "^0.55.0",
+    "@blocknote/react": "^0.55.0",
     "@mantine/charts": "^9.4.1",
     "@mantine/code-highlight": "^9.4.1",
     "@mantine/core": "9.4.0",
@@ -90,6 +90,12 @@
     "stylelint-config-standard-scss": "^17.0.0",
     "ts-jest": "^29.4.4",
     "typescript": "6.0.3"
+  },
+  "resolutions": {
+    "prosemirror-view": "1.42.6",
+    "prosemirror-model": "1.25.12",
+    "prosemirror-transform": "1.12.2",
+    "prosemirror-state": "1.4.4"
   },
   "packageManager": "yarn@4.17.0"
 }
