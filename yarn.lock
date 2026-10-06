@@ -11335,6 +11335,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mantine-datatable@npm:^9.4.0":
+  version: 9.4.0
+  resolution: "mantine-datatable@npm:9.4.0"
+  peerDependencies:
+    "@mantine/core": ">=9.0"
+    "@mantine/hooks": ">=9.0"
+    clsx: ">=2"
+    react: ">=19"
+    react-dom: ">=19"
+  checksum: 10c0/c41a0e0f3dcff1ce2e73f66752e2440d47f40613da2d9d03bb44ce7484351e98a26d1100003b165553d492d0e9bb6ae33e7c474dbfd4dfcae855468dd660b46d
+  languageName: node
+  linkType: hard
+
 "mantine-next-template@workspace:.":
   version: 0.0.0-use.local
   resolution: "mantine-next-template@workspace:."
@@ -11378,11 +11391,13 @@ __metadata:
     babel-loader: "npm:^10.0.0"
     bcryptjs: "npm:^3.0.3"
     better-auth: "npm:^1.6.23"
+    clsx: "npm:^2.1.1"
     dayjs: "npm:^1.11.21"
     dotenv: "npm:^17.4.2"
     immer: "npm:^11.1.11"
     jest: "npm:^30.2.0"
     jest-environment-jsdom: "npm:^30.2.0"
+    mantine-datatable: "npm:^9.4.0"
     next: "npm:16.2.9"
     nuqs: "npm:^2.9.0"
     oxc-config-mantine: "npm:^1.0.0"

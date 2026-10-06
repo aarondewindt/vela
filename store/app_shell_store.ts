@@ -2,10 +2,12 @@ import { create } from 'zustand'
 
 type AppShellStoreState = {
   navbar_opened: boolean;
+  aside_opened: boolean;
 };
 
 type AppShellStoreActions = {
   toggle_navbar: () => void;
+  set_aside_opened: (opened: boolean) => void;
 };
 
 type AppShellStore = AppShellStoreState & AppShellStoreActions;
@@ -13,5 +15,7 @@ type AppShellStore = AppShellStoreState & AppShellStoreActions;
 
 export const useAppShellStore = create<AppShellStore>((set) => ({
   navbar_opened: false,
+  aside_opened: false,
   toggle_navbar: () => set((state) => ({ navbar_opened: !state.navbar_opened })),
+  set_aside_opened: (opened) => set({ aside_opened: opened }),
 }));

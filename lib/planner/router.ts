@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { protectedProcedure, router } from '@/lib/trpc/server';
+import { viewConfigSchema } from '@/lib/views/types';
+import { taskStatuses } from './tasks';
 import { plannerService } from './service';
+
+const id = z.uuid();
 
 export const plannerRouter = router({
   listTasks: protectedProcedure.query(({ ctx }) => plannerService.listTasks(ctx.userId)),
@@ -9,9 +13,79 @@ export const plannerRouter = router({
       z.object({
         title: z.string().trim().min(1).max(240),
         brief: z.string().optional(),
+        themeId: id.nullable().optional(),
       })
     )
     .mutation(({ ctx, input }) => plannerService.createTask(ctx.userId, input)),
+  updateTask: protectedProcedure
+    .input(
+      z.object({
+        id,
+        patch: z.object({
+          title: z.string().trim().min(1).max(240).optional(),
+          brief: z.string().nullable().optional(),
+          status: z.enum(taskStatuses).optional(),
+          priority: z.number().int().min(1).max(5).optional(),
+          dueDate: z.iso.date().nullable().optional(),
+          estimatedMinutes: z.number().int().min(0).nullable().optional(),
+          themeId: id.nullable().optional(),
+          tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+        }),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateTask(ctx.userId, input.id, input.patch)),
+  deleteTask: protectedProcedure
+    .input(z.object({ id }))
+    .mutation(({ ctx, input }) => plannerService.deleteTask(ctx.userId, input.id)),
+
+  listThemes: protectedProcedure.query(({ ctx }) => plannerService.listThemes(ctx.userId)),
+  createTheme: protectedProcedure
+    .input(z.object({ name: z.string().trim().min(1).max(120) }))
+    .mutation(({ ctx, input }) => plannerService.createTheme(ctx.userId, input)),
+  updateTheme: protectedProcedure
+    .input(
+      z.object({
+        id,
+        patch: z.object({
+          name: z.string().trim().min(1).max(120).optional(),
+          brief: z.string().nullable().optional(),
+          color: z.string().max(32).nullable().optional(),
+          isActive: z.boolean().optional(),
+        }),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateTheme(ctx.userId, input.id, input.patch)),
+  reorderThemes: protectedProcedure
+    .input(z.object({ orderedIds: z.array(id) }))
+    .mutation(({ ctx, input }) => plannerService.reorderThemes(ctx.userId, input.orderedIds)),
+
+  listViews: protectedProcedure
+    .input(z.object({ scope: z.string().max(64) }))
+    .query(({ ctx, input }) => plannerService.listViews(ctx.userId, input.scope)),
+  createView: protectedProcedure
+    .input(
+      z.object({
+        scope: z.string().max(64),
+        name: z.string().trim().min(1).max(120),
+        config: viewConfigSchema,
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.createView(ctx.userId, input)),
+  updateView: protectedProcedure
+    .input(
+      z.object({
+        id,
+        patch: z.object({
+          name: z.string().trim().min(1).max(120).optional(),
+          config: viewConfigSchema.optional(),
+        }),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateView(ctx.userId, input.id, input.patch)),
+  deleteView: protectedProcedure
+    .input(z.object({ id }))
+    .mutation(({ ctx, input }) => plannerService.deleteView(ctx.userId, input.id)),
+
   getPlan: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .query(({ ctx, input }) => plannerService.getPlan(ctx.userId, input.date)),

@@ -6,6 +6,7 @@ import '@mantine/code-highlight/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dropzone/styles.css';
 import '@mantine/nprogress/styles.css';
+import 'mantine-datatable/styles.layer.css';
 
 import { ColorSchemeScript, mantineHtmlProps, MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';

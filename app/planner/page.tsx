@@ -1,6 +1,6 @@
-import { TaskList } from "@/components/TasksList/TaskList"
+import { TaskView } from "@/components/TasksView/TaskView"
 
 
 export default () => {
-  return <TaskList/>
+  return <TaskView/>
 }

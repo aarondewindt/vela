@@ -9,7 +9,7 @@ import ApplicationShellHeader from './ApplicationShellHeader';
 
 
 export default function ApplicationShell({ children }: { children: React.ReactNode }) {
-  const { navbar_opened, toggle_navbar } = useAppShellStore();
+  const { navbar_opened, aside_opened } = useAppShellStore();
 
   return (
     <AppShell padding="md"
@@ -20,6 +20,11 @@ export default function ApplicationShell({ children }: { children: React.ReactNo
                 width: 300,
                 breakpoint: 'sm',
                 collapsed: { mobile: !navbar_opened },
+              }}
+              aside={{
+                width: 380,
+                breakpoint: 'md',
+                collapsed: { desktop: !aside_opened, mobile: !aside_opened },
               }}>
       
       <ApplicationShellHeader/>
@@ -27,6 +32,10 @@ export default function ApplicationShell({ children }: { children: React.ReactNo
       <AppShell.Navbar>
         <NavbarNested/>
       </AppShell.Navbar>
+
+      <AppShell.Aside>
+        <div id="app-aside" style={{ height: '100%' }} />
+      </AppShell.Aside>
 
       <AppShell.Main>
         { children }
