@@ -67,6 +67,18 @@ export function useUpdateThemeMutation() {
   });
 }
 
+export function useThemeContentQuery(id: string) {
+  return trpc.planner.getThemeContent.useQuery({ id }, { staleTime: Infinity });
+}
+
+export function useUpdateThemeContentMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.updateThemeContent.useMutation({
+    onMutate: ({ id, content }) => utils.planner.getThemeContent.setData({ id }, content),
+  });
+}
+
 export function useReorderThemesMutation() {
   const utils = trpc.useUtils();
 

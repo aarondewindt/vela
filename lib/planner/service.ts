@@ -154,6 +154,24 @@ export const plannerService = {
     );
   },
 
+  async getThemeContent(userId: string, id: string) {
+    const theme = await prisma.theme.findFirst({ where: { id, userId }, select: { content: true } });
+    if (!theme) {
+      throw new TRPCError({ code: 'NOT_FOUND' });
+    }
+    return theme.content as unknown[] | null;
+  },
+
+  async updateThemeContent(userId: string, id: string, content: unknown[]) {
+    const result = await prisma.theme.updateMany({
+      where: { id, userId },
+      data: { content: content as Prisma.InputJsonValue },
+    });
+    if (!result.count) {
+      throw new TRPCError({ code: 'NOT_FOUND' });
+    }
+  },
+
   async listViews(userId: string, scope: string) {
     const views = await prisma.savedView.findMany({
       where: { userId, scope },

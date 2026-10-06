@@ -15,7 +15,3 @@ export function formatDateTime(date: Date | string) {
     new Date(date)
   );
 }
-
-export function toDateInput(date: Date | string | null | undefined) {
-  return date ? new Date(date).toISOString().slice(0, 10) : '';
-}

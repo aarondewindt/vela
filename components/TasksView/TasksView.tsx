@@ -41,7 +41,7 @@ import { useTasksViewStore } from '@/store/tasks_view_store';
 import { ViewToolbar } from '../DataView/ViewToolbar';
 import { TaskGroup } from './TaskGroup';
 import { TaskView } from './TaskView';
-import { ThemeInspector } from './ThemeInspector';
+import { ThemeView } from './ThemeView';
 
 const searchFields = (task: TaskRow) => [task.title, task.brief ?? '', ...task.tags];
 
@@ -175,7 +175,7 @@ export const TasksView = () => {
       onClose={() => select(null)}
     />
   ) : selectedTheme ? (
-    <ThemeInspector
+    <ThemeView
       theme={selectedTheme}
       tasks={tasks.filter((t) => t.themeId === selectedTheme.id)}
       onClose={() => select(null)}

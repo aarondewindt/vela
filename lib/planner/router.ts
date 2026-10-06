@@ -67,6 +67,15 @@ export const plannerRouter = router({
     .input(z.object({ orderedIds: z.array(id) }))
     .mutation(({ ctx, input }) => plannerService.reorderThemes(ctx.userId, input.orderedIds)),
 
+  getThemeContent: protectedProcedure
+    .input(z.object({ id }))
+    .query(({ ctx, input }) => plannerService.getThemeContent(ctx.userId, input.id)),
+  updateThemeContent: protectedProcedure
+    .input(z.object({ id, content: z.array(z.record(z.string(), z.unknown())).max(5000) }))
+    .mutation(({ ctx, input }) =>
+      plannerService.updateThemeContent(ctx.userId, input.id, input.content)
+    ),
+
   listViews: protectedProcedure
     .input(z.object({ scope: z.string().max(64) }))
     .query(({ ctx, input }) => plannerService.listViews(ctx.userId, input.scope)),
