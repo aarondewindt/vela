@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActionIcon,
   Badge,
@@ -12,7 +12,7 @@ import {
   TextInput,
   UnstyledButton,
 } from '@mantine/core';
-import { DataTable, type DataTableColumn } from 'mantine-datatable';
+import { DataTable, useDataTableColumns, type DataTableColumn } from 'mantine-datatable';
 import {
   IconArrowDown,
   IconArrowUp,
@@ -49,6 +49,8 @@ type Props = {
   onMove: (direction: -1 | 1) => void;
 };
 
+const COLUMNS_KEY = 'tasks-table-columns';
+
 const columnWidths: Record<string, number> = {
   status: 120,
   priority: 90,
@@ -67,6 +69,11 @@ function buildColumns(
   themes: ThemeRow[]
 ): DataTableColumn<TaskRow>[] {
   const render: Record<string, DataTableColumn<TaskRow>['render']> = {
+    brief: (t) => (
+      <Text size="sm" c="dimmed" truncate>
+        {t.brief ?? ''}
+      </Text>
+    ),
     status: (t) => (
       <Badge variant="light" color={taskStatusColors[t.status]}>
         {taskStatusLabels[t.status]}
@@ -96,32 +103,32 @@ function buildColumns(
   const title: DataTableColumn<TaskRow> = {
     accessor: 'title',
     title: 'Task',
+    width: 260,
+    resizable: true,
     render: (t) => (
-      <>
-        <Text fw={500} size="sm">
-          {t.title}
-        </Text>
-        {t.brief && (
-          <Text c="dimmed" size="xs" lineClamp={1}>
-            {t.brief}
-          </Text>
-        )}
-      </>
+      <Text fw={500} size="sm">
+        {t.title}
+      </Text>
     ),
   };
 
   const rest = visible.flatMap((key) => {
     const def = defs.find((d) => d.key === key);
-    return def && render[key]
-      ? [
-          {
-            accessor: key,
-            title: def.label,
-            width: columnWidths[key],
-            render: render[key],
-          } as DataTableColumn<TaskRow>,
-        ]
-      : [];
+    if (!def || !render[key]) {
+      return [];
+    }
+    // Brief takes the remaining width; max-width 0 lets the cell shrink and truncate.
+    const flexible =
+      key === 'brief' ? { width: '100%', cellsStyle: () => ({ maxWidth: 0 }) } : { width: columnWidths[key] };
+    return [
+      {
+        accessor: key,
+        title: def.label,
+        render: render[key],
+        resizable: true,
+        ...flexible,
+      } as DataTableColumn<TaskRow>,
+    ];
   });
 
   return [title, ...rest];
@@ -146,6 +153,13 @@ export function TaskGroup({
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
+
+  const columns = useMemo(
+    () => buildColumns(visibleProperties, defs, themes),
+    [visibleProperties, defs, themes]
+  );
+  // All group tables share one key, so widths stay aligned across groups.
+  const { effectiveColumns } = useDataTableColumns<TaskRow>({ key: COLUMNS_KEY, columns });
 
   const open = group.rows.filter((t) => t.status !== 'DONE' && t.status !== 'ARCHIVED');
   const minutes = open.reduce((sum, t) => sum + (t.estimatedMinutes ?? 0), 0);
@@ -259,7 +273,8 @@ export function TaskGroup({
             idAccessor="id"
             minHeight={0}
             records={group.rows}
-            columns={buildColumns(visibleProperties, defs, themes)}
+            columns={effectiveColumns}
+            storeColumnsKey={COLUMNS_KEY}
             onRowClick={({ record }) => onSelectTask(record.id)}
             rowStyle={(record) =>
               record.id === selectedTaskId

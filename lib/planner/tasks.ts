@@ -53,6 +53,7 @@ export const priorityOptions = [1, 2, 3, 4, 5].map((p) => ({ value: String(p), l
 export function getTaskProperties(themes: ThemeRow[], tags: string[]): PropertyDef<TaskRow>[] {
   return [
     { key: 'title', label: 'Title', type: 'text', get: (t) => t.title },
+    { key: 'brief', label: 'Brief', type: 'text', get: (t) => t.brief },
     {
       key: 'status',
       label: 'Status',
@@ -95,7 +96,15 @@ export function getTaskProperties(themes: ThemeRow[], tags: string[]): PropertyD
   ];
 }
 
-const defaultVisible = ['status', 'priority', 'dueDate', 'scheduledDate', 'estimatedMinutes', 'tags'];
+const defaultVisible = [
+  'brief',
+  'status',
+  'priority',
+  'dueDate',
+  'scheduledDate',
+  'estimatedMinutes',
+  'tags',
+];
 
 const defaultSorts: ViewConfig['sorts'] = [
   { property: 'dueDate', direction: 'asc' },
