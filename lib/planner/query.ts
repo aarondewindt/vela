@@ -114,3 +114,14 @@ export function useDeleteViewMutation() {
 export function usePlanQuery(date: string) {
   return trpc.planner.getPlan.useQuery({ date });
 }
+
+export function useGenerateDraftMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.generateDraft.useMutation({
+    onSuccess: (_plan, { date }) => {
+      utils.planner.getPlan.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}

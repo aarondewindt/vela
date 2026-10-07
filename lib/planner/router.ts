@@ -106,4 +106,7 @@ export const plannerRouter = router({
   getPlan: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .query(({ ctx, input }) => plannerService.getPlan(ctx.userId, input.date)),
+  generateDraft: protectedProcedure
+    .input(z.object({ date: z.iso.date() }))
+    .mutation(({ ctx, input }) => plannerService.generateDraft(ctx.userId, input.date)),
 });

@@ -18,6 +18,7 @@ model User {
   email         String 
   emailVerified Boolean   @default(false)
   image         String?
+  timezone      String    @default("Europe/Amsterdam") @db.VarChar(64)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
@@ -34,9 +35,26 @@ model User {
   calendarEvents CalendarEvent[]
   checkins      Checkin[]
   automationRuns AutomationRun[]
+  availabilityWindows AvailabilityWindow[]
 
   @@unique([email])
   @@map("user")
+}
+
+model AvailabilityWindow {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, weekday, startMinute, endMinute])
+  @@index([userId, weekday, isActive])
+  @@map("availability_windows")
 }
 
 model Session {
