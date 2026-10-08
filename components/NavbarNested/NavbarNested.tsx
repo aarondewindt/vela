@@ -1,13 +1,21 @@
-import { Box, Code, Group, ScrollArea, Title } from '@mantine/core';
+import { Box, ScrollArea } from '@mantine/core';
 import { LinksGroup } from '../NavbarLinksGroup/NavbarLinksGroup';
-import { Logo } from './Logo';
 import classes from './NavbarNested.module.css';
 import CurrentUserBadge from '../CurrentUserBadge';
 import { GaugeIcon, KanbanIcon } from '@phosphor-icons/react';
 
 const navbar_map = [
   { label: 'Dashboard', icon: GaugeIcon, link: '/' },
-  { label: 'Planner', icon: KanbanIcon, link: '/planner' },
+  { label: 'Planner3', icon: KanbanIcon, link: '/planner' },
+  {
+    label: 'Planner',
+    icon: KanbanIcon,
+    pathPattern: /^\/planner(?:\/|$)/,
+    links: [
+      { label: 'Today', link: '/planner/today' },
+      { label: 'Tasks', link: '/planner/tasks' },
+    ],
+  },
 ];
 
 export function NavbarNested() {

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { IconCalendarStats, IconChevronRight } from '@tabler/icons-react';
-import { Box, Collapse, Group, Text, ThemeIcon, UnstyledButton } from '@mantine/core';
-import classes from './NavbarLinksGroup.module.css';
+import { useEffect, useState } from 'react';
+import { NavLink } from '@mantine/core';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface LinksGroupProps {
   icon: React.FC<any>;
@@ -9,44 +9,54 @@ interface LinksGroupProps {
   initiallyOpened?: boolean;
   links?: { label: string; link: string }[];
   link?: string;
+  pathPattern?: RegExp;
 }
 
-export function LinksGroup({ icon: Icon, label, initiallyOpened, links, link }: LinksGroupProps) {
+export function LinksGroup({
+  icon: Icon,
+  label,
+  initiallyOpened,
+  links,
+  link,
+  pathPattern,
+}: LinksGroupProps) {
   const hasLinks = Array.isArray(links);
-  const [opened, setOpened] = useState(initiallyOpened || false);
-  const items = (hasLinks ? links : []).map((link) => (
-    <Text<'a'>
-      component="a"
-      className={classes.sublink}
-      href={link.link}
-      key={link.label}
-      onClick={(event) => event.preventDefault()}
-    >
-      {link.label}
-    </Text>
-  ));
+  const pathname = usePathname();
+  const isActive = pathPattern?.test(pathname ?? '') ?? false;
+  const [opened, setOpened] = useState(initiallyOpened ?? isActive);
 
-  return (
-    <>
-      <UnstyledButton onClick={() => setOpened((o) => !o)} className={classes.control}>
-        <Group justify="space-between" gap={0}>
-          <Box style={{ display: 'flex', alignItems: 'center' }}>
-            <ThemeIcon variant="light" size={30}>
-              <Icon size={18} />
-            </ThemeIcon>
-            <Box ml="md" className={classes.link} component={link ? 'a' : 'div'} href={link ? link : undefined}>{label}</Box>
-          </Box>
-          {hasLinks && (
-            <IconChevronRight
-              className={classes.chevron}
-              stroke={1.5}
-              size={16}
-              style={{ transform: opened ? 'rotate(-90deg)' : 'none' }}
-            />
-          )}
-        </Group>
-      </UnstyledButton>
-      {hasLinks ? <Collapse expanded={opened}>{items}</Collapse> : null}
-    </>
-  );
+  useEffect(() => {
+    if (pathPattern) {
+      setOpened(isActive);
+    }
+  }, [isActive, pathname, pathPattern]);
+
+  const children =
+    hasLinks &&
+    links.map((item) => (
+      <NavLink
+        key={item.label}
+        component={Link}
+        href={item.link}
+        label={item.label}
+        active={pathname === item.link}
+      />
+    ));
+  const navLinkProps = {
+    label,
+    leftSection: <Icon size={18} />,
+    active: isActive || link === pathname,
+    opened,
+    onChange: setOpened,
+  };
+
+  if (link) {
+    return (
+      <NavLink {...navLinkProps} component={Link} href={link}>
+        {children}
+      </NavLink>
+    );
+  }
+
+  return <NavLink {...navLinkProps}>{children}</NavLink>;
 }

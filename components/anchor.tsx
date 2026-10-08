@@ -1,18 +1,11 @@
-import { Anchor as MantineAnchor, AnchorProps as MantineAnchorProps, ElementProps } from '@mantine/core';
-import Link from 'next/link';
+import { Anchor as MantineAnchor, type AnchorProps as MantineAnchorProps } from '@mantine/core';
+import Link, { type LinkProps } from 'next/link';
 
+type AnchorProps = Omit<MantineAnchorProps, 'component' | 'href'> &
+  LinkProps & {
+    children: React.ReactNode;
+  };
 
-type AnchorProps = MantineAnchorProps & {
-  href: string;
-  children: React.ReactNode;
-};
-
-
-export default function Anchor(props: AnchorProps) {
-  return (
-    <MantineAnchor
-      component={Link}
-      {...props}
-    />
-  );
+export default function Anchor({ href, ...props }: AnchorProps) {
+  return <MantineAnchor component={Link} href={href} {...props} />;
 }

@@ -19,7 +19,9 @@
   ],
   "chat.tools.terminal.autoApprove": {
     "yarn oxfmt": true,
-    "yarn exec": true
+    "yarn exec": true,
+    "npx oxfmt": true,
+    "npx oxlint": true
   }
   
 }

@@ -1,4 +1,5 @@
-import { Anchor, Text, Title } from '@mantine/core';
+import { Text, Title } from '@mantine/core';
+import Anchor from '../anchor';
 import classes from './Welcome.module.css';
 
 export function Welcome() {
