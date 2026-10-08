@@ -5,8 +5,10 @@ import '@blocknote/mantine/style.css';
 
 import { useEffect, useRef } from 'react';
 import { Center, Loader, useComputedColorScheme } from '@mantine/core';
-import { BlockNoteView } from '@blocknote/mantine';
+import { BlockNoteView, darkDefaultTheme } from '@blocknote/mantine';
 import { useCreateBlockNote } from '@blocknote/react';
+import { darkPalette } from '@/theme';
+import styles from './ContentEditor.module.css';
 
 export type Blocks = Record<string, unknown>[];
 
@@ -19,7 +21,47 @@ type Props = {
 
 const SAVE_DELAY_MS = 800;
 
-function Editor({ initialContent, onSave }: { initialContent: Blocks | null; onSave: Props['onSave'] }) {
+const blockNoteDarkTheme = {
+  ...darkDefaultTheme,
+  colors: {
+    ...darkDefaultTheme.colors,
+    editor: {
+      text: darkPalette[0],
+      background: darkPalette[7],
+    },
+    menu: {
+      text: darkPalette[0],
+      background: darkPalette[7],
+    },
+    tooltip: {
+      text: darkPalette[0],
+      background: darkPalette[8],
+    },
+    hovered: {
+      text: darkPalette[0],
+      background: darkPalette[5],
+    },
+    selected: {
+      text: darkPalette[0],
+      background: darkPalette[5],
+    },
+    disabled: {
+      text: darkPalette[3],
+      background: darkPalette[6],
+    },
+    shadow: darkPalette[9],
+    border: darkPalette[4],
+    sideMenu: darkPalette[5],
+  },
+};
+
+function Editor({
+  initialContent,
+  onSave,
+}: {
+  initialContent: Blocks | null;
+  onSave: Props['onSave'];
+}) {
   const colorScheme = useComputedColorScheme('dark');
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pending = useRef<Blocks | null>(null);
@@ -42,8 +84,10 @@ function Editor({ initialContent, onSave }: { initialContent: Blocks | null; onS
 
   return (
     <BlockNoteView
+      // className={styles.editor}
       editor={editor}
-      theme={colorScheme}
+      theme={colorScheme === 'dark' ? blockNoteDarkTheme : 'light'}
+      // data-mantine-color-scheme={colorScheme}
       onChange={() => {
         pending.current = editor.document as unknown as Blocks;
         clearTimeout(timer.current);

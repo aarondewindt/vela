@@ -1,0 +1,13 @@
+.editor {
+  background-color: var(--mantine-color-body);
+}
+
+.editor[data-mantine-color-scheme='dark'] :global(.bn-editor) {
+  background-color: var(--mantine-color-dark-6);
+  color: var(--mantine-color-dark-0);
+}
+
+.editor[data-mantine-color-scheme='light'] :global(.bn-editor) {
+  background-color: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+}

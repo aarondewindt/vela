@@ -1,6 +1,7 @@
 'use client';
 
-import { Box, NumberInput, Select, Switch, TagsInput, TextInput, Textarea } from '@mantine/core';
+import { Box, NumberInput, Select, Switch, TagsInput, Textarea } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { field, inputStyle, Property, ROW_HEIGHT } from './PropertyPanel';
 
 type Option = { value: string; label: string };
@@ -72,12 +73,13 @@ export function DateProperty({
 }) {
   return (
     <Property label={label}>
-      <TextInput
+      <DateInput
         {...field}
         aria-label={label}
-        type="date"
-        defaultValue={value ? new Date(value).toISOString().slice(0, 10) : ''}
-        onChange={(event) => onSave(event.currentTarget.value || null)}
+        value={value ? (value instanceof Date ? value.toISOString().slice(0, 10) : value) : null}
+        valueFormat="MMM D, YYYY"
+        clearable
+        onChange={onSave}
       />
     </Property>
   );
