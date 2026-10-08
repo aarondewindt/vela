@@ -29,6 +29,7 @@ export const plannerRouter = router({
           size: z.number().int().min(0).max(5).optional(),
           dueDate: z.iso.date().nullable().optional(),
           estimatedMinutes: z.number().int().min(0).nullable().optional(),
+          leadTimeDays: z.number().int().min(0).max(365).nullable().optional(),
           themeId: id.nullable().optional(),
           tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
         }),
@@ -133,7 +134,14 @@ export const plannerRouter = router({
     )
     .mutation(({ ctx, input }) => plannerService.updateBlockTime(ctx.userId, input)),
   updateBlockOutcome: protectedProcedure
-    .input(z.object({ date: z.iso.date(), blockId: id, outcome: z.enum(['DONE', 'SKIPPED']) }))
+    .input(
+      z.object({
+        date: z.iso.date(),
+        blockId: id,
+        outcome: z.enum(['DONE', 'SKIPPED']),
+        completeTask: z.boolean().optional(),
+      })
+    )
     .mutation(({ ctx, input }) => plannerService.updateBlockOutcome(ctx.userId, input)),
   removeBlockFromDay: protectedProcedure
     .input(z.object({ date: z.iso.date(), blockId: id }))

@@ -26,11 +26,11 @@ export type TaskSize = (typeof taskSizeValues)[number];
 
 export const taskSizeLabels: Record<TaskSize, string> = {
   0: 'Unknown',
-  1: 'XL',
-  2: 'L',
+  1: 'XS',
+  2: 'S',
   3: 'M',
-  4: 'S',
-  5: 'XS',
+  4: 'L',
+  5: 'XL',
 };
 
 export const taskSizeOptions = taskSizeValues.map((size) => ({

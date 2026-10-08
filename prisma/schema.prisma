@@ -265,6 +265,7 @@ model Task {
   tags            String[]    @default([])
   earliestStartAt DateTime?
   estimatedMinutes Int?
+  leadTimeDays    Int?
   isRecurring     Boolean     @default(false)
   recurrenceRule  String?
   recurrenceTz    String?     @db.VarChar(64)

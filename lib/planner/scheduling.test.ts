@@ -1,4 +1,9 @@
-import { scheduleCandidates, WEEKDAY_PLANNING_PROFILE, type PlanningCandidate } from './scheduling';
+import {
+  classifyCandidate,
+  scheduleCandidates,
+  WEEKDAY_PLANNING_PROFILE,
+  type PlanningCandidate,
+} from './scheduling';
 
 const at = (hour: number, minute = 0) => new Date(2026, 0, 5, hour, minute);
 
@@ -6,30 +11,42 @@ const candidate = (overrides: Partial<PlanningCandidate> = {}): PlanningCandidat
   id: 'task-1',
   title: 'Task',
   priority: 3,
-  tier: 'P2',
+  size: 3,
+  tier: 'IMPORTANT',
+  daysUntilDue: null,
   dueAt: null,
   durationMinutes: 30,
   ...overrides,
 });
 
 describe('scheduleCandidates', () => {
-  it('uses quota tiers and returns a reason for candidates outside the quota', () => {
+  it('orders by tier then due proximity and reports candidates beyond maxBlocks', () => {
     const result = scheduleCandidates({
       candidates: [
-        candidate({ id: 'p2-a', tier: 'P2' }),
-        candidate({ id: 'p1', tier: 'P1' }),
-        candidate({ id: 'p2-b', tier: 'P2' }),
-        candidate({ id: 'p2-c', tier: 'P2' }),
+        candidate({ id: 'filler', tier: 'FILLER' }),
+        candidate({ id: 'soon-late', tier: 'DUE_SOON', daysUntilDue: 3 }),
+        candidate({ id: 'overdue', tier: 'OVERDUE', daysUntilDue: -1 }),
+        candidate({ id: 'soon-early', tier: 'DUE_SOON', daysUntilDue: 1 }),
       ],
       availability: [{ start: at(9), end: at(14) }],
       busy: [],
       profile: WEEKDAY_PLANNING_PROFILE,
     });
 
-    expect(result.scheduled.map(({ id }) => id)).toEqual(['p1', 'p2-a', 'p2-b']);
+    expect(result.scheduled.map(({ id }) => id)).toEqual(['overdue', 'soon-early', 'soon-late']);
     expect(result.unscheduled).toEqual([
-      { candidate: expect.objectContaining({ id: 'p2-c' }), reason: 'quota' },
+      { candidate: expect.objectContaining({ id: 'filler' }), reason: 'quota' },
     ]);
+  });
+
+  it('classifies by due proximity, importance, and size', () => {
+    const base = { priority: 3, size: 3, daysUntilDue: null, leadTimeDays: 4 };
+    expect(classifyCandidate({ ...base, daysUntilDue: -1 })).toBe('OVERDUE');
+    expect(classifyCandidate({ ...base, daysUntilDue: 4 })).toBe('DUE_SOON');
+    expect(classifyCandidate({ ...base, daysUntilDue: 5 })).toBe('FILLER');
+    expect(classifyCandidate({ ...base, priority: 1 })).toBe('IMPORTANT');
+    expect(classifyCandidate({ ...base, size: 5 })).toBe('IMPORTANT');
+    expect(classifyCandidate({ ...base, size: 0 })).toBe('FILLER');
   });
 
   it('places candidates around busy time and enforces the inter-task gap', () => {
@@ -53,12 +70,12 @@ describe('scheduleCandidates', () => {
     ]);
   });
 
-  it('reports tasks that do not fit, invalid durations, and candidates without quota', () => {
+  it('reports tasks that do not fit and invalid durations, then fills with later candidates', () => {
     const result = scheduleCandidates({
       candidates: [
         candidate({ id: 'too-long', durationMinutes: 120 }),
         candidate({ id: 'invalid', durationMinutes: 0 }),
-        candidate({ id: 'other', tier: 'OTHER' }),
+        candidate({ id: 'other', tier: 'FILLER' }),
       ],
       availability: [{ start: at(9), end: at(10) }],
       busy: [],
@@ -68,8 +85,8 @@ describe('scheduleCandidates', () => {
     expect(result.unscheduled.map(({ candidate: item, reason }) => [item.id, reason])).toEqual([
       ['invalid', 'invalid-duration'],
       ['too-long', 'no-available-slot'],
-      ['other', 'quota'],
     ]);
+    expect(result.scheduled.map(({ id }) => id)).toEqual(['other']);
   });
 
   it('normalizes overlapping availability and busy intervals', () => {

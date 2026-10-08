@@ -1,10 +1,12 @@
-export type CandidateTier = 'P1' | 'P2' | 'XS' | 'OTHER';
+export type CandidateTier = 'OVERDUE' | 'DUE_SOON' | 'IMPORTANT' | 'FILLER';
 
 export type PlanningCandidate = {
   id: string;
   title: string;
   priority: number;
+  size: number;
   tier: CandidateTier;
+  daysUntilDue: number | null;
   dueAt: Date | null;
   durationMinutes: number;
 };
@@ -16,7 +18,6 @@ export type TimeInterval = {
 
 export type PlanningProfile = {
   maxBlocks: number;
-  limits: Record<Exclude<CandidateTier, 'OTHER'>, number>;
   gapMinutes: number;
 };
 
@@ -34,24 +35,49 @@ export type DaySchedule = {
 };
 
 export const WEEKDAY_PLANNING_PROFILE: PlanningProfile = {
-  limits: { P1: 1, P2: 2, XS: 2 },
   maxBlocks: 3,
   gapMinutes: 15,
 };
 
 export const WEEKEND_PLANNING_PROFILE: PlanningProfile = {
-  limits: { P1: 2, P2: 3, XS: 3 },
   maxBlocks: 5,
   gapMinutes: 15,
 };
 
-const tierOrder: CandidateTier[] = ['P1', 'P2', 'XS', 'OTHER'];
+const tierOrder: CandidateTier[] = ['OVERDUE', 'DUE_SOON', 'IMPORTANT', 'FILLER'];
+
+// Size 1 is the smallest, 5 the longest, 0 unknown.
+const LEAD_TIME_BY_SIZE: Record<number, number> = { 0: 3, 1: 1, 2: 2, 3: 4, 4: 7, 5: 14 };
+
+export function defaultLeadTimeDays(size: number, priority: number) {
+  return (LEAD_TIME_BY_SIZE[size] ?? 4) + (priority === 1 ? 2 : 0);
+}
+
+export function classifyCandidate({
+  priority,
+  size,
+  daysUntilDue,
+  leadTimeDays,
+}: {
+  priority: number;
+  size: number;
+  daysUntilDue: number | null;
+  leadTimeDays: number;
+}): CandidateTier {
+  if (daysUntilDue !== null && daysUntilDue < 0) return 'OVERDUE';
+  if (daysUntilDue !== null && daysUntilDue <= leadTimeDays) return 'DUE_SOON';
+  if (priority <= 2 || (size >= 4 && size <= 5)) return 'IMPORTANT';
+  return 'FILLER';
+}
 
 function compareCandidates(a: PlanningCandidate, b: PlanningCandidate) {
-  const dueDifference =
-    (a.dueAt?.getTime() ?? Number.POSITIVE_INFINITY) -
-    (b.dueAt?.getTime() ?? Number.POSITIVE_INFINITY);
-  return dueDifference || a.priority - b.priority || a.id.localeCompare(b.id);
+  return (
+    tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier) ||
+    (a.daysUntilDue ?? Number.POSITIVE_INFINITY) - (b.daysUntilDue ?? Number.POSITIVE_INFINITY) ||
+    a.priority - b.priority ||
+    b.size - a.size ||
+    a.id.localeCompare(b.id)
+  );
 }
 
 function normalizeIntervals(intervals: TimeInterval[]): TimeInterval[] {
@@ -99,32 +125,6 @@ function subtractBusyIntervals(availability: TimeInterval[], busy: TimeInterval[
   return free;
 }
 
-function selectCandidates(candidates: PlanningCandidate[], profile: PlanningProfile) {
-  const eligible = candidates.filter((candidate) => candidate.durationMinutes > 0);
-  const selected: PlanningCandidate[] = [];
-  const selectedIds = new Set<string>();
-
-  for (const tier of tierOrder) {
-    const tierCandidates = eligible
-      .filter((candidate) => candidate.tier === tier)
-      .toSorted(compareCandidates);
-    const limit = tier === 'OTHER' ? profile.maxBlocks : profile.limits[tier];
-
-    for (const candidate of tierCandidates) {
-      if (selected.length >= profile.maxBlocks) {
-        break;
-      }
-      if (selected.filter((item) => item.tier === tier).length >= limit) {
-        break;
-      }
-      selected.push(candidate);
-      selectedIds.add(candidate.id);
-    }
-  }
-
-  return { eligible, selected: selected.toSorted(compareCandidates), selectedIds };
-}
-
 export function scheduleCandidates({
   candidates,
   availability,
@@ -137,13 +137,19 @@ export function scheduleCandidates({
   profile: PlanningProfile;
 }): DaySchedule {
   const freeWindows = subtractBusyIntervals(availability, busy);
-  const { eligible, selected, selectedIds } = selectCandidates(candidates, profile);
+  const eligible = candidates
+    .filter((candidate) => candidate.durationMinutes > 0)
+    .toSorted(compareCandidates);
   const scheduled: ScheduledCandidate[] = [];
   const unscheduled: UnscheduledCandidate[] = candidates
     .filter((candidate) => candidate.durationMinutes <= 0)
     .map((candidate) => ({ candidate, reason: 'invalid-duration' }));
 
-  for (const candidate of selected) {
+  for (const candidate of eligible) {
+    if (scheduled.length >= profile.maxBlocks) {
+      unscheduled.push({ candidate, reason: 'quota' });
+      continue;
+    }
     const durationMs = candidate.durationMinutes * 60_000;
     const cursor = scheduled.length
       ? scheduled[scheduled.length - 1].end.getTime() + profile.gapMinutes * 60_000
@@ -162,12 +168,6 @@ export function scheduleCandidates({
     const end = new Date(start.getTime() + durationMs);
     scheduled.push({ ...candidate, start, end });
   }
-
-  unscheduled.push(
-    ...eligible
-      .filter((candidate) => !selectedIds.has(candidate.id))
-      .map((candidate) => ({ candidate, reason: 'quota' as const }))
-  );
 
   return { scheduled, unscheduled, freeWindows };
 }

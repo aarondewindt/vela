@@ -756,6 +756,7 @@ export function TodayView() {
                   </Button>
                 )}
                 <Button
+                  variant="default"
                   disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
                   loading={updateOutcome.isPending}
                   onClick={() =>
@@ -765,7 +766,24 @@ export function TodayView() {
                     )
                   }
                 >
-                  Mark done
+                  Done for now
+                </Button>
+                <Button
+                  disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
+                  loading={updateOutcome.isPending}
+                  onClick={() =>
+                    updateOutcome.mutate(
+                      {
+                        date: selectedDate,
+                        blockId: selectedBlock.id,
+                        outcome: 'DONE',
+                        completeTask: true,
+                      },
+                      { onSuccess: () => setSelectedBlockId(null) }
+                    )
+                  }
+                >
+                  Complete task
                 </Button>
               </Group>
             </Group>

@@ -27,7 +27,7 @@ import { trpc } from '@/lib/trpc/client';
 const initialGeneration = {
   count: 30,
   priorityWeights: [8, 18, 32, 26, 16],
-  sizeWeights: [12, 26, 34, 20, 8],
+  sizeWeights: [8, 20, 34, 26, 12],
   noDueDatePercent: 25,
   dueDateStartDays: -7,
   dueDateEndDays: 45,

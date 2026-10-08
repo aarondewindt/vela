@@ -5,11 +5,13 @@ import { prisma } from '@/lib/prisma';
 import type { Prisma } from '../../generated/prisma/client';
 import type { TaskRow } from './tasks';
 import type { ViewConfig } from '@/lib/views/types';
+import { recurrenceMatchesDate } from './recurrence';
 import {
+  classifyCandidate,
+  defaultLeadTimeDays,
   scheduleCandidates,
   WEEKDAY_PLANNING_PROFILE,
   WEEKEND_PLANNING_PROFILE,
-  type CandidateTier,
   type TimeInterval,
 } from './scheduling';
 
@@ -21,6 +23,7 @@ type TaskPatch = {
   size?: number;
   dueDate?: string | null;
   estimatedMinutes?: number | null;
+  leadTimeDays?: number | null;
   themeId?: string | null;
   tags?: string[];
 };
@@ -100,11 +103,134 @@ function assertSameDay(start: Date, end: Date, dayStart: Date, dayEnd: Date) {
   }
 }
 
-function candidateTier(priority: number, durationMinutes: number): CandidateTier {
-  if (priority === 1) return 'P1';
-  if (priority === 2) return 'P2';
-  if (durationMinutes <= 15) return 'XS';
-  return 'OTHER';
+// Manual/planner occurrences return to the backlog; recurring ones reset to pending.
+async function releaseOccurrences(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  occurrenceIds: string[]
+) {
+  for (const id of new Set(occurrenceIds)) {
+    const occurrence = await transaction.taskOccurrence.findFirst({
+      where: { id, userId, status: { notIn: ['DONE', 'CANCELED'] } },
+      select: { origin: true, taskId: true },
+    });
+    if (!occurrence) continue;
+    const inUse = await transaction.dailyBlock.count({
+      where: { taskOccurrenceId: id, status: { not: 'CANCELED' }, plan: { isCurrent: true } },
+    });
+    if (inUse > 0) continue;
+
+    if (occurrence.origin === 'RECURRENCE') {
+      await transaction.taskOccurrence.update({
+        where: { id },
+        data: { status: 'PENDING', completedAt: null, skippedAt: null, canceledAt: null },
+      });
+    } else {
+      await transaction.taskOccurrence.delete({ where: { id } });
+      // Nothing planned or done remains, so the task goes back to the backlog.
+      await transaction.task.updateMany({
+        where: {
+          id: occurrence.taskId,
+          userId,
+          isRecurring: false,
+          status: 'IN_PROGRESS',
+          occurrences: { none: {} },
+        },
+        data: { status: 'BACKLOG' },
+      });
+    }
+  }
+}
+
+// Planning work on a task puts it in progress; recurring tasks keep their status.
+async function startTasks(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  occurrenceIds: string[],
+  from: TaskRow['status'][] = ['BACKLOG']
+) {
+  if (occurrenceIds.length === 0) return;
+  await transaction.task.updateMany({
+    where: {
+      userId,
+      isRecurring: false,
+      status: { in: from },
+      occurrences: { some: { id: { in: occurrenceIds } } },
+    },
+    data: { status: 'IN_PROGRESS' },
+  });
+}
+
+async function cancelOpenOccurrences(
+  transaction: Prisma.TransactionClient,
+  userId: string,
+  taskId: string
+) {
+  const open = await transaction.taskOccurrence.findMany({
+    where: { userId, taskId, status: { in: ['PENDING', 'SCHEDULED'] } },
+    select: { id: true },
+  });
+  if (open.length === 0) return;
+  const ids = open.map(({ id }) => id);
+  await transaction.dailyBlock.updateMany({
+    where: { userId, taskOccurrenceId: { in: ids }, status: 'PLANNED' },
+    data: { status: 'CANCELED' },
+  });
+  await transaction.taskOccurrence.updateMany({
+    where: { id: { in: ids } },
+    data: { status: 'CANCELED', canceledAt: new Date() },
+  });
+}
+
+function earliestDate(a: Date | null | undefined, b: Date | null | undefined) {
+  if (!a || !b) return a ?? b ?? null;
+  return a < b ? a : b;
+}
+
+// A prerequisite inherits the earliest due date of the tasks it blocks, through chains.
+function inheritDueDates(
+  edges: { blockedTaskId: string; dependsOnTaskId: string; blockedTask: { dueDate: Date | null } }[]
+) {
+  const inherited = new Map<string, Date>();
+  for (let pass = 0; pass < edges.length; pass++) {
+    let changed = false;
+    for (const edge of edges) {
+      const due = earliestDate(edge.blockedTask.dueDate, inherited.get(edge.blockedTaskId));
+      const current = inherited.get(edge.dependsOnTaskId);
+      if (due && (!current || due < current)) {
+        inherited.set(edge.dependsOnTaskId, due);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return inherited;
+}
+
+async function materializeRecurringOccurrences(userId: string, planDate: Date) {
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId,
+      isRecurring: true,
+      recurrenceRule: { not: null },
+      status: { notIn: ['DONE', 'ARCHIVED', 'PAUSED'] },
+    },
+    select: { id: true, recurrenceRule: true, createdAt: true },
+  });
+  const data = tasks.flatMap((task) => {
+    const start = new Date(task.createdAt.toISOString().slice(0, 10));
+    return Array.from({ length: 8 }, (_, offset) => new Date(planDate.getTime() + offset * 86_400_000))
+      .filter((date) => recurrenceMatchesDate(task.recurrenceRule ?? '', start, date))
+      .map((occurrenceDate) => ({
+        userId,
+        taskId: task.id,
+        occurrenceDate,
+        origin: 'RECURRENCE' as const,
+      }));
+  });
+  if (data.length > 0) {
+    await prisma.taskOccurrence.createMany({ data, skipDuplicates: true });
+  }
 }
 
 async function assertOwnsTheme(userId: string, themeId: string | null | undefined) {
@@ -168,13 +294,18 @@ export const plannerService = {
   async updateTask(userId: string, id: string, patch: TaskPatch) {
     await assertOwnsTheme(userId, patch.themeId);
     const { dueDate, ...rest } = patch;
-    const result = await prisma.task.updateMany({
-      where: { id, userId },
-      data: { ...rest, ...(dueDate !== undefined && { dueDate: toDate(dueDate) }) },
+    await prisma.$transaction(async (transaction) => {
+      const result = await transaction.task.updateMany({
+        where: { id, userId },
+        data: { ...rest, ...(dueDate !== undefined && { dueDate: toDate(dueDate) }) },
+      });
+      if (!result.count) {
+        throw new TRPCError({ code: 'NOT_FOUND' });
+      }
+      if (patch.status === 'DONE' || patch.status === 'ARCHIVED') {
+        await cancelOpenOccurrences(transaction, userId, id);
+      }
     });
-    if (!result.count) {
-      throw new TRPCError({ code: 'NOT_FOUND' });
-    }
   },
 
   async deleteTask(userId: string, id: string) {
@@ -448,10 +579,7 @@ export const plannerService = {
         update: {},
         select: { id: true, status: true },
       });
-      if (occurrence.status === 'DONE' || occurrence.status === 'CANCELED') {
-        throw new TRPCError({ code: 'CONFLICT', message: 'This task occurrence is closed' });
-      }
-
+      // The task is open, so a closed occurrence on this day means it was reopened.
       const [overlap, calendarConflict, existingBlock] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
@@ -504,8 +632,9 @@ export const plannerService = {
       });
       await transaction.taskOccurrence.update({
         where: { id: occurrence.id },
-        data: { status: 'SCHEDULED' },
+        data: { status: 'SCHEDULED', completedAt: null, skippedAt: null, canceledAt: null },
       });
+      await startTasks(transaction, userId, [occurrence.id]);
       return block;
     });
   },
@@ -592,15 +721,9 @@ export const plannerService = {
       }
 
       if (block.taskOccurrenceId) {
-        await transaction.taskOccurrence.update({
-          where: { id: block.taskOccurrenceId },
-          data: {
-            status: 'PENDING',
-            completedAt: null,
-            skippedAt: null,
-            canceledAt: null,
-          },
-        });
+        await transaction.dailyBlock.delete({ where: { id: block.id } });
+        await releaseOccurrences(transaction, userId, [block.taskOccurrenceId]);
+        return block;
       }
       return transaction.dailyBlock.delete({ where: { id: block.id } });
     });
@@ -608,7 +731,12 @@ export const plannerService = {
 
   async updateBlockOutcome(
     userId: string,
-    input: { date: string; blockId: string; outcome: 'DONE' | 'SKIPPED' }
+    input: {
+      date: string;
+      blockId: string;
+      outcome: 'DONE' | 'SKIPPED';
+      completeTask?: boolean;
+    }
   ) {
     const planDate = new Date(`${input.date}T00:00:00.000Z`);
     return prisma.$transaction(async (transaction) => {
@@ -637,6 +765,28 @@ export const plannerService = {
               ? { status: 'DONE', completedAt }
               : { status: 'PENDING', completedAt: null, skippedAt: null },
         });
+        if (input.outcome === 'DONE') {
+          if (input.completeTask) {
+            const occurrence = await transaction.taskOccurrence.findUniqueOrThrow({
+              where: { id: block.taskOccurrenceId },
+              select: { taskId: true },
+            });
+            const completed = await transaction.task.updateMany({
+              where: {
+                id: occurrence.taskId,
+                userId,
+                isRecurring: false,
+                status: { in: ['BACKLOG', 'IN_PROGRESS'] },
+              },
+              data: { status: 'DONE' },
+            });
+            if (completed.count) {
+              await cancelOpenOccurrences(transaction, userId, occurrence.taskId);
+            }
+          } else {
+            await startTasks(transaction, userId, [block.taskOccurrenceId], ['BACKLOG', 'DONE']);
+          }
+        }
       }
       return updated;
     });
@@ -667,6 +817,7 @@ export const plannerService = {
           where: { id: block.taskOccurrenceId },
           data: { status: 'SCHEDULED', completedAt: null, skippedAt: null, canceledAt: null },
         });
+        await startTasks(transaction, userId, [block.taskOccurrenceId], ['BACKLOG', 'DONE']);
       }
       return updated;
     });
@@ -701,7 +852,8 @@ export const plannerService = {
     const weekday = planDate.getUTCDay();
     const profile =
       weekday === 0 || weekday === 6 ? WEEKEND_PLANNING_PROFILE : WEEKDAY_PLANNING_PROFILE;
-    const [windows, override, currentPlan, blockers] = await Promise.all([
+    await materializeRecurringOccurrences(userId, planDate);
+    const [windows, override, currentPlan, dependencies] = await Promise.all([
       prisma.availabilityWindow.findMany({
         where: { userId, weekday, isActive: true },
         orderBy: { startMinute: 'asc' },
@@ -720,6 +872,7 @@ export const plannerService = {
                 { status: { in: ['IN_PROGRESS', 'DONE'] } },
               ],
             },
+            include: { taskOccurrence: { select: { taskId: true } } },
           },
         },
       }),
@@ -727,11 +880,20 @@ export const plannerService = {
         where: {
           userId,
           isHardBlock: true,
-          dependsOnTask: { status: { notIn: ['DONE', 'ARCHIVED'] } },
+          blockedTask: { status: { notIn: ['DONE', 'ARCHIVED'] } },
         },
-        select: { blockedTaskId: true },
+        select: {
+          blockedTaskId: true,
+          dependsOnTaskId: true,
+          dependsOnTask: { select: { status: true } },
+          blockedTask: { select: { dueDate: true } },
+        },
       }),
     ]);
+    const blockedTaskIds = dependencies
+      .filter(({ dependsOnTask }) => !['DONE', 'ARCHIVED'].includes(dependsOnTask.status))
+      .map(({ blockedTaskId }) => blockedTaskId);
+    const inheritedDue = inheritDueDates(dependencies);
 
     const dayStart = localMinuteToInstant(date, 0, user.timezone);
     const nextDay = new Date(planDate.getTime() + 86_400_000).toISOString().slice(0, 10);
@@ -760,7 +922,12 @@ export const plannerService = {
       }
     }
 
-    const [calendarEvents, occurrences] = await Promise.all([
+    const protectedBlocks = currentPlan?.dailyBlocks ?? [];
+    const alreadyPlannedTaskIds = protectedBlocks.flatMap((block) =>
+      block.status !== 'DONE' && block.taskOccurrence ? [block.taskOccurrence.taskId] : []
+    );
+
+    const [calendarEvents, occurrences, backlogTasks] = await Promise.all([
       prisma.calendarEvent.findMany({
         where: { userId, isBusy: true, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
         select: { startsAt: true, endsAt: true },
@@ -770,7 +937,7 @@ export const plannerService = {
           userId,
           occurrenceDate: { lte: planDate },
           status: { in: ['PENDING', 'SCHEDULED'] },
-          taskId: { notIn: blockers.map(({ blockedTaskId }) => blockedTaskId) },
+          taskId: { notIn: blockedTaskIds },
           task: { status: { notIn: ['DONE', 'ARCHIVED', 'PAUSED'] } },
         },
         include: {
@@ -778,16 +945,37 @@ export const plannerService = {
             select: {
               title: true,
               priority: true,
+              size: true,
               estimatedMinutes: true,
+              leadTimeDays: true,
               firstStep: true,
             },
           },
         },
         orderBy: [{ dueAt: 'asc' }, { occurrenceDate: 'asc' }],
       }),
+      prisma.task.findMany({
+        where: {
+          userId,
+          isRecurring: false,
+          status: { in: ['BACKLOG', 'IN_PROGRESS'] },
+          id: { notIn: [...blockedTaskIds, ...alreadyPlannedTaskIds] },
+          OR: [{ earliestStartAt: null }, { earliestStartAt: { lt: dayEnd } }],
+          occurrences: { none: { status: { in: ['PENDING', 'SCHEDULED'] } } },
+        },
+        select: {
+          id: true,
+          title: true,
+          priority: true,
+          size: true,
+          estimatedMinutes: true,
+          leadTimeDays: true,
+          firstStep: true,
+          dueDate: true,
+        },
+      }),
     ]);
 
-    const protectedBlocks = currentPlan?.dailyBlocks ?? [];
     const protectedOccurrenceIds = new Set(
       protectedBlocks.flatMap((block) => (block.taskOccurrenceId ? [block.taskOccurrenceId] : []))
     );
@@ -796,22 +984,58 @@ export const plannerService = {
       const dueAt = occurrence.dueAt ?? occurrence.occurrenceDate;
       return dueAt < dayEnd;
     });
+    const sources = new Map<
+      string,
+      { taskId: string; occurrenceId: string | null; firstStep: string | null }
+    >();
+    const candidates = [
+      ...eligibleOccurrences.map((occurrence) => ({
+        id: occurrence.id,
+        taskId: occurrence.taskId,
+        occurrenceId: occurrence.id,
+        task: occurrence.task,
+        due: earliestDate(occurrence.dueAt ?? occurrence.occurrenceDate, inheritedDue.get(occurrence.taskId)),
+      })),
+      ...backlogTasks.map((task) => ({
+        id: `task:${task.id}`,
+        taskId: task.id,
+        occurrenceId: null,
+        task,
+        due: earliestDate(task.dueDate, inheritedDue.get(task.id)),
+      })),
+    ].map((source) => {
+      const { task } = source;
+      const durationMinutes = task.estimatedMinutes ?? 25;
+      const daysUntilDue = source.due
+        ? Math.floor((source.due.getTime() - planDate.getTime()) / 86_400_000)
+        : null;
+      sources.set(source.id, {
+        taskId: source.taskId,
+        occurrenceId: source.occurrenceId,
+        firstStep: task.firstStep,
+      });
+      return {
+        id: source.id,
+        title: task.title,
+        priority: task.priority,
+        size: task.size,
+        tier: classifyCandidate({
+          priority: task.priority,
+          size: task.size,
+          daysUntilDue,
+          leadTimeDays: task.leadTimeDays ?? defaultLeadTimeDays(task.size, task.priority),
+        }),
+        daysUntilDue,
+        dueAt: source.due,
+        durationMinutes,
+      };
+    });
     const busy: TimeInterval[] = [
       ...calendarEvents.map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
       ...protectedBlocks.map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
     ];
     const schedule = scheduleCandidates({
-      candidates: eligibleOccurrences.map((occurrence) => {
-        const durationMinutes = occurrence.task.estimatedMinutes ?? 25;
-        return {
-          id: occurrence.id,
-          title: occurrence.task.title,
-          priority: occurrence.task.priority,
-          tier: candidateTier(occurrence.task.priority, durationMinutes),
-          dueAt: occurrence.dueAt ?? occurrence.occurrenceDate,
-          durationMinutes,
-        };
-      }),
+      candidates,
       availability,
       busy,
       profile,
@@ -822,6 +1046,15 @@ export const plannerService = {
         where: { userId, planDate },
         orderBy: { version: 'desc' },
         select: { version: true },
+      });
+      const droppedBlocks = await transaction.dailyBlock.findMany({
+        where: {
+          userId,
+          plan: { planDate, isCurrent: true },
+          taskOccurrenceId: { not: null },
+          id: { notIn: protectedBlocks.map(({ id }) => id) },
+        },
+        select: { taskOccurrenceId: true },
       });
       await transaction.dailyPlan.updateMany({
         where: { userId, planDate, isCurrent: true },
@@ -843,13 +1076,30 @@ export const plannerService = {
         completedAt: block.completedAt,
         taskOccurrenceId: block.taskOccurrenceId,
       }));
+      const occurrenceIds = new Map<string, string>();
+      for (const block of schedule.scheduled) {
+        const source = sources.get(block.id);
+        if (source?.occurrenceId) {
+          occurrenceIds.set(block.id, source.occurrenceId);
+        } else if (source) {
+          // A closed occurrence on this day means the task was reopened.
+          const created = await transaction.taskOccurrence.upsert({
+            where: {
+              taskId_occurrenceDate: { taskId: source.taskId, occurrenceDate: planDate },
+            },
+            create: { userId, taskId: source.taskId, occurrenceDate: planDate, origin: 'MANUAL' },
+            update: { status: 'SCHEDULED', completedAt: null, skippedAt: null, canceledAt: null },
+            select: { id: true },
+          });
+          occurrenceIds.set(block.id, created.id);
+        }
+      }
       const plannedBlocks = schedule.scheduled.map((block, index) => {
-        const occurrence = eligibleOccurrences.find(({ id }) => id === block.id);
         return {
           userId,
           title: block.title,
-          brief: occurrence?.task.firstStep ?? null,
-          taskOccurrenceId: block.id,
+          brief: sources.get(block.id)?.firstStep ?? null,
+          taskOccurrenceId: occurrenceIds.get(block.id) ?? null,
           startsAt: block.start,
           endsAt: block.end,
           durationMinutes: block.durationMinutes,
@@ -868,10 +1118,15 @@ export const plannerService = {
           isCurrent: true,
           generatedBy: 'AUTOMATION',
           explanationJson: {
-            candidateCount: eligibleOccurrences.length,
+            candidateCount: candidates.length,
             scheduledCount: schedule.scheduled.length,
+            scheduled: schedule.scheduled.map(({ id, tier }) => ({
+              taskId: sources.get(id)?.taskId,
+              tier,
+            })),
             unscheduled: schedule.unscheduled.map(({ candidate, reason }) => ({
-              occurrenceId: candidate.id,
+              taskId: sources.get(candidate.id)?.taskId,
+              tier: candidate.tier,
               reason,
             })),
             availability: availability.map(({ start, end }) => ({
@@ -884,12 +1139,20 @@ export const plannerService = {
         include: { dailyBlocks: { orderBy: { startsAt: 'asc' } } },
       });
 
-      for (const block of schedule.scheduled) {
+      for (const occurrenceId of occurrenceIds.values()) {
         await transaction.taskOccurrence.updateMany({
-          where: { id: block.id, userId, status: { in: ['PENDING', 'SCHEDULED'] } },
+          where: { id: occurrenceId, userId, status: { in: ['PENDING', 'SCHEDULED'] } },
           data: { status: 'SCHEDULED' },
         });
       }
+
+      await startTasks(transaction, userId, [...occurrenceIds.values()]);
+
+      await releaseOccurrences(
+        transaction,
+        userId,
+        droppedBlocks.flatMap(({ taskOccurrenceId }) => (taskOccurrenceId ? [taskOccurrenceId] : []))
+      );
 
       return plan;
     });
