@@ -1,6 +1,5 @@
+import { TodayView } from '@/components/TodayView/TodayView';
 
-
-
-export default () => {
-  return <>Today page</>
+export default function TodayPage() {
+  return <TodayView />;
 }

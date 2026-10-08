@@ -1,0 +1,57 @@
+.root {
+  width: 100%;
+  max-width: 1500px;
+  margin-inline: auto;
+}
+
+.loading {
+  display: grid;
+  min-height: 45vh;
+  place-items: center;
+  color: var(--mantine-color-dimmed);
+}
+
+.availabilityAlert {
+  border-inline-start: 3px solid var(--mantine-color-yellow-5);
+}
+
+.backlog {
+  background: var(--mantine-color-body);
+}
+
+.backlogRow {
+  min-height: 42px;
+  padding-inline: var(--mantine-spacing-xs);
+  border-radius: var(--mantine-radius-xs);
+}
+
+.backlogRow:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.taskSummary {
+  min-width: 0;
+}
+
+.scheduleSurface {
+  overflow: hidden;
+  min-height: 420px;
+  background: var(--mantine-color-body);
+}
+
+.scheduleSurface :global(.mantine-DayView-root),
+.scheduleSurface :global(.mantine-AgendaView-root) {
+  min-height: min(68vh, 760px);
+}
+
+.dayViewSlot[data-available] {
+  background-color: var(--mantine-color-teal-light);
+}
+
+.dayViewSlot[data-available]:hover {
+  background-color: var(--mantine-color-teal-light-hover);
+}
+
+.footer {
+  padding-inline: var(--mantine-spacing-xs);
+}

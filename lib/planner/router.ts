@@ -106,6 +106,34 @@ export const plannerRouter = router({
   getPlan: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .query(({ ctx, input }) => plannerService.getPlan(ctx.userId, input.date)),
+  getDayData: protectedProcedure
+    .input(z.object({ date: z.iso.date() }))
+    .query(({ ctx, input }) => plannerService.getDayData(ctx.userId, input.date)),
+  applyStandardAvailability: protectedProcedure
+    .input(z.object({ date: z.iso.date(), scope: z.enum(['date', 'recurring']) }))
+    .mutation(({ ctx, input }) => plannerService.applyStandardAvailability(ctx.userId, input)),
+  createManualBlock: protectedProcedure
+    .input(
+      z.object({
+        date: z.iso.date(),
+        taskId: id,
+        startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.createManualBlock(ctx.userId, input)),
+  updateBlockTime: protectedProcedure
+    .input(
+      z.object({
+        date: z.iso.date(),
+        blockId: id,
+        startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+        endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateBlockTime(ctx.userId, input)),
+  updateBlockOutcome: protectedProcedure
+    .input(z.object({ date: z.iso.date(), blockId: id, outcome: z.enum(['DONE', 'SKIPPED']) }))
+    .mutation(({ ctx, input }) => plannerService.updateBlockOutcome(ctx.userId, input)),
   generateDraft: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .mutation(({ ctx, input }) => plannerService.generateDraft(ctx.userId, input.date)),

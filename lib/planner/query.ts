@@ -115,6 +115,48 @@ export function usePlanQuery(date: string) {
   return trpc.planner.getPlan.useQuery({ date });
 }
 
+export function useDayDataQuery(date: string) {
+  return trpc.planner.getDayData.useQuery({ date });
+}
+
+export function useApplyStandardAvailabilityMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.applyStandardAvailability.useMutation({
+    onSuccess: (_result, { date }) => utils.planner.getDayData.invalidate({ date }),
+  });
+}
+
+export function useCreateManualBlockMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.createManualBlock.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
+export function useUpdateBlockTimeMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.updateBlockTime.useMutation({
+    onSuccess: (_result, { date }) => utils.planner.getDayData.invalidate({ date }),
+  });
+}
+
+export function useUpdateBlockOutcomeMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.updateBlockOutcome.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
 export function useGenerateDraftMutation() {
   const utils = trpc.useUtils();
 

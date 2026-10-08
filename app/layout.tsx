@@ -33,14 +33,12 @@ export default function RootLayout({ children }: { children: any }) {
         />
       </head>
       <body>
-        <MantineProvider theme={theme} forceColorScheme="dark">
+        <MantineProvider theme={theme} defaultColorScheme="dark">
           <Notifications />
           <NavigationProgress />
           <ModalsProvider>
-            <ClientLayout>
-              { children }
-            </ClientLayout>
-          </ModalsProvider>          
+            <ClientLayout>{children}</ClientLayout>
+          </ModalsProvider>
         </MantineProvider>
       </body>
     </html>
