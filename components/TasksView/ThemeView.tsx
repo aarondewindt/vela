@@ -1,9 +1,15 @@
 'use client';
 
-import { ColorInput } from '@mantine/core';
 import { useUpdateThemeMutation } from '@/lib/planner/query';
 import type { TaskRow, ThemeRow } from '@/lib/planner/tasks';
-import { Property, PropertyPanel, ReadOnlyValue, ROW_HEIGHT, TitleField } from '../DataView/PropertyPanel';
+import { PaletteColorInput } from '../PaletteColorInput/PaletteColorInput';
+import {
+  Property,
+  PropertyPanel,
+  ReadOnlyValue,
+  ROW_HEIGHT,
+  TitleField,
+} from '../DataView/PropertyPanel';
 import { SwitchProperty, TextProperty } from '../DataView/properties';
 import { formatDateTime } from './format';
 import { ThemeContentEditor } from './ThemeContentEditor';
@@ -31,16 +37,18 @@ export function ThemeView({ theme, tasks, onClose }: Props) {
       <TitleField label="Name" value={theme.name} onSave={(name) => save({ name })} />
 
       <Property label="Color">
-        <ColorInput
-          size="sm"
+        <PaletteColorInput
+          value={theme.color}
+          onChange={(color) => save({ color })}
           aria-label="Color"
           placeholder="Empty"
-          // The swatch is a left section, so keep the input's own left padding.
-          styles={{
-            input: { border: 'none', background: 'transparent', height: ROW_HEIGHT, minHeight: ROW_HEIGHT },
+          size="sm"
+          inputStyles={{
+            border: 'none',
+            background: 'transparent',
+            height: ROW_HEIGHT,
+            minHeight: ROW_HEIGHT,
           }}
-          defaultValue={theme.color ?? ''}
-          onChangeEnd={(color) => save({ color: color || null })}
         />
       </Property>
       <SwitchProperty label="Active" checked={theme.isActive} onSave={(isActive) => save({ isActive })} />

@@ -23,9 +23,11 @@ import {
 import {
   taskStatusColors,
   taskStatusLabels,
+  taskSizeLabel,
   type TaskRow,
   type ThemeRow,
 } from '@/lib/planner/tasks';
+import { getPaletteColorCssValue } from '@/lib/color-palette';
 import type { ViewGroup } from '@/lib/views/engine';
 import type { PropertyDef } from '@/lib/views/types';
 import { formatDate, formatDateTime } from './format';
@@ -54,6 +56,7 @@ const COLUMNS_KEY = 'tasks-table-columns';
 const columnWidths: Record<string, number> = {
   status: 120,
   priority: 90,
+  size: 80,
   dueDate: 130,
   scheduledDate: 130,
   estimatedMinutes: 100,
@@ -80,6 +83,7 @@ function buildColumns(
       </Badge>
     ),
     priority: (t) => `P${t.priority}`,
+    size: (t) => taskSizeLabel(t.size),
     dueDate: (t) => formatDate(t.dueDate),
     scheduledDate: (t) => formatDate(t.scheduledDate),
     estimatedMinutes: (t) => (t.estimatedMinutes ? `${t.estimatedMinutes} min` : '—'),
@@ -190,7 +194,9 @@ export function TaskGroup({
           >
             {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
           </ActionIcon>
-          {group.color && <ColorSwatch color={group.color} size={12} />}
+          {group.color && (
+            <ColorSwatch color={getPaletteColorCssValue(group.color, 'accent')} size={12} />
+          )}
           {theme ? (
             <UnstyledButton onClick={() => onSelectTheme(theme.id)}>
               <Text fw={600} td="underline" style={{ textDecorationStyle: 'dotted' }}>

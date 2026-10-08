@@ -330,6 +330,10 @@ This avoids requiring interactive OAuth flows for simple scripts, local services
 
 Authentication and authorization should be resolved at the API/interface boundary before invoking protected application functionality.
 
+## Shared UI color palette
+
+Use the shared palette tokens and semantic color roles for color-coded UI rather than storing component-specific hex values. See [Color Palette](COLOR_PALETTE.md) for the picker contract, persistence format, light/dark roles, and legacy color handling.
+
 ## General rules for agents working on Vela
 
 When adding or modifying functionality:

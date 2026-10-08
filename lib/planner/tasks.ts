@@ -21,12 +21,34 @@ export const taskStatusColors: Record<TaskStatusValue, string> = {
   ARCHIVED: 'dark',
 };
 
+export const taskSizeValues = [0, 1, 2, 3, 4, 5] as const;
+export type TaskSize = (typeof taskSizeValues)[number];
+
+export const taskSizeLabels: Record<TaskSize, string> = {
+  0: 'Unknown',
+  1: 'XL',
+  2: 'L',
+  3: 'M',
+  4: 'S',
+  5: 'XS',
+};
+
+export const taskSizeOptions = taskSizeValues.map((size) => ({
+  value: String(size),
+  label: taskSizeLabels[size],
+}));
+
+export function taskSizeLabel(size: number): string {
+  return taskSizeLabels[size as TaskSize] ?? taskSizeLabels[0];
+}
+
 export type TaskRow = {
   id: string;
   title: string;
   brief: string | null;
   status: TaskStatusValue;
   priority: number;
+  size: number;
   dueDate: Date | null;
   // Derived from the next open occurrence; not stored on the task.
   scheduledDate: Date | null;
@@ -72,6 +94,13 @@ export function getTaskProperties(themes: ThemeRow[], tags: string[]): PropertyD
       get: (t) => String(t.priority),
       options: priorityOptions,
     },
+    {
+      key: 'size',
+      label: 'Size',
+      type: 'select',
+      get: (t) => String(t.size),
+      options: taskSizeOptions,
+    },
     { key: 'dueDate', label: 'Due date', type: 'date', get: (t) => t.dueDate },
     { key: 'scheduledDate', label: 'Scheduled', type: 'date', get: (t) => t.scheduledDate },
     { key: 'estimatedMinutes', label: 'Estimate', type: 'number', get: (t) => t.estimatedMinutes },
@@ -100,6 +129,7 @@ const defaultVisible = [
   'brief',
   'status',
   'priority',
+  'size',
   'dueDate',
   'scheduledDate',
   'estimatedMinutes',

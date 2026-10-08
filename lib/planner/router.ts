@@ -26,6 +26,7 @@ export const plannerRouter = router({
           brief: z.string().nullable().optional(),
           status: z.enum(taskStatuses).optional(),
           priority: z.number().int().min(1).max(5).optional(),
+          size: z.number().int().min(0).max(5).optional(),
           dueDate: z.iso.date().nullable().optional(),
           estimatedMinutes: z.number().int().min(0).nullable().optional(),
           themeId: id.nullable().optional(),

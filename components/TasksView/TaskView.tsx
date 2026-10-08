@@ -5,6 +5,7 @@ import {
   priorityOptions,
   taskStatuses,
   taskStatusLabels,
+  taskSizeOptions,
   type TaskRow,
   type ThemeRow,
 } from '@/lib/planner/tasks';
@@ -68,6 +69,12 @@ export function TaskView({ task, themes, tagSuggestions, onClose }: Props) {
         value={String(task.priority)}
         data={priorityOptions}
         onSave={(priority) => save({ priority: Number(priority) })}
+      />
+      <SelectProperty
+        label="Size"
+        value={String(task.size)}
+        data={taskSizeOptions}
+        onSave={(size) => save({ size: Number(size) })}
       />
       <SelectProperty
         label="Theme"

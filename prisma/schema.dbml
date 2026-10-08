@@ -197,7 +197,7 @@ Table tasks {
 	brief text
 	content jsonb [note: 'BlockNote content as JSON array of blocks']
 	priority integer [not null, default: 3, note: '1 (highest) to 5 (lowest)']
-	size integer [not null, default: 3, note: '1 (largest) to 5 (smallest)']
+	size integer [not null, default: 3, note: '0 Unknown; 1 XL; 2 L; 3 M; 4 S; 5 XS']
 	status TaskStatus [not null, default: 'BACKLOG']
 	firstStep text
 	dueDate date

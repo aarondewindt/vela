@@ -18,6 +18,7 @@ type TaskPatch = {
   brief?: string | null;
   status?: TaskRow['status'];
   priority?: number;
+  size?: number;
   dueDate?: string | null;
   estimatedMinutes?: number | null;
   themeId?: string | null;
@@ -143,6 +144,7 @@ export const plannerService = {
       brief: task.brief,
       status: task.status,
       priority: task.priority,
+      size: task.size,
       dueDate: task.dueDate,
       scheduledDate: occurrences[0]?.occurrenceDate ?? null,
       estimatedMinutes: task.estimatedMinutes,
