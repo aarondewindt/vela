@@ -124,15 +124,13 @@ export const TasksView = () => {
   );
 
   const groupDef = config.groupBy ? defs.find((d) => d.key === config.groupBy) : undefined;
-  const isFiltered = config.filters.length > 0 || search.trim() !== '';
   const groups = useMemo(() => {
     if (!groupDef) {
       return null;
     }
     const all = groupRows(visibleTasks, groupDef, `No ${groupDef.label.toLowerCase()}`);
-    const showEmpty = groupDef.key === 'theme' && !isFiltered;
-    return all.filter((g) => g.rows.length > 0 || (showEmpty && g.key !== null));
-  }, [groupDef, visibleTasks, isFiltered]);
+    return all.filter((g) => g.rows.length > 0 || (groupDef.key === 'theme' && g.key !== null));
+  }, [groupDef, visibleTasks]);
 
   const selectedTask = selection?.type === 'task' ? tasks.find((t) => t.id === selection.id) : null;
   const selectedTheme =

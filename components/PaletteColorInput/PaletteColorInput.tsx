@@ -69,6 +69,7 @@ export function PaletteColorInput({
         withPicker={false}
         withPreview={false}
         disallowInput
+        fixOnBlur={false}
         withEyeDropper={false}
         style={{ flex: 1, minWidth: 0 }}
         styles={{ input: inputStyles }}
