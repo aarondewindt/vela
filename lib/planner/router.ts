@@ -141,6 +141,9 @@ export const plannerRouter = router({
   unskipBlock: protectedProcedure
     .input(z.object({ date: z.iso.date(), blockId: id }))
     .mutation(({ ctx, input }) => plannerService.unskipBlock(ctx.userId, input)),
+  acceptDraft: protectedProcedure
+    .input(z.object({ date: z.iso.date() }))
+    .mutation(({ ctx, input }) => plannerService.acceptDraft(ctx.userId, input.date)),
   generateDraft: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .mutation(({ ctx, input }) => plannerService.generateDraft(ctx.userId, input.date)),

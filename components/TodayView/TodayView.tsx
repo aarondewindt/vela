@@ -21,6 +21,7 @@ import { DatePickerInput } from '@mantine/dates';
 import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
 import {
   IconCalendar,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconList,
@@ -31,6 +32,7 @@ import {
 } from '@tabler/icons-react';
 import {
   useApplyStandardAvailabilityMutation,
+  useAcceptDraftMutation,
   useCreateManualBlockMutation,
   useDayDataQuery,
   useGenerateDraftMutation,
@@ -193,6 +195,7 @@ export function TodayView() {
   const tasksQuery = useTasksQuery();
   const themesQuery = useThemesQuery();
   const generateDraft = useGenerateDraftMutation();
+  const acceptDraft = useAcceptDraftMutation();
   const applyStandardAvailability = useApplyStandardAvailabilityMutation();
   const createBlock = useCreateManualBlockMutation();
   const updateBlockTime = useUpdateBlockTimeMutation();
@@ -255,6 +258,7 @@ export function TodayView() {
     dayQuery.error ??
     tasksQuery.error ??
     generateDraft.error ??
+    acceptDraft.error ??
     applyStandardAvailability.error ??
     createBlock.error ??
     updateBlockTime.error ??
@@ -318,7 +322,23 @@ export function TodayView() {
           <Text c="teal.4" size="xs" fw={700} tt="uppercase">
             Planning / Today
           </Text>
-          <Title order={2}>{formatSelectedDate(selectedDate)}</Title>
+          <Group gap="xs" align="center">
+            <Title order={2}>{formatSelectedDate(selectedDate)}</Title>
+            <Badge
+              color={
+                plan?.status === 'DRAFT'
+                  ? 'yellow'
+                  : plan?.status === 'ACTIVE'
+                    ? 'teal'
+                    : plan?.status === 'FINALIZED'
+                      ? 'green'
+                      : 'gray'
+              }
+              variant="light"
+            >
+              {plan ? `${plan.status.toLowerCase()} · v${plan.version}` : 'No plan'}
+            </Badge>
+          </Group>
           <Text c="dimmed" size="sm">
             {blocks.filter((block) => block.status === 'DONE').length} of {blocks.length} planned
             blocks complete
@@ -437,6 +457,17 @@ export function TodayView() {
           >
             Generate draft
           </Button>
+          {plan?.status === 'DRAFT' && (
+            <Button
+              size="xs"
+              color="teal"
+              leftSection={<IconCheck size={14} />}
+              loading={acceptDraft.isPending}
+              onClick={() => acceptDraft.mutate({ date: selectedDate })}
+            >
+              Accept draft
+            </Button>
+          )}
         </Group>
       </Group>
 

@@ -672,6 +672,26 @@ export const plannerService = {
     });
   },
 
+  async acceptDraft(userId: string, date: string) {
+    const planDate = new Date(`${date}T00:00:00.000Z`);
+    return prisma.$transaction(async (transaction) => {
+      const plan = await transaction.dailyPlan.findFirst({
+        where: { userId, planDate, isCurrent: true },
+        select: { id: true, status: true },
+      });
+      if (!plan) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Current plan not found' });
+      }
+      if (plan.status !== 'DRAFT') {
+        throw new TRPCError({ code: 'CONFLICT', message: 'Current plan is not a draft' });
+      }
+      return transaction.dailyPlan.update({
+        where: { id: plan.id },
+        data: { status: 'ACTIVE' },
+      });
+    });
+  },
+
   async generateDraft(userId: string, date: string) {
     const planDate = new Date(`${date}T00:00:00.000Z`);
     const user = await prisma.user.findUniqueOrThrow({
