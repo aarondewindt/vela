@@ -31,6 +31,7 @@ import { getPaletteColorCssValue } from '@/lib/color-palette';
 import type { ViewGroup } from '@/lib/views/engine';
 import type { PropertyDef } from '@/lib/views/types';
 import { formatDate, formatDateTime } from './format';
+import styles from './TaskGroup.module.css';
 
 type Props = {
   group: ViewGroup<TaskRow>;
@@ -108,6 +109,7 @@ function buildColumns(
     accessor: 'title',
     title: 'Task',
     width: 260,
+    draggable: true,
     resizable: true,
     render: (t) => (
       <Text fw={500} size="sm">
@@ -129,6 +131,7 @@ function buildColumns(
         accessor: key,
         title: def.label,
         render: render[key],
+        draggable: true,
         resizable: true,
         ...flexible,
       } as DataTableColumn<TaskRow>,
@@ -274,7 +277,7 @@ export function TaskGroup({
         )}
         {group.rows.length ? (
           <DataTable
-            withTableBorder
+            className={styles.table}
             highlightOnHover
             idAccessor="id"
             minHeight={0}

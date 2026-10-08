@@ -1,0 +1,7 @@
+.table {
+  --mantine-datatable-row-border-color: color-mix(
+    in srgb,
+    var(--mantine-color-default-border) 72%,
+    transparent
+  );
+}
