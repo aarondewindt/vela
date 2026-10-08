@@ -27,13 +27,17 @@ import {
   IconPlus,
   IconSparkles,
   IconTargetArrow,
+  IconTrash,
 } from '@tabler/icons-react';
 import {
   useApplyStandardAvailabilityMutation,
   useCreateManualBlockMutation,
   useDayDataQuery,
   useGenerateDraftMutation,
+  useRemoveBlockFromDayMutation,
   useTasksQuery,
+  useThemesQuery,
+  useUnskipBlockMutation,
   useUpdateBlockOutcomeMutation,
   useUpdateBlockTimeMutation,
 } from '@/lib/planner/query';
@@ -187,11 +191,14 @@ export function TodayView() {
   const setSelectedDate = usePlannerStore((state) => state.setSelectedDate);
   const dayQuery = useDayDataQuery(selectedDate);
   const tasksQuery = useTasksQuery();
+  const themesQuery = useThemesQuery();
   const generateDraft = useGenerateDraftMutation();
   const applyStandardAvailability = useApplyStandardAvailabilityMutation();
   const createBlock = useCreateManualBlockMutation();
   const updateBlockTime = useUpdateBlockTimeMutation();
   const updateOutcome = useUpdateBlockOutcomeMutation();
+  const removeBlock = useRemoveBlockFromDayMutation();
+  const unskipBlock = useUnskipBlockMutation();
 
   const [mode, setMode] = useState<PlannerMode>('day');
   const [backlogOpen, setBacklogOpen] = useState(false);
@@ -218,19 +225,16 @@ export function TodayView() {
   const busyEvents = (dayData?.events ?? []).filter((event) => event.isBusy);
 
   const scheduleEvents = useMemo<ScheduleEventData[]>(() => {
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
+    const themesById = new Map((themesQuery.data ?? []).map((theme) => [theme.id, theme]));
     const blockEvents = (dayData?.plan?.dailyBlocks ?? []).map((block) => ({
       id: block.id,
       title: block.title,
       start: localDateTime(block.startsAt, timezone),
       end: localDateTime(block.endsAt, timezone),
       color:
-        block.status === 'DONE'
-          ? 'green'
-          : block.status === 'SKIPPED' || block.status === 'CANCELED'
-            ? 'gray'
-            : block.status === 'IN_PROGRESS'
-              ? 'orange'
-              : 'teal',
+        themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')?.color ??
+        'gray',
       variant: 'light' as const,
       payload: { kind: 'block', blockId: block.id, status: block.status },
     }));
@@ -245,7 +249,7 @@ export function TodayView() {
       payload: { kind: 'calendar', isBusy: event.isBusy },
     }));
     return [...blockEvents, ...calendarEvents];
-  }, [dayData?.events, dayData?.plan?.dailyBlocks, timezone]);
+  }, [dayData?.events, dayData?.plan?.dailyBlocks, tasks, themesQuery.data, timezone]);
 
   const error =
     dayQuery.error ??
@@ -254,7 +258,9 @@ export function TodayView() {
     applyStandardAvailability.error ??
     createBlock.error ??
     updateBlockTime.error ??
-    updateOutcome.error;
+    updateOutcome.error ??
+    removeBlock.error ??
+    unskipBlock.error;
 
   const openAddTask = (time?: string) => {
     setSelectedTaskId(null);
@@ -673,33 +679,64 @@ export function TodayView() {
               </Badge>
             </Group>
             {selectedBlock.brief && <Text size="sm">{selectedBlock.brief}</Text>}
-            <Group justify="flex-end">
+            <Group justify="space-between">
               <Button
-                variant="default"
-                color="gray"
-                disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-                loading={updateOutcome.isPending}
+                color="red"
+                variant="subtle"
+                leftSection={<IconTrash size={14} />}
+                disabled={selectedBlock.status !== 'PLANNED' && selectedBlock.status !== 'SKIPPED'}
+                loading={removeBlock.isPending}
                 onClick={() =>
-                  updateOutcome.mutate(
-                    { date: selectedDate, blockId: selectedBlock.id, outcome: 'SKIPPED' },
+                  removeBlock.mutate(
+                    { date: selectedDate, blockId: selectedBlock.id },
                     { onSuccess: () => setSelectedBlockId(null) }
                   )
                 }
               >
-                Skip
+                Remove from day
               </Button>
-              <Button
-                disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-                loading={updateOutcome.isPending}
-                onClick={() =>
-                  updateOutcome.mutate(
-                    { date: selectedDate, blockId: selectedBlock.id, outcome: 'DONE' },
-                    { onSuccess: () => setSelectedBlockId(null) }
-                  )
-                }
-              >
-                Mark done
-              </Button>
+              <Group>
+                {selectedBlock.status === 'SKIPPED' ? (
+                  <Button
+                    loading={unskipBlock.isPending}
+                    onClick={() =>
+                      unskipBlock.mutate(
+                        { date: selectedDate, blockId: selectedBlock.id },
+                        { onSuccess: () => setSelectedBlockId(null) }
+                      )
+                    }
+                  >
+                    Unskip
+                  </Button>
+                ) : (
+                  <Button
+                    variant="default"
+                    color="gray"
+                    disabled={selectedBlock.status === 'DONE'}
+                    loading={updateOutcome.isPending}
+                    onClick={() =>
+                      updateOutcome.mutate(
+                        { date: selectedDate, blockId: selectedBlock.id, outcome: 'SKIPPED' },
+                        { onSuccess: () => setSelectedBlockId(null) }
+                      )
+                    }
+                  >
+                    Skip
+                  </Button>
+                )}
+                <Button
+                  disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
+                  loading={updateOutcome.isPending}
+                  onClick={() =>
+                    updateOutcome.mutate(
+                      { date: selectedDate, blockId: selectedBlock.id, outcome: 'DONE' },
+                      { onSuccess: () => setSelectedBlockId(null) }
+                    )
+                  }
+                >
+                  Mark done
+                </Button>
+              </Group>
             </Group>
           </Stack>
         )}

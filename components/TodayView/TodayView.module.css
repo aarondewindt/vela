@@ -52,6 +52,14 @@
   background-color: var(--mantine-color-teal-light-hover);
 }
 
+:global([data-mantine-color-scheme='dark']) .dayViewSlot[data-available] {
+  background-color: color-mix(in srgb, var(--mantine-color-teal-9) 25%, transparent);
+}
+
+:global([data-mantine-color-scheme='dark']) .dayViewSlot[data-available]:hover {
+  background-color: color-mix(in srgb, var(--mantine-color-teal-8) 35%, transparent);
+}
+
 .footer {
   padding-inline: var(--mantine-spacing-xs);
 }

@@ -135,6 +135,12 @@ export const plannerRouter = router({
   updateBlockOutcome: protectedProcedure
     .input(z.object({ date: z.iso.date(), blockId: id, outcome: z.enum(['DONE', 'SKIPPED']) }))
     .mutation(({ ctx, input }) => plannerService.updateBlockOutcome(ctx.userId, input)),
+  removeBlockFromDay: protectedProcedure
+    .input(z.object({ date: z.iso.date(), blockId: id }))
+    .mutation(({ ctx, input }) => plannerService.removeBlockFromDay(ctx.userId, input)),
+  unskipBlock: protectedProcedure
+    .input(z.object({ date: z.iso.date(), blockId: id }))
+    .mutation(({ ctx, input }) => plannerService.unskipBlock(ctx.userId, input)),
   generateDraft: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .mutation(({ ctx, input }) => plannerService.generateDraft(ctx.userId, input.date)),

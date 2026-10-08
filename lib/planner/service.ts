@@ -575,6 +575,37 @@ export const plannerService = {
     });
   },
 
+  async removeBlockFromDay(userId: string, input: { date: string; blockId: string }) {
+    const planDate = new Date(`${input.date}T00:00:00.000Z`);
+    return prisma.$transaction(async (transaction) => {
+      const block = await transaction.dailyBlock.findFirst({
+        where: {
+          id: input.blockId,
+          userId,
+          plan: { planDate, isCurrent: true },
+          status: { in: ['PLANNED', 'SKIPPED'] },
+        },
+        select: { id: true, taskOccurrenceId: true },
+      });
+      if (!block) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Open block not found' });
+      }
+
+      if (block.taskOccurrenceId) {
+        await transaction.taskOccurrence.update({
+          where: { id: block.taskOccurrenceId },
+          data: {
+            status: 'PENDING',
+            completedAt: null,
+            skippedAt: null,
+            canceledAt: null,
+          },
+        });
+      }
+      return transaction.dailyBlock.delete({ where: { id: block.id } });
+    });
+  },
+
   async updateBlockOutcome(
     userId: string,
     input: { date: string; blockId: string; outcome: 'DONE' | 'SKIPPED' }
@@ -605,6 +636,36 @@ export const plannerService = {
             input.outcome === 'DONE'
               ? { status: 'DONE', completedAt }
               : { status: 'PENDING', completedAt: null, skippedAt: null },
+        });
+      }
+      return updated;
+    });
+  },
+
+  async unskipBlock(userId: string, input: { date: string; blockId: string }) {
+    const planDate = new Date(`${input.date}T00:00:00.000Z`);
+    return prisma.$transaction(async (transaction) => {
+      const block = await transaction.dailyBlock.findFirst({
+        where: {
+          id: input.blockId,
+          userId,
+          plan: { planDate, isCurrent: true },
+          status: 'SKIPPED',
+        },
+        select: { id: true, taskOccurrenceId: true },
+      });
+      if (!block) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Skipped block not found' });
+      }
+
+      const updated = await transaction.dailyBlock.update({
+        where: { id: block.id },
+        data: { status: 'PLANNED', completedAt: null },
+      });
+      if (block.taskOccurrenceId) {
+        await transaction.taskOccurrence.update({
+          where: { id: block.taskOccurrenceId },
+          data: { status: 'SCHEDULED', completedAt: null, skippedAt: null, canceledAt: null },
         });
       }
       return updated;

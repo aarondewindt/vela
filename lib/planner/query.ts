@@ -157,6 +157,28 @@ export function useUpdateBlockOutcomeMutation() {
   });
 }
 
+export function useRemoveBlockFromDayMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.removeBlockFromDay.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
+export function useUnskipBlockMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.unskipBlock.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
 export function useGenerateDraftMutation() {
   const utils = trpc.useUtils();
 
