@@ -180,6 +180,16 @@ export const plannerRouter = router({
   removeCategorySlot: protectedProcedure
     .input(z.object({ date: z.iso.date(), slotId: id }))
     .mutation(({ ctx, input }) => plannerService.removeCategorySlot(ctx.userId, input)),
+  updateCategorySlotTime: protectedProcedure
+    .input(
+      z.object({
+        date: z.iso.date(),
+        slotId: id,
+        startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+        endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateCategorySlotTime(ctx.userId, input)),
   updateBlockTime: protectedProcedure
     .input(
       z.object({

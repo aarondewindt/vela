@@ -714,20 +714,12 @@ export const plannerService = {
         select: { id: true, status: true },
       });
       // The task is open, so a closed occurrence on this day means it was reopened.
-      const [overlap, categorySlotOverlap, calendarConflict, existingBlock] = await Promise.all([
+      const [overlap, calendarConflict, existingBlock] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
             userId,
             planId: plan.id,
             status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
-            startsAt: { lt: endsAt },
-            endsAt: { gt: startsAt },
-          },
-          select: { id: true },
-        }),
-        transaction.dailyPlanCategorySlot.findFirst({
-          where: {
-            planId: plan.id,
             startsAt: { lt: endsAt },
             endsAt: { gt: startsAt },
           },
@@ -751,7 +743,7 @@ export const plannerService = {
           select: { id: true },
         }),
       ]);
-      if (overlap || categorySlotOverlap || calendarConflict || existingBlock) {
+      if (overlap || calendarConflict || existingBlock) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time is no longer available',
@@ -828,17 +820,7 @@ export const plannerService = {
           select: { id: true },
         });
       }
-      const [overlap, categorySlotOverlap, calendarConflict] = await Promise.all([
-        transaction.dailyBlock.findFirst({
-          where: {
-            userId,
-            planId: plan.id,
-            status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
-            startsAt: { lt: endsAt },
-            endsAt: { gt: startsAt },
-          },
-          select: { id: true },
-        }),
+      const [categorySlotOverlap, calendarConflict] = await Promise.all([
         transaction.dailyPlanCategorySlot.findFirst({
           where: {
             planId: plan.id,
@@ -852,7 +834,7 @@ export const plannerService = {
           select: { id: true },
         }),
       ]);
-      if (overlap || categorySlotOverlap || calendarConflict) {
+      if (categorySlotOverlap || calendarConflict) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time is no longer available',
@@ -875,7 +857,6 @@ export const plannerService = {
     const slot = await prisma.dailyPlanCategorySlot.findFirst({
       where: {
         id: input.slotId,
-        source: 'MANUAL',
         plan: { userId, planDate, isCurrent: true },
       },
       select: { id: true },
@@ -884,6 +865,63 @@ export const plannerService = {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Category slot not found' });
     }
     return prisma.dailyPlanCategorySlot.delete({ where: { id: slot.id } });
+  },
+
+  async updateCategorySlotTime(
+    userId: string,
+    input: { date: string; slotId: string; startsAt: string; endsAt: string }
+  ) {
+    const planDate = new Date(`${input.date}T00:00:00.000Z`);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const startsAt = localDateTimeToInstant(input.startsAt, user.timezone);
+    const endsAt = localDateTimeToInstant(input.endsAt, user.timezone);
+    assertSameDay(
+      startsAt,
+      endsAt,
+      localMinuteToInstant(input.date, 0, user.timezone),
+      localMinuteToInstant(nextDate(input.date), 0, user.timezone)
+    );
+
+    return prisma.$transaction(async (transaction) => {
+      const slot = await transaction.dailyPlanCategorySlot.findFirst({
+        where: {
+          id: input.slotId,
+          plan: { userId, planDate, isCurrent: true },
+        },
+        select: { id: true, planId: true },
+      });
+      if (!slot) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Editable category slot not found' });
+      }
+      const [overlap, calendarConflict] = await Promise.all([
+        transaction.dailyPlanCategorySlot.findFirst({
+          where: {
+            planId: slot.planId,
+            id: { not: slot.id },
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt },
+          },
+          select: { id: true },
+        }),
+        transaction.calendarEvent.findFirst({
+          where: { userId, isBusy: true, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+          select: { id: true },
+        }),
+      ]);
+      if (overlap || calendarConflict) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'The selected time overlaps another category slot or busy event',
+        });
+      }
+      return transaction.dailyPlanCategorySlot.update({
+        where: { id: slot.id },
+        data: { startsAt, endsAt },
+      });
+    });
   },
 
   async updateBlockTime(
@@ -917,7 +955,7 @@ export const plannerService = {
       if (!block) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Editable block not found' });
       }
-      const [overlap, categorySlotOverlap, calendarConflict] = await Promise.all([
+      const [overlap, calendarConflict] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
             userId,
@@ -929,20 +967,12 @@ export const plannerService = {
           },
           select: { id: true },
         }),
-        transaction.dailyPlanCategorySlot.findFirst({
-          where: {
-            plan: { userId, planDate, isCurrent: true },
-            startsAt: { lt: endsAt },
-            endsAt: { gt: startsAt },
-          },
-          select: { id: true },
-        }),
         transaction.calendarEvent.findFirst({
           where: { userId, isBusy: true, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
           select: { id: true },
         }),
       ]);
-      if (overlap || categorySlotOverlap || calendarConflict) {
+      if (overlap || calendarConflict) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time overlaps another event',

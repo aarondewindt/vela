@@ -180,6 +180,14 @@ export function useRemoveCategorySlotMutation() {
   });
 }
 
+export function useUpdateCategorySlotTimeMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.updateCategorySlotTime.useMutation({
+    onSuccess: (_result, { date }) => utils.planner.getDayData.invalidate({ date }),
+  });
+}
+
 export function useUpdateBlockTimeMutation() {
   const utils = trpc.useUtils();
 
