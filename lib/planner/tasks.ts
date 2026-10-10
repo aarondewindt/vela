@@ -63,6 +63,7 @@ export type TaskRow = {
   // Derived from the next open occurrence; not stored on the task.
   scheduledDate: Date | null;
   estimatedMinutes: number | null;
+  leadTimeDays: number | null;
   themeId: string | null;
   category: PlanningCategoryValue | null;
   tags: string[];

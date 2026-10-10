@@ -104,7 +104,7 @@ export function classifyCandidate({
   return 'FILLER';
 }
 
-function compareCandidates(a: PlanningCandidate, b: PlanningCandidate) {
+export function compareCandidates(a: PlanningCandidate, b: PlanningCandidate) {
   return (
     tierOrder.indexOf(a.tier) - tierOrder.indexOf(b.tier) ||
     (a.daysUntilDue ?? Number.POSITIVE_INFINITY) - (b.daysUntilDue ?? Number.POSITIVE_INFINITY) ||
@@ -112,6 +112,42 @@ function compareCandidates(a: PlanningCandidate, b: PlanningCandidate) {
     b.size - a.size ||
     a.id.localeCompare(b.id)
   );
+}
+
+type PrioritizableTask = {
+  id: string;
+  title: string;
+  priority: number;
+  size: number;
+  dueDate: Date | null;
+  leadTimeDays: number | null;
+};
+
+// Orders tasks the way the draft generator would pick them; `today` is a UTC-midnight date.
+export function sortTasksByPlanningPriority<T extends PrioritizableTask>(tasks: T[], today: Date): T[] {
+  const ranked = tasks.map((task) => {
+    const daysUntilDue = task.dueDate
+      ? Math.floor((task.dueDate.getTime() - today.getTime()) / 86_400_000)
+      : null;
+    const candidate: PlanningCandidate = {
+      id: task.id,
+      title: task.title,
+      priority: task.priority,
+      size: task.size,
+      tier: classifyCandidate({
+        priority: task.priority,
+        size: task.size,
+        daysUntilDue,
+        leadTimeDays: task.leadTimeDays ?? defaultLeadTimeDays(task.size, task.priority),
+      }),
+      daysUntilDue,
+      dueAt: task.dueDate,
+      durationMinutes: 0,
+      category: 'WORK',
+    };
+    return { task, candidate };
+  });
+  return ranked.toSorted((a, b) => compareCandidates(a.candidate, b.candidate)).map(({ task }) => task);
 }
 
 function normalizeIntervals(intervals: TimeInterval[]): TimeInterval[] {

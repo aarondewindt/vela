@@ -7,7 +7,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Collapse,
   ColorSwatch,
   Group,
   HoverCard,
@@ -25,6 +24,7 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
+import { notifications } from '@mantine/notifications';
 import {
   IconCalendar,
   IconCheck,
@@ -59,15 +59,12 @@ import {
   useUpdateCategorySlotTimeMutation,
 } from '@/lib/planner/query';
 import { usePlannerStore } from '@/lib/planner/store';
-import {
-  planningCategories,
-  planningCategoryLabels,
-  taskStatusLabels,
-} from '@/lib/planner/tasks';
+import { planningCategories, planningCategoryLabels, type TaskRow } from '@/lib/planner/tasks';
 import { DEFAULT_GENERATOR_OPTIONS, type GeneratorOptions } from '@/lib/planner/scheduling';
 import { useAppShellStore } from '@/store/app_shell_store';
 import { Property, PropertyPanel, ReadOnlyValue } from '../DataView/PropertyPanel';
 import { TaskView } from '../TasksView/TaskView';
+import { TASK_DRAG_TYPE, TaskPickerPane } from './TaskPickerPane';
 import classes from './TodayView.module.css';
 
 const swatchColor = (color: string) =>
@@ -168,75 +165,6 @@ function currentDateInTimezone(timezone: string) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function localMinuteToInstant(date: string, minute: number, timezone: string) {
-  const [year, month, day] = date.split('-').map(Number);
-  const target = new Date(Date.UTC(year, month - 1, day, 0, minute));
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
-  let instant = target.getTime();
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const parts = Object.fromEntries(
-      formatter.formatToParts(new Date(instant)).map(({ type, value }) => [type, value])
-    );
-    const represented = Date.UTC(
-      Number(parts.year),
-      Number(parts.month) - 1,
-      Number(parts.day),
-      Number(parts.hour),
-      Number(parts.minute)
-    );
-    const correction = target.getTime() - represented;
-    if (correction === 0) return new Date(instant);
-    instant += correction;
-  }
-  return new Date(target);
-}
-
-function getNextFreeTime(
-  date: string,
-  taskMinutes: number,
-  timezone: string,
-  availability: { start: Date; end: Date }[],
-  events: { startsAt: Date; endsAt: Date; isBusy: boolean }[],
-  blocks: { startsAt: Date; endsAt: Date; status: string }[]
-) {
-  const fallbackStart = localMinuteToInstant(date, 8 * 60, timezone);
-  const windows = availability.length
-    ? availability
-    : [{ start: fallbackStart, end: localMinuteToInstant(date, 23 * 60, timezone) }];
-  const occupied = [
-    ...events.filter((event) => event.isBusy).map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
-    ...blocks
-      .filter((block) => !['CANCELED', 'SKIPPED'].includes(block.status))
-      .map(({ startsAt, endsAt }) => ({ startsAt, endsAt })),
-  ].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-
-  const now = new Date(Math.ceil(Date.now() / 900_000) * 900_000);
-  for (const window of windows) {
-    let cursor = new Date(window.start);
-    if (date === currentDateInTimezone(timezone) && now > cursor) {
-      cursor = now;
-    }
-    for (const busy of occupied) {
-      const endWithGap = new Date(busy.endsAt.getTime() + 15 * 60_000);
-      if (endWithGap <= cursor || busy.startsAt >= window.end) continue;
-      if (busy.startsAt.getTime() - cursor.getTime() >= taskMinutes * 60_000) break;
-      if (busy.startsAt <= cursor) cursor = endWithGap;
-    }
-    if (cursor.getTime() + taskMinutes * 60_000 <= window.end.getTime()) {
-      return localDateTime(cursor, timezone);
-    }
-  }
-  return null;
-}
-
 export function TodayView() {
   const selectedDate = usePlannerStore((state) => state.selectedDate);
   const setSelectedDate = usePlannerStore((state) => state.setSelectedDate);
@@ -265,7 +193,8 @@ export function TodayView() {
   const [scheduleView, setScheduleView] = useState<ScheduleView>('schedule');
 
   const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
-  const [backlogOpen, setBacklogOpen] = useState(false);
+  const [draggedTask, setDraggedTask] = useState<TaskRow | null>(null);
+  const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addCategoryBlockOpen, setAddCategoryBlockOpen] = useState(false);
@@ -275,6 +204,7 @@ export function TodayView() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [startAt, setStartAt] = useState('09:00');
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [inspectedTaskId, setInspectedTaskId] = useState<string | null>(null);
   const [selectedCategorySlotId, setSelectedCategorySlotId] = useState<string | null>(null);
   const [selectedAvailabilityWindow, setSelectedAvailabilityWindow] = useState<{
     startMinute: number;
@@ -340,7 +270,11 @@ export function TodayView() {
           { label: 'No theme', color: 'gray' },
         ];
 
-  useEffect(() => setAsideOpened(Boolean(selectedBlock)), [selectedBlock, setAsideOpened]);
+  const hasInspectedTask = tasks.some((task) => task.id === inspectedTaskId);
+  useEffect(
+    () => setAsideOpened(Boolean(selectedBlock) || hasInspectedTask),
+    [selectedBlock, hasInspectedTask, setAsideOpened]
+  );
 
   const scheduleEvents = useMemo<ScheduleEventData[]>(() => {
     const tasksById = new Map(tasks.map((task) => [task.id, task]));
@@ -462,20 +396,19 @@ export function TodayView() {
     );
   };
 
-  const addToNextSlot = (task: (typeof tasks)[number]) => {
-    const startsAt = getNextFreeTime(
-      selectedDate,
-      task.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 25,
-      timezone,
-      dayData?.availability ?? [],
-      dayData?.events ?? [],
-      blocks
+  const canPlaceTaskAt = (task: TaskRow | null, start: string) => {
+    const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
+    if (startMinute < 0) return false;
+    const endMinute = startMinute + (task?.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 25);
+    if (endMinute > 1440) return false;
+    const overlaps = (startsAt: Date, endsAt: Date) =>
+      getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
+      getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
+    return !(
+      blocks.some(
+        (block) => ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) && overlaps(block.startsAt, block.endsAt)
+      ) || busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
     );
-    if (!startsAt) {
-      setBacklogOpen(true);
-      return;
-    }
-    addTaskAt(task.id, startsAt);
   };
 
   const updateScheduleTime = (eventId: string | number, newStart: string, newEnd: string) => {
@@ -570,6 +503,7 @@ export function TodayView() {
   };
 
   const closeSelectedBlock = () => setSelectedBlockId(null);
+  const inspectedTask = tasks.find((task) => task.id === inspectedTaskId);
   const selectedBlockActions = selectedBlock && (
     <Group gap={4} wrap="nowrap">
       <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
@@ -700,6 +634,13 @@ export function TodayView() {
         </Property>
       </PropertyPanel>
     )
+  ) : inspectedTask ? (
+    <TaskView
+      task={inspectedTask}
+      themes={themesQuery.data ?? []}
+      tagSuggestions={[...new Set(tasks.flatMap((task) => task.tags))].sort()}
+      onClose={() => setInspectedTaskId(null)}
+    />
   ) : null;
 
   if (dayQuery.isPending || tasksQuery.isPending) {
@@ -858,10 +799,7 @@ export function TodayView() {
                 size="xs"
                 variant="default"
                 leftSection={<IconPlus size={14} />}
-                onClick={() => {
-                  setBacklogOpen((open) => !open);
-                  if (!backlogOpen) setSelectedTaskId(null);
-                }}
+                onClick={() => openAddTask()}
               >
                 Add task
               </Button>
@@ -927,66 +865,33 @@ export function TodayView() {
         </Group>
       </Group>
 
-      <Collapse expanded={backlogOpen && layer === 'tasks'}>
-        <Paper withBorder p="sm" radius="sm" className={classes.backlog}>
-          <Group justify="space-between" mb="xs">
-            <Text fw={600} size="sm">
-              Available tasks
-            </Text>
-            <Badge variant="light" color="gray">
-              {backlog.length}
-            </Badge>
-          </Group>
-          {backlog.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              No open tasks are available to add.
-            </Text>
-          ) : (
-            <Stack gap={4}>
-              {backlog.map((task) => (
-                <Group
-                  key={task.id}
-                  justify="space-between"
-                  wrap="nowrap"
-                  className={classes.backlogRow}
-                >
-                  <div className={classes.taskSummary}>
-                    <Text size="sm" fw={500} lineClamp={1}>
-                      {task.title}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      P{task.priority} · {task.estimatedMinutes ?? 25} min ·{' '}
-                      {taskStatusLabels[task.status]}
-                    </Text>
-                  </div>
-                  <Tooltip label="Add to the next available slot">
-                    <ActionIcon
-                      aria-label={`Add ${task.title} to the plan`}
-                      variant="subtle"
-                      color="teal"
-                      loading={createBlock.isPending && createBlock.variables?.taskId === task.id}
-                      onClick={() => addToNextSlot(task)}
-                    >
-                      <IconPlus size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              ))}
-            </Stack>
-          )}
-        </Paper>
-      </Collapse>
-
       <Paper radius="sm" className={classes.scheduleSurface}>
         <Splitter
           orientation="horizontal"
           className={classes.scheduleSplitter}
           style={{ minHeight: 420 }}
         >
-          <Splitter.Pane defaultSize="25%" min="0%" aria-label="Future planner tools">
-            {/* <div className={classes.splitterLeftPane} /> */}
-
-            
+          <Splitter.Pane defaultSize="25%" min="0%" aria-label="Task list">
+            {scheduleView === 'schedule' && layer === 'tasks' && (
+              <TaskPickerPane
+                tasks={backlog}
+                themes={themesQuery.data ?? []}
+                date={selectedDate}
+                removeActive={Boolean(draggedBlockId)}
+                onTaskDragStart={setDraggedTask}
+                onTaskDragEnd={() => setDraggedTask(null)}
+                onOpenTask={(task) => {
+                  setSelectedBlockId(null);
+                  setInspectedTaskId(task.id);
+                }}
+                onRemoveDrop={() => {
+                  if (draggedBlockId) {
+                    removeBlock.mutate({ date: selectedDate, blockId: draggedBlockId });
+                  }
+                  setDraggedBlockId(null);
+                }}
+              />
+            )}
           </Splitter.Pane>
           <Splitter.Pane defaultSize="75%" min="40%" aria-label="Day schedule">
             { scheduleView === 'schedule' ? 
@@ -1052,9 +957,35 @@ export function TodayView() {
                       endMinute: event.payload.endMinute,
                     });
                   } else if (layer === 'tasks' && event.payload?.kind === 'block') {
+                    setInspectedTaskId(null);
                     setSelectedBlockId(String(event.payload.blockId));
                   }
                 }}
+                onEventDragStart={(event) => {
+                  if (
+                    event.payload?.kind === 'block' &&
+                    ['PLANNED', 'SKIPPED'].includes(String(event.payload.status))
+                  ) {
+                    setDraggedBlockId(String(event.payload.blockId));
+                  }
+                }}
+                onEventDragEnd={() => setDraggedBlockId(null)}
+                canDropExternalEvent={({ dataTransfer, start }) =>
+                  dataTransfer.types.includes(TASK_DRAG_TYPE) &&
+                  (!draggedTask || canPlaceTaskAt(draggedTask, start))
+                }
+                onExternalEventDrop={(dataTransfer, dropDateTime) => {
+                  const taskId = dataTransfer.getData(TASK_DRAG_TYPE);
+                  setDraggedTask(null);
+                  if (!taskId) return;
+                  addTaskAt(taskId, dropDateTime);
+                }}
+                onEventPlacementRejected={() =>
+                  notifications.show({
+                    message: 'That time is unavailable or overlaps another block',
+                    color: 'yellow',
+                  })
+                }
                 onEventDrop={({ eventId, newStart, newEnd }) =>
                   updateScheduleTime(eventId, newStart, newEnd)
                 }
@@ -1094,6 +1025,7 @@ export function TodayView() {
                       endMinute: event.payload.endMinute,
                     });
                   } else if (layer === 'tasks' && event.payload?.kind === 'block') {
+                    setInspectedTaskId(null);
                     setSelectedBlockId(String(event.payload.blockId));
                   }
                 }}

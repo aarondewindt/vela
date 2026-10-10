@@ -317,6 +317,7 @@ export const plannerService = {
       dueDate: task.dueDate,
       scheduledDate: occurrences[0]?.occurrenceDate ?? null,
       estimatedMinutes: task.estimatedMinutes,
+      leadTimeDays: task.leadTimeDays,
       themeId: task.themeId,
       category: task.category,
       tags: task.tags,

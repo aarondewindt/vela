@@ -15,22 +15,33 @@
   border-inline-start: 3px solid var(--mantine-color-yellow-5);
 }
 
-.backlog {
-  background: var(--mantine-color-body);
-}
-
-.backlogRow {
-  min-height: 42px;
-  padding-inline: var(--mantine-spacing-xs);
-  border-radius: var(--mantine-radius-xs);
-}
-
-.backlogRow:hover {
-  background: var(--mantine-color-default-hover);
-}
-
-.taskSummary {
+.taskPane {
+  display: flex;
+  flex-direction: column;
+  height: min(68vh, 760px);
   min-width: 0;
+}
+
+.taskPane[data-drop-active] {
+  outline: 2px dashed var(--mantine-color-red-4);
+  outline-offset: -2px;
+}
+
+.taskPane[data-drop-hover] {
+  background: var(--mantine-color-red-light);
+}
+
+.taskPaneHeader {
+  flex: none;
+}
+
+.taskPaneList {
+  flex: 1;
+  min-height: 0;
+}
+
+.taskPaneItem {
+  cursor: grab;
 }
 
 .scheduleSurface {
