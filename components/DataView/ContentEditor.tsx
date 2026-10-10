@@ -1,7 +1,6 @@
 'use client';
 
 import '@blocknote/core/fonts/inter.css';
-import '@blocknote/mantine/style.css';
 
 import { useEffect, useRef } from 'react';
 import { Center, Loader, useComputedColorScheme } from '@mantine/core';

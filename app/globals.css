@@ -1,0 +1,6 @@
+@layer  mantine, mantine-datatable;
+
+.mantine-DayView-dayViewBackgroundEvent.mantine-UnstyledButton-root {
+  background-color: var(--bg-event-bg);
+  padding: 3px 4px;
+}
