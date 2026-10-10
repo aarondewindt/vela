@@ -251,6 +251,7 @@ export function scheduleCandidates({
   }
   const workWindows = subtractBusyIntervals(freeWindows, leisure);
   const scheduled: ScheduledCandidate[] = [];
+  const scheduledWork: ScheduledCandidate[] = [];
   const reservations: ScheduledCandidate[] = [];
   const remainingByCandidate = new Map(
     candidates.map((candidate) => [candidate.id, candidate.durationMinutes])
@@ -331,7 +332,7 @@ export function scheduleCandidates({
     let remaining = remainingByCandidate.get(candidate.id) ?? 0;
     while (remaining > 0) {
       const requestedMinutes = Math.min(remaining, profile.sessionMinutes);
-      const last = scheduled.at(-1);
+      const last = scheduledWork.at(-1);
       const breakMinutes = last ? Math.max(0, profile.gapMinutes) : 0;
       let cursor = last?.end.getTime() ?? Number.NEGATIVE_INFINITY;
       let scheduledBreak: ScheduledCandidate | null = null;
@@ -388,6 +389,7 @@ export function scheduleCandidates({
       const durationMs = durationMinutes * 60_000;
       const end = new Date(start.getTime() + durationMs);
       scheduled.push({ ...candidate, durationMinutes, start, end });
+      scheduledWork.push({ ...candidate, durationMinutes, start, end });
       remaining -= durationMinutes;
       remainingByCandidate.set(candidate.id, remaining);
     }

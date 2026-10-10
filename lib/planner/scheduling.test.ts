@@ -210,6 +210,29 @@ describe('scheduleCandidates', () => {
     ]);
   });
 
+  it('schedules ordinary tasks before a midday Leisure reservation', () => {
+    const result = scheduleCandidates({
+      candidates: [
+        candidate({ id: 'hobby', category: 'LEISURE' }),
+        candidate({ id: 'work', category: 'WORK' }),
+      ],
+      availability: [{ start: at(9), end: at(13) }],
+      busy: [],
+      profile: {
+        ...WEEKDAY_PLANNING_PROFILE,
+        leisureMinutes: 60,
+        shortLeisureBlockMinutes: 60,
+        maxLeisureBlockMinutes: 60,
+      },
+    });
+
+    expect(result.scheduled.find(({ id }) => id === 'work')).toMatchObject({
+      start: at(9),
+      end: at(9, 30),
+    });
+    expect(result.scheduled.find(({ id }) => id === 'hobby')?.start).toEqual(at(10, 30));
+  });
+
   it('packs multiple matching leisure tasks into one reserved leisure block', () => {
     const result = scheduleCandidates({
       candidates: [
