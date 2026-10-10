@@ -3,15 +3,17 @@ import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '../../generated/prisma/client';
-import type { TaskRow } from './tasks';
+import { planningCategoryLabels, type PlanningCategoryValue, type TaskRow } from './tasks';
 import type { ViewConfig } from '@/lib/views/types';
 import { recurrenceMatchesDate } from './recurrence';
 import {
   classifyCandidate,
+  DEFAULT_GENERATOR_OPTIONS,
   defaultLeadTimeDays,
   scheduleCandidates,
   WEEKDAY_PLANNING_PROFILE,
   WEEKEND_PLANNING_PROFILE,
+  type GeneratorOptions,
   type TimeInterval,
 } from './scheduling';
 
@@ -25,6 +27,7 @@ type TaskPatch = {
   estimatedMinutes?: number | null;
   leadTimeDays?: number | null;
   themeId?: string | null;
+  category?: PlanningCategoryValue | null;
   tags?: string[];
 };
 
@@ -32,6 +35,7 @@ type ThemePatch = {
   name?: string;
   brief?: string | null;
   color?: string | null;
+  category?: PlanningCategoryValue;
   isActive?: boolean;
 };
 
@@ -78,6 +82,42 @@ function localMinuteToInstant(date: string, minute: number, timezone: string): D
 
 function timeToMinute(value: Date | null): number | null {
   return value ? value.getUTCHours() * 60 + value.getUTCMinutes() : null;
+}
+
+// Temporary hardcoded defaults; move these into user settings when availability settings are built.
+function standardAvailabilityWindows(weekday: number) {
+  return [0, 6].includes(weekday)
+    ? [{ startMinute: 10 * 60, endMinute: 24 * 60 }]
+    : [
+        { startMinute: 8 * 60, endMinute: 8 * 60 + 45 },
+        { startMinute: 12 * 60, endMinute: 13 * 60 },
+        { startMinute: 17 * 60 + 15, endMinute: 24 * 60 },
+      ];
+}
+
+function customAvailability(
+  date: string,
+  timezone: string,
+  override: {
+    startTime: Date | null;
+    endTime: Date | null;
+    availabilityWindows: { startMinute: number; endMinute: number }[];
+  }
+): TimeInterval[] {
+  const windows = override.availabilityWindows.length
+    ? override.availabilityWindows
+    : (() => {
+        const startMinute = timeToMinute(override.startTime);
+        const endMinute = timeToMinute(override.endTime);
+        return startMinute !== null && endMinute !== null ? [{ startMinute, endMinute }] : [];
+      })();
+
+  return windows
+    .filter(({ startMinute, endMinute }) => endMinute > startMinute)
+    .map(({ startMinute, endMinute }) => ({
+      start: localMinuteToInstant(date, startMinute, timezone),
+      end: localMinuteToInstant(date, endMinute, timezone),
+    }));
 }
 
 function nextDate(date: string): string {
@@ -219,7 +259,10 @@ async function materializeRecurringOccurrences(userId: string, planDate: Date) {
   });
   const data = tasks.flatMap((task) => {
     const start = new Date(task.createdAt.toISOString().slice(0, 10));
-    return Array.from({ length: 8 }, (_, offset) => new Date(planDate.getTime() + offset * 86_400_000))
+    return Array.from(
+      { length: 8 },
+      (_, offset) => new Date(planDate.getTime() + offset * 86_400_000)
+    )
       .filter((date) => recurrenceMatchesDate(task.recurrenceRule ?? '', start, date))
       .map((occurrenceDate) => ({
         userId,
@@ -275,6 +318,7 @@ export const plannerService = {
       scheduledDate: occurrences[0]?.occurrenceDate ?? null,
       estimatedMinutes: task.estimatedMinutes,
       themeId: task.themeId,
+      category: task.category,
       tags: task.tags,
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
@@ -339,6 +383,7 @@ export const plannerService = {
         name: true,
         brief: true,
         color: true,
+        category: true,
         isActive: true,
         sortOrder: true,
         createdAt: true,
@@ -418,6 +463,37 @@ export const plannerService = {
     await prisma.savedView.deleteMany({ where: { id, userId } });
   },
 
+  async getGeneratorSettings(userId: string): Promise<GeneratorOptions> {
+    const settings = await prisma.plannerGenerationSettings.findUnique({
+      where: { userId },
+      select: {
+        workSessionMinutes: true,
+        shortBreakMinutes: true,
+        leisureMinutes: true,
+        shortLeisureBlockMinutes: true,
+        maxLeisureBlockMinutes: true,
+        fillExistingPlan: true,
+      },
+    });
+    return settings ?? DEFAULT_GENERATOR_OPTIONS;
+  },
+
+  saveGeneratorSettings(userId: string, settings: GeneratorOptions) {
+    return prisma.plannerGenerationSettings.upsert({
+      where: { userId },
+      create: { userId, ...settings },
+      update: settings,
+      select: {
+        workSessionMinutes: true,
+        shortBreakMinutes: true,
+        leisureMinutes: true,
+        shortLeisureBlockMinutes: true,
+        maxLeisureBlockMinutes: true,
+        fillExistingPlan: true,
+      },
+    });
+  },
+
   getPlan(userId: string, date: string) {
     return prisma.dailyPlan.findFirst({
       where: {
@@ -428,7 +504,10 @@ export const plannerService = {
       include: {
         dailyBlocks: {
           orderBy: { startsAt: 'asc' },
-          include: { taskOccurrence: { select: { taskId: true } } },
+          include: {
+            taskOccurrence: { select: { taskId: true } },
+            calendarEvent: { select: { id: true, isBusy: true } },
+          },
         },
       },
     });
@@ -452,6 +531,7 @@ export const plannerService = {
       }),
       prisma.dayOverride.findUnique({
         where: { userId_overrideDate: { userId, overrideDate: planDate } },
+        include: { availabilityWindows: { orderBy: { startMinute: 'asc' } } },
       }),
       prisma.calendarEvent.findMany({
         where: { userId, startsAt: { lt: end }, endsAt: { gt: start } },
@@ -462,16 +542,7 @@ export const plannerService = {
 
     let availability: TimeInterval[] = [];
     if (override?.workMode === 'CUSTOM') {
-      const from = timeToMinute(override.startTime);
-      const to = timeToMinute(override.endTime);
-      if (from !== null && to !== null && to > from) {
-        availability = [
-          {
-            start: localMinuteToInstant(date, from, user.timezone),
-            end: localMinuteToInstant(date, to, user.timezone),
-          },
-        ];
-      }
+      availability = customAvailability(date, user.timezone, override);
     } else if (override?.workMode !== 'NO_WORK' && override?.workMode !== 'PTO') {
       availability = windows
         .filter((window) => window.endMinute > window.startMinute)
@@ -490,36 +561,91 @@ export const plannerService = {
   ) {
     const date = new Date(`${input.date}T00:00:00.000Z`);
     if (input.scope === 'date') {
-      const weekend = [0, 6].includes(date.getUTCDay());
-      const [start, end] = weekend ? [10 * 60, 18 * 60] : [18 * 60 + 30, 22 * 60 + 30];
+      const intervals = standardAvailabilityWindows(date.getUTCDay());
       return prisma.dayOverride.upsert({
         where: { userId_overrideDate: { userId, overrideDate: date } },
         create: {
           userId,
           overrideDate: date,
           workMode: 'CUSTOM',
-          startTime: new Date(Date.UTC(1970, 0, 1, Math.floor(start / 60), start % 60)),
-          endTime: new Date(Date.UTC(1970, 0, 1, Math.floor(end / 60), end % 60)),
+          availabilityWindows: {
+            create: intervals,
+          },
         },
         update: {
           workMode: 'CUSTOM',
-          startTime: new Date(Date.UTC(1970, 0, 1, Math.floor(start / 60), start % 60)),
-          endTime: new Date(Date.UTC(1970, 0, 1, Math.floor(end / 60), end % 60)),
+          startTime: null,
+          endTime: null,
+          availabilityWindows: {
+            deleteMany: {},
+            create: intervals,
+          },
         },
       });
     }
 
     const windows = Array.from({ length: 7 }, (_, weekday) => {
-      const [startMinute, endMinute] = [0, 6].includes(weekday)
-        ? [10 * 60, 18 * 60]
-        : [18 * 60 + 30, 22 * 60 + 30];
-      return { userId, weekday, startMinute, endMinute, isActive: true };
-    });
+      return standardAvailabilityWindows(weekday).map(({ startMinute, endMinute }) => ({
+        userId,
+        weekday,
+        startMinute,
+        endMinute,
+        isActive: true,
+      }));
+    }).flat();
     await prisma.$transaction([
       prisma.availabilityWindow.deleteMany({ where: { userId } }),
       prisma.availabilityWindow.createMany({ data: windows }),
     ]);
     return { scope: input.scope, windows };
+  },
+
+  async updateDayAvailability(
+    userId: string,
+    input: {
+      date: string;
+      windows: { startMinute: number; endMinute: number }[];
+    }
+  ) {
+    const sortedWindows = [...input.windows].sort((a, b) => a.startMinute - b.startMinute);
+    if (
+      sortedWindows.some(
+        ({ startMinute, endMinute }) =>
+          startMinute < 0 ||
+          startMinute >= endMinute ||
+          endMinute > 24 * 60 ||
+          startMinute % 15 !== 0 ||
+          endMinute % 15 !== 0
+      ) ||
+      sortedWindows.some(
+        (window, index) => index > 0 && window.startMinute < sortedWindows[index - 1].endMinute
+      )
+    ) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Availability slots must be valid, non-overlapping 15-minute intervals',
+      });
+    }
+
+    const overrideDate = new Date(`${input.date}T00:00:00.000Z`);
+    return prisma.dayOverride.upsert({
+      where: { userId_overrideDate: { userId, overrideDate } },
+      create: {
+        userId,
+        overrideDate,
+        workMode: 'CUSTOM',
+        availabilityWindows: { create: sortedWindows },
+      },
+      update: {
+        workMode: 'CUSTOM',
+        startTime: null,
+        endTime: null,
+        availabilityWindows: {
+          deleteMany: {},
+          create: sortedWindows,
+        },
+      },
+    });
   },
 
   async createManualBlock(
@@ -534,7 +660,14 @@ export const plannerService = {
     const startsAt = localDateTimeToInstant(input.startsAt, user.timezone);
     const task = await prisma.task.findFirst({
       where: { id: input.taskId, userId, status: { notIn: ['DONE', 'ARCHIVED', 'PAUSED'] } },
-      select: { id: true, title: true, firstStep: true, estimatedMinutes: true },
+      select: {
+        id: true,
+        title: true,
+        firstStep: true,
+        estimatedMinutes: true,
+        category: true,
+        theme: { select: { category: true } },
+      },
     });
     if (!task) {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Open task not found' });
@@ -623,6 +756,7 @@ export const plannerService = {
           taskOccurrenceId: occurrence.id,
           title: task.title,
           brief: task.firstStep,
+          category: task.category ?? task.theme?.category ?? 'WORK',
           startsAt,
           endsAt,
           durationMinutes,
@@ -636,6 +770,90 @@ export const plannerService = {
       });
       await startTasks(transaction, userId, [occurrence.id]);
       return block;
+    });
+  },
+
+  async createManualCategoryBlock(
+    userId: string,
+    input: {
+      date: string;
+      category: PlanningCategoryValue;
+      startsAt: string;
+      endsAt: string;
+    }
+  ) {
+    const planDate = new Date(`${input.date}T00:00:00.000Z`);
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const startsAt = localDateTimeToInstant(input.startsAt, user.timezone);
+    const endsAt = localDateTimeToInstant(input.endsAt, user.timezone);
+    assertSameDay(
+      startsAt,
+      endsAt,
+      localMinuteToInstant(input.date, 0, user.timezone),
+      localMinuteToInstant(nextDate(input.date), 0, user.timezone)
+    );
+
+    return prisma.$transaction(async (transaction) => {
+      let plan = await transaction.dailyPlan.findFirst({
+        where: { userId, planDate, isCurrent: true },
+        select: { id: true },
+      });
+      if (!plan) {
+        const latest = await transaction.dailyPlan.findFirst({
+          where: { userId, planDate },
+          orderBy: { version: 'desc' },
+          select: { version: true },
+        });
+        plan = await transaction.dailyPlan.create({
+          data: {
+            userId,
+            planDate,
+            timezone: user.timezone,
+            version: (latest?.version ?? 0) + 1,
+            isCurrent: true,
+            generatedBy: 'MANUAL',
+          },
+          select: { id: true },
+        });
+      }
+      const [overlap, calendarConflict] = await Promise.all([
+        transaction.dailyBlock.findFirst({
+          where: {
+            userId,
+            planId: plan.id,
+            status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt },
+          },
+          select: { id: true },
+        }),
+        transaction.calendarEvent.findFirst({
+          where: { userId, isBusy: true, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+          select: { id: true },
+        }),
+      ]);
+      if (overlap || calendarConflict) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: 'The selected time is no longer available',
+        });
+      }
+      return transaction.dailyBlock.create({
+        data: {
+          userId,
+          planId: plan.id,
+          title: planningCategoryLabels[input.category],
+          category: input.category,
+          startsAt,
+          endsAt,
+          durationMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
+          source: 'MANUAL',
+          position: 0,
+        },
+      });
     });
   },
 
@@ -843,15 +1061,54 @@ export const plannerService = {
     });
   },
 
-  async generateDraft(userId: string, date: string) {
+  async clearDayPlan(userId: string, date: string) {
     const planDate = new Date(`${date}T00:00:00.000Z`);
+    return prisma.$transaction(async (transaction) => {
+      const plan = await transaction.dailyPlan.findFirst({
+        where: { userId, planDate, isCurrent: true },
+        select: {
+          id: true,
+          dailyBlocks: { select: { taskOccurrenceId: true } },
+        },
+      });
+      if (!plan) {
+        return { cleared: false };
+      }
+
+      await transaction.dailyPlan.update({
+        where: { id: plan.id },
+        data: { status: 'ARCHIVED', isCurrent: false },
+      });
+      await transaction.dailyBlock.deleteMany({ where: { planId: plan.id } });
+      await releaseOccurrences(
+        transaction,
+        userId,
+        plan.dailyBlocks.flatMap(({ taskOccurrenceId }) =>
+          taskOccurrenceId ? [taskOccurrenceId] : []
+        )
+      );
+      return { cleared: true };
+    });
+  },
+
+  async generateDraft(userId: string, date: string, options?: GeneratorOptions) {
+    const planDate = new Date(`${date}T00:00:00.000Z`);
+    const generatorOptions = options ?? (await this.getGeneratorSettings(userId));
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { timezone: true },
     });
     const weekday = planDate.getUTCDay();
-    const profile =
-      weekday === 0 || weekday === 6 ? WEEKEND_PLANNING_PROFILE : WEEKDAY_PLANNING_PROFILE;
+    const profile = {
+      ...(weekday === 0 || weekday === 6
+        ? WEEKEND_PLANNING_PROFILE
+        : WEEKDAY_PLANNING_PROFILE),
+      gapMinutes: generatorOptions.shortBreakMinutes,
+      sessionMinutes: generatorOptions.workSessionMinutes,
+      leisureMinutes: generatorOptions.leisureMinutes,
+      shortLeisureBlockMinutes: generatorOptions.shortLeisureBlockMinutes,
+      maxLeisureBlockMinutes: generatorOptions.maxLeisureBlockMinutes,
+    };
     await materializeRecurringOccurrences(userId, planDate);
     const [windows, override, currentPlan, dependencies] = await Promise.all([
       prisma.availabilityWindow.findMany({
@@ -860,19 +1117,16 @@ export const plannerService = {
       }),
       prisma.dayOverride.findUnique({
         where: { userId_overrideDate: { userId, overrideDate: planDate } },
+        include: { availabilityWindows: { orderBy: { startMinute: 'asc' } } },
       }),
       prisma.dailyPlan.findFirst({
         where: { userId, planDate, isCurrent: true },
         include: {
           dailyBlocks: {
-            where: {
-              OR: [
-                { source: 'MANUAL', status: 'PLANNED' },
-                { isFixed: true, status: { in: ['PLANNED', 'IN_PROGRESS'] } },
-                { status: { in: ['IN_PROGRESS', 'DONE'] } },
-              ],
+            include: {
+              taskOccurrence: { select: { taskId: true } },
+              calendarEvent: { select: { isBusy: true } },
             },
-            include: { taskOccurrence: { select: { taskId: true } } },
           },
         },
       }),
@@ -898,20 +1152,11 @@ export const plannerService = {
     const dayStart = localMinuteToInstant(date, 0, user.timezone);
     const nextDay = new Date(planDate.getTime() + 86_400_000).toISOString().slice(0, 10);
     const dayEnd = localMinuteToInstant(nextDay, 0, user.timezone);
-    const overrideStart = timeToMinute(override?.startTime ?? null);
-    const overrideEnd = timeToMinute(override?.endTime ?? null);
     let availability: TimeInterval[] = [];
 
     if (override?.workMode !== 'NO_WORK' && override?.workMode !== 'PTO') {
       if (override?.workMode === 'CUSTOM') {
-        if (overrideStart !== null && overrideEnd !== null && overrideEnd > overrideStart) {
-          availability = [
-            {
-              start: localMinuteToInstant(date, overrideStart, user.timezone),
-              end: localMinuteToInstant(date, overrideEnd, user.timezone),
-            },
-          ];
-        }
+        availability = customAvailability(date, user.timezone, override);
       } else {
         availability = windows
           .filter((window) => window.endMinute > window.startMinute)
@@ -922,15 +1167,37 @@ export const plannerService = {
       }
     }
 
-    const protectedBlocks = currentPlan?.dailyBlocks ?? [];
+    const existingBlocks = currentPlan?.dailyBlocks ?? [];
+    const manualCategorySlots = existingBlocks.filter(
+      (block) =>
+        block.status === 'PLANNED' &&
+        block.taskOccurrenceId === null &&
+        block.calendarEventId === null &&
+        block.category !== null &&
+        (block.source === 'MANUAL' ||
+          (block.source === 'PLANNER' && block.category === 'LEISURE' && block.title === 'Leisure'))
+    );
+    const protectedBlocks = generatorOptions.fillExistingPlan
+      ? existingBlocks.filter(
+          (block) =>
+            block.status !== 'CANCELED' &&
+            !manualCategorySlots.some((slot) => slot.id === block.id)
+        )
+      : existingBlocks.filter(
+          (block) =>
+            (block.source === 'MANUAL' && block.status === 'PLANNED' &&
+              !manualCategorySlots.some((slot) => slot.id === block.id)) ||
+            (block.isFixed && ['PLANNED', 'IN_PROGRESS'].includes(block.status)) ||
+            ['IN_PROGRESS', 'DONE'].includes(block.status)
+        );
     const alreadyPlannedTaskIds = protectedBlocks.flatMap((block) =>
       block.status !== 'DONE' && block.taskOccurrence ? [block.taskOccurrence.taskId] : []
     );
 
-    const [calendarEvents, occurrences, backlogTasks] = await Promise.all([
+    const [calendarEvents, occurrences, backlogTasks, priorTaskBlocks] = await Promise.all([
       prisma.calendarEvent.findMany({
-        where: { userId, isBusy: true, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
-        select: { startsAt: true, endsAt: true },
+        where: { userId, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
+        select: { id: true, title: true, brief: true, startsAt: true, endsAt: true, isBusy: true },
       }),
       prisma.taskOccurrence.findMany({
         where: {
@@ -949,6 +1216,8 @@ export const plannerService = {
               estimatedMinutes: true,
               leadTimeDays: true,
               firstStep: true,
+              category: true,
+              theme: { select: { category: true } },
             },
           },
         },
@@ -972,6 +1241,24 @@ export const plannerService = {
           leadTimeDays: true,
           firstStep: true,
           dueDate: true,
+          category: true,
+          theme: { select: { category: true } },
+        },
+      }),
+      prisma.dailyBlock.findMany({
+        where: {
+          userId,
+          status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
+          plan: {
+            isCurrent: true,
+            ...(generatorOptions.fillExistingPlan ? {} : { planDate: { not: planDate } }),
+          },
+          taskOccurrence: { isNot: null },
+        },
+        select: {
+          taskOccurrenceId: true,
+          durationMinutes: true,
+          taskOccurrence: { select: { taskId: true } },
         },
       }),
     ]);
@@ -979,14 +1266,58 @@ export const plannerService = {
     const protectedOccurrenceIds = new Set(
       protectedBlocks.flatMap((block) => (block.taskOccurrenceId ? [block.taskOccurrenceId] : []))
     );
+    const skippedOccurrenceIds = new Set(
+      protectedBlocks.flatMap((block) =>
+        block.status === 'SKIPPED' && block.taskOccurrenceId ? [block.taskOccurrenceId] : []
+      )
+    );
     const eligibleOccurrences = occurrences.filter((occurrence) => {
-      if (protectedOccurrenceIds.has(occurrence.id)) return false;
+      if (
+        skippedOccurrenceIds.has(occurrence.id) ||
+        (!generatorOptions.fillExistingPlan && protectedOccurrenceIds.has(occurrence.id))
+      ) {
+        return false;
+      }
       const dueAt = occurrence.dueAt ?? occurrence.occurrenceDate;
       return dueAt < dayEnd;
     });
+    const taskMinutesScheduled = new Map<string, number>();
+    const occurrenceMinutesScheduled = new Map<string, number>();
+    for (const block of priorTaskBlocks) {
+      if (block.taskOccurrenceId) {
+        occurrenceMinutesScheduled.set(
+          block.taskOccurrenceId,
+          (occurrenceMinutesScheduled.get(block.taskOccurrenceId) ?? 0) + block.durationMinutes
+        );
+      }
+      if (block.taskOccurrence) {
+        taskMinutesScheduled.set(
+          block.taskOccurrence.taskId,
+          (taskMinutesScheduled.get(block.taskOccurrence.taskId) ?? 0) + block.durationMinutes
+        );
+      }
+    }
+    const existingLeisureMinutes = generatorOptions.fillExistingPlan
+      ? protectedBlocks
+          .filter(
+            (block) =>
+              block.category === 'LEISURE' &&
+              ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status)
+          )
+          .reduce((total, block) => total + block.durationMinutes, 0)
+      : 0;
+    profile.leisureMinutes = Math.max(
+      0,
+      generatorOptions.leisureMinutes - existingLeisureMinutes
+    );
     const sources = new Map<
       string,
-      { taskId: string; occurrenceId: string | null; firstStep: string | null }
+      {
+        taskId: string;
+        occurrenceId: string | null;
+        firstStep: string | null;
+        category: PlanningCategoryValue;
+      }
     >();
     const candidates = [
       ...eligibleOccurrences.map((occurrence) => ({
@@ -994,7 +1325,10 @@ export const plannerService = {
         taskId: occurrence.taskId,
         occurrenceId: occurrence.id,
         task: occurrence.task,
-        due: earliestDate(occurrence.dueAt ?? occurrence.occurrenceDate, inheritedDue.get(occurrence.taskId)),
+        due: earliestDate(
+          occurrence.dueAt ?? occurrence.occurrenceDate,
+          inheritedDue.get(occurrence.taskId)
+        ),
       })),
       ...backlogTasks.map((task) => ({
         id: `task:${task.id}`,
@@ -1003,42 +1337,69 @@ export const plannerService = {
         task,
         due: earliestDate(task.dueDate, inheritedDue.get(task.id)),
       })),
-    ].map((source) => {
+    ].flatMap((source) => {
       const { task } = source;
-      const durationMinutes = task.estimatedMinutes ?? 25;
+      const estimatedMinutes = task.estimatedMinutes ?? 25;
+      const alreadyScheduled = source.occurrenceId
+        ? (occurrenceMinutesScheduled.get(source.occurrenceId) ?? 0)
+        : (taskMinutesScheduled.get(source.taskId) ?? 0);
+      const durationMinutes = Math.max(0, estimatedMinutes - alreadyScheduled);
+      if (durationMinutes === 0) {
+        return [];
+      }
       const daysUntilDue = source.due
         ? Math.floor((source.due.getTime() - planDate.getTime()) / 86_400_000)
         : null;
+      const classifiedTier = classifyCandidate({
+        priority: task.priority,
+        size: task.size,
+        daysUntilDue,
+        leadTimeDays: task.leadTimeDays ?? defaultLeadTimeDays(task.size, task.priority),
+      });
       sources.set(source.id, {
         taskId: source.taskId,
         occurrenceId: source.occurrenceId,
         firstStep: task.firstStep,
+        category: task.category ?? task.theme?.category ?? 'WORK',
       });
-      return {
+      return [{
         id: source.id,
         title: task.title,
         priority: task.priority,
         size: task.size,
-        tier: classifyCandidate({
-          priority: task.priority,
-          size: task.size,
-          daysUntilDue,
-          leadTimeDays: task.leadTimeDays ?? defaultLeadTimeDays(task.size, task.priority),
-        }),
+        tier:
+          classifiedTier === 'FILLER' && durationMinutes > profile.sessionMinutes
+            ? 'IMPORTANT'
+            : classifiedTier,
         daysUntilDue,
         dueAt: source.due,
         durationMinutes,
-      };
+        category: task.category ?? task.theme?.category ?? 'WORK',
+      }];
     });
     const busy: TimeInterval[] = [
-      ...calendarEvents.map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
-      ...protectedBlocks.map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
+      ...calendarEvents
+        .filter(({ isBusy }) => isBusy)
+        .map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
+      ...protectedBlocks
+        .filter(
+          (block) =>
+            ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) &&
+            (!block.calendarEventId || block.calendarEvent?.isBusy)
+        )
+        .map(({ startsAt, endsAt }) => ({ start: startsAt, end: endsAt })),
     ];
     const schedule = scheduleCandidates({
       candidates,
       availability,
       busy,
       profile,
+      categorySlots: manualCategorySlots.map((block) => ({
+        id: block.id,
+        category: block.category!,
+        start: block.startsAt,
+        end: block.endsAt,
+      })),
     });
 
     return prisma.$transaction(async (transaction) => {
@@ -1075,6 +1436,8 @@ export const plannerService = {
         isFixed: block.isFixed,
         completedAt: block.completedAt,
         taskOccurrenceId: block.taskOccurrenceId,
+        calendarEventId: block.calendarEventId,
+        category: block.category,
       }));
       const occurrenceIds = new Map<string, string>();
       for (const block of schedule.scheduled) {
@@ -1094,20 +1457,58 @@ export const plannerService = {
           occurrenceIds.set(block.id, created.id);
         }
       }
-      const plannedBlocks = schedule.scheduled.map((block, index) => {
-        return {
+      const plannedBlocks = [
+        ...schedule.scheduled.map((block) => ({
           userId,
           title: block.title,
           brief: sources.get(block.id)?.firstStep ?? null,
           taskOccurrenceId: occurrenceIds.get(block.id) ?? null,
+          calendarEventId: null,
+          category: block.category,
           startsAt: block.start,
           endsAt: block.end,
           durationMinutes: block.durationMinutes,
           status: 'PLANNED' as const,
           source: 'PLANNER' as const,
-          position: copiedBlocks.length + index,
-        };
-      });
+        })),
+        ...[...schedule.breaks, ...schedule.reservations].map((block) => ({
+          userId,
+          title: block.title,
+          brief: null,
+          taskOccurrenceId: null,
+          calendarEventId: null,
+          category: block.category,
+          startsAt: block.start,
+          endsAt: block.end,
+          durationMinutes: block.durationMinutes,
+          status: 'PLANNED' as const,
+          source: 'PLANNER' as const,
+        })),
+        ...calendarEvents
+          .filter(
+            (event) =>
+              !protectedBlocks.some((block) => block.calendarEventId === event.id)
+          )
+          .map((event) => {
+          const startsAt = event.startsAt < dayStart ? dayStart : event.startsAt;
+          const endsAt = event.endsAt > dayEnd ? dayEnd : event.endsAt;
+          return {
+            userId,
+            title: event.title,
+            brief: event.brief,
+            taskOccurrenceId: null,
+            calendarEventId: event.id,
+            category: null,
+            startsAt,
+            endsAt,
+            durationMinutes: Math.max(1, Math.ceil((endsAt.getTime() - startsAt.getTime()) / 60_000)),
+            status: 'PLANNED' as const,
+            source: 'AUTOMATION' as const,
+          };
+        }),
+      ]
+        .toSorted((a, b) => a.startsAt.getTime() - b.startsAt.getTime())
+        .map((block, index) => ({ ...block, position: copiedBlocks.length + index }));
       const plan = await transaction.dailyPlan.create({
         data: {
           userId,
@@ -1120,6 +1521,9 @@ export const plannerService = {
           explanationJson: {
             candidateCount: candidates.length,
             scheduledCount: schedule.scheduled.length,
+            restBreakCount: schedule.breaks.length,
+            leisureMinutes: schedule.leisure.reduce((total, block) => total + block.durationMinutes, 0),
+            generatorOptions,
             scheduled: schedule.scheduled.map(({ id, tier }) => ({
               taskId: sources.get(id)?.taskId,
               tier,
@@ -1151,7 +1555,9 @@ export const plannerService = {
       await releaseOccurrences(
         transaction,
         userId,
-        droppedBlocks.flatMap(({ taskOccurrenceId }) => (taskOccurrenceId ? [taskOccurrenceId] : []))
+        droppedBlocks.flatMap(({ taskOccurrenceId }) =>
+          taskOccurrenceId ? [taskOccurrenceId] : []
+        )
       );
 
       return plan;

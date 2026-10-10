@@ -6,6 +6,8 @@ import {
   taskStatuses,
   taskStatusLabels,
   taskSizeOptions,
+  planningCategories,
+  planningCategoryLabels,
   type TaskRow,
   type ThemeRow,
 } from '@/lib/planner/tasks';
@@ -84,6 +86,17 @@ export function TaskView({ task, themes, tagSuggestions, onClose }: Props) {
           ...themes.map((theme) => ({ value: theme.id, label: theme.name })),
         ]}
         onSave={(themeId) => save({ themeId: themeId || null })}
+      />
+      <SelectProperty
+        label="Category"
+        value={task.category ?? ''}
+        data={[
+          { value: '', label: 'Use theme default' },
+          ...planningCategories.map((value) => ({ value, label: planningCategoryLabels[value] })),
+        ]}
+        onSave={(category) =>
+          save({ category: category ? (category as TaskRow['category']) : null })
+        }
       />
       <DateProperty label="Due date" value={task.dueDate} onSave={(dueDate) => save({ dueDate })} />
       <Property label="Scheduled">

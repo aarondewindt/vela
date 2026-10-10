@@ -1,7 +1,12 @@
 'use client';
 
 import { useUpdateThemeMutation } from '@/lib/planner/query';
-import type { TaskRow, ThemeRow } from '@/lib/planner/tasks';
+import {
+  planningCategories,
+  planningCategoryLabels,
+  type TaskRow,
+  type ThemeRow,
+} from '@/lib/planner/tasks';
 import { PaletteColorInput } from '../PaletteColorInput/PaletteColorInput';
 import {
   Property,
@@ -10,7 +15,7 @@ import {
   ROW_HEIGHT,
   TitleField,
 } from '../DataView/PropertyPanel';
-import { SwitchProperty, TextProperty } from '../DataView/properties';
+import { SelectProperty, SwitchProperty, TextProperty } from '../DataView/properties';
 import { formatDateTime } from './format';
 import { ThemeContentEditor } from './ThemeContentEditor';
 
@@ -51,7 +56,17 @@ export function ThemeView({ theme, tasks, onClose }: Props) {
           }}
         />
       </Property>
-      <SwitchProperty label="Active" checked={theme.isActive} onSave={(isActive) => save({ isActive })} />
+      <SelectProperty
+        label="Default category"
+        value={theme.category}
+        data={planningCategories.map((value) => ({ value, label: planningCategoryLabels[value] }))}
+        onSave={(category) => save({ category: category as ThemeRow['category'] })}
+      />
+      <SwitchProperty
+        label="Active"
+        checked={theme.isActive}
+        onSave={(isActive) => save({ isActive })}
+      />
       <Property label="Tasks">
         <ReadOnlyValue>
           {open} open · {tasks.length} total

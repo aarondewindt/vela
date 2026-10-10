@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { planningCategories, type PlanningCategoryValue } from '@/lib/planner/tasks';
 
 export const TEST_TASK_TAG = 'dev-tools-test';
 
@@ -6,6 +7,7 @@ type GenerateTestTasksInput = {
   count: number;
   priorityWeights: number[];
   sizeWeights: number[];
+  categoryWeights: number[];
   noDueDatePercent: number;
   dueDateStartDays: number;
   dueDateEndDays: number;
@@ -19,56 +21,204 @@ type ClearTestTasksInput = {
   createdTo?: string;
 };
 
-const verbs = [
-  'Review',
-  'Update',
-  'Document',
-  'Improve',
-  'Audit',
-  'Prepare',
-  'Refine',
-  'Organize',
-  'Test',
-  'Plan',
-  'Clean up',
-  'Finalize',
-];
-
-const topics = [
-  'the client onboarding flow',
-  'the weekly planning routine',
-  'the billing dashboard',
-  'the project handoff checklist',
-  'the support knowledge base',
-  'the release notes process',
-  'the team availability calendar',
-  'the task reporting view',
-  'the new user welcome email',
-  'the data import workflow',
-  'the meeting follow-up process',
-  'the account settings screen',
-  'the quarterly goals outline',
-  'the recurring maintenance list',
-  'the mobile navigation layout',
-  'the quality review checklist',
-  'the customer feedback summary',
-  'the internal tools guide',
-];
-
-const contexts = [
-  'for the next release',
-  'before the team review',
-  'with the latest feedback',
-  'for the operations team',
-  'ahead of the monthly check-in',
-  'for the pilot group',
-  'before the end of the sprint',
-  'with the updated requirements',
-  'for the current roadmap',
-  'after the planning session',
-  'for the next onboarding batch',
-  'before the stakeholder demo',
-];
+const categoryContent: Record<
+  PlanningCategoryValue,
+  { verbs: string[]; topics: string[]; contexts: string[] }
+> = {
+  WORK: {
+    verbs: [
+      'Review',
+      'Update',
+      'Map',
+      'Fix',
+      'Audit',
+      'Draft',
+      'Polish',
+      'Organize',
+      'Test',
+      'Ship',
+      'Plan',
+      'Check',
+      'Simplify',
+      'Build',
+      'Schedule',
+      'Compare',
+      'Align',
+      'Measure',
+      'Refresh',
+      'Verify',
+      'Outline',
+    ],
+    topics: [
+      'onboarding flow',
+      'weekly plan',
+      'billing dashboard',
+      'handoff checklist',
+      'support guide',
+      'release notes',
+      'availability calendar',
+      'task reports',
+      'welcome email',
+      'data import',
+      'meeting follow-up',
+      'account settings',
+      'quarterly goals',
+      'maintenance list',
+      'mobile navigation',
+      'quality checklist',
+      'customer feedback',
+      'internal tools',
+      'project brief',
+      'team backlog',
+      'project timeline',
+      'team dashboard',
+    ],
+    contexts: [
+      'for launch',
+      'before review',
+      'with feedback',
+      'for the team',
+      'this sprint',
+      'for the roadmap',
+      'after planning',
+      'for onboarding',
+      'before the demo',
+      'with new specs',
+      'for Q4',
+      'before handoff',
+    ],
+  },
+  LIFE: {
+    verbs: [
+      'Plan',
+      'Organize',
+      'Fix',
+      'Update',
+      'Check',
+      'Schedule',
+      'Prepare',
+      'Review',
+      'Clean up',
+      'Track',
+      'Replace',
+      'Sort',
+      'Arrange',
+      'Set up',
+      'Gather',
+      'Refresh',
+    ],
+    topics: [
+      'personal budget',
+      'home repairs',
+      'meal plan',
+      'fitness routine',
+      'garden layout',
+      'desk setup',
+      'sleep routine',
+      'focus routine',
+      'weekly errands',
+      'family calendar',
+      'health checkup',
+      'home inventory',
+    ],
+    contexts: [
+      'for home',
+      'before Monday',
+      'with the family',
+      'this month',
+      'for next week',
+      'before the appointment',
+      'after work',
+      'for the new house',
+    ],
+  },
+  LEISURE: {
+    verbs: [
+      'Explore',
+      'Plan',
+      'Book',
+      'Learn',
+      'Practice',
+      'Collect',
+      'Sketch',
+      'Share',
+      'Visit',
+      'Try',
+      'Arrange',
+      'Choose',
+      'Discover',
+      'Capture',
+      'Create',
+      'Pick',
+    ],
+    topics: [
+      'reading list',
+      'travel itinerary',
+      'learning notes',
+      'photo archive',
+      'volunteer shift',
+      'gift list',
+      'weekend plans',
+      'hobby project',
+      'concert plans',
+      'camping checklist',
+      'museum visit',
+      'playlist',
+    ],
+    contexts: [
+      'for vacation',
+      'for the weekend',
+      'for the trip',
+      'with friends',
+      'for the festival',
+      'this summer',
+      'for the next meetup',
+      'before booking',
+    ],
+  },
+  REST: {
+    verbs: [
+      'Pause',
+      'Unplug',
+      'Recover',
+      'Rest',
+      'Reflect',
+      'Breathe',
+      'Stretch',
+      'Recharge',
+      'Protect',
+      'Simplify',
+      'Prepare',
+      'Slow down',
+      'Reset',
+      'Make time for',
+    ],
+    topics: [
+      'evening routine',
+      'quiet time',
+      'recovery plan',
+      'screen break',
+      'sleep schedule',
+      'slow morning',
+      'meditation space',
+      'low-energy day',
+      'rest day',
+      'wind-down routine',
+      'time-off plan',
+      'breathing practice',
+    ],
+    contexts: [
+      'after a busy week',
+      'for tonight',
+      'before bed',
+      'on Sunday',
+      'after travel',
+      'for a quiet day',
+      'between projects',
+      'this evening',
+    ],
+  },
+};
 
 function chooseWeightedValue(weights: number[]): number {
   const total = weights.reduce((sum, weight) => sum + weight, 0);
@@ -122,6 +272,7 @@ export const devToolsService = {
         select: {
           id: true,
           title: true,
+          category: true,
           priority: true,
           size: true,
           dueDate: true,
@@ -154,16 +305,19 @@ export const devToolsService = {
         const recurring = Math.random() * 100 < input.recurringPercent;
         const hasDueDate = Math.random() * 100 >= input.noDueDatePercent;
         const dueDateOffset = randomInteger(input.dueDateStartDays, input.dueDateEndDays);
-        const title = `${choose(verbs)} ${choose(topics)} ${choose(contexts)}`;
+        const category = planningCategories[chooseWeightedValue(input.categoryWeights) - 1];
+        const content = categoryContent[category];
+        const title = `${choose(content.verbs)} ${choose(content.topics)}${Math.random() < 0.45 ? ` ${choose(content.contexts)}` : ''}`;
 
         return {
           data: {
             userId,
             title,
+            category,
             brief: `A small piece of work to ${title.toLowerCase()}. Confirm the expected outcome, make the change, and note anything that should follow.`,
             priority: chooseWeightedValue(input.priorityWeights),
             size,
-            estimatedMinutes: size * 45,
+            estimatedMinutes: size * 15,
             status: 'BACKLOG' as const,
             dueDate: hasDueDate ? dateOffsetFromToday(dueDateOffset) : null,
             tags: [TEST_TASK_TAG],

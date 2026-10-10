@@ -7,6 +7,7 @@ const generationInput = z
     count: z.number().int().min(1).max(200),
     priorityWeights: z.array(z.number().int().min(0).max(100)).length(5),
     sizeWeights: z.array(z.number().int().min(0).max(100)).length(5),
+    categoryWeights: z.array(z.number().int().min(0).max(100)).length(4),
     noDueDatePercent: z.number().int().min(0).max(100),
     dueDateStartDays: z.number().int().min(-365).max(365),
     dueDateEndDays: z.number().int().min(-365).max(365),
@@ -21,6 +22,10 @@ const generationInput = z
   .refine((input) => input.sizeWeights.some((weight) => weight > 0), {
     path: ['sizeWeights'],
     message: 'At least one size weight must be above zero',
+  })
+  .refine((input) => input.categoryWeights.some((weight) => weight > 0), {
+    path: ['categoryWeights'],
+    message: 'At least one category weight must be above zero',
   })
   .refine((input) => input.dueDateStartDays <= input.dueDateEndDays, {
     path: ['dueDateEndDays'],

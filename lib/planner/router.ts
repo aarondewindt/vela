@@ -1,10 +1,21 @@
 import { z } from 'zod';
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import { viewConfigSchema } from '@/lib/views/types';
-import { taskStatuses } from './tasks';
+import { planningCategories, taskStatuses } from './tasks';
 import { plannerService } from './service';
 
 const id = z.uuid();
+const generatorOptions = z.object({
+  workSessionMinutes: z.number().int().min(15).max(240).refine((value) => value % 15 === 0),
+  shortBreakMinutes: z.number().int().min(5).max(60).refine((value) => value % 5 === 0),
+  leisureMinutes: z.number().int().min(0).max(240).refine((value) => value % 15 === 0),
+  shortLeisureBlockMinutes: z.number().int().min(15).max(120).refine((value) => value % 15 === 0),
+  maxLeisureBlockMinutes: z.number().int().min(15).max(240).refine((value) => value % 15 === 0),
+  fillExistingPlan: z.boolean(),
+}).refine((options) => options.maxLeisureBlockMinutes >= options.shortLeisureBlockMinutes, {
+  path: ['maxLeisureBlockMinutes'],
+  message: 'Maximum leisure block must be at least the short block size',
+});
 
 export const plannerRouter = router({
   listTasks: protectedProcedure.query(({ ctx }) => plannerService.listTasks(ctx.userId)),
@@ -31,6 +42,7 @@ export const plannerRouter = router({
           estimatedMinutes: z.number().int().min(0).nullable().optional(),
           leadTimeDays: z.number().int().min(0).max(365).nullable().optional(),
           themeId: id.nullable().optional(),
+          category: z.enum(planningCategories).nullable().optional(),
           tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
         }),
       })
@@ -60,6 +72,7 @@ export const plannerRouter = router({
           name: z.string().trim().min(1).max(120).optional(),
           brief: z.string().nullable().optional(),
           color: z.string().max(32).nullable().optional(),
+          category: z.enum(planningCategories).optional(),
           isActive: z.boolean().optional(),
         }),
       })
@@ -111,9 +124,40 @@ export const plannerRouter = router({
   getDayData: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .query(({ ctx, input }) => plannerService.getDayData(ctx.userId, input.date)),
+  getGeneratorSettings: protectedProcedure.query(({ ctx }) =>
+    plannerService.getGeneratorSettings(ctx.userId)
+  ),
+  saveGeneratorSettings: protectedProcedure
+    .input(generatorOptions)
+    .mutation(({ ctx, input }) => plannerService.saveGeneratorSettings(ctx.userId, input)),
   applyStandardAvailability: protectedProcedure
     .input(z.object({ date: z.iso.date(), scope: z.enum(['date', 'recurring']) }))
     .mutation(({ ctx, input }) => plannerService.applyStandardAvailability(ctx.userId, input)),
+  updateDayAvailability: protectedProcedure
+    .input(
+      z.object({
+        date: z.iso.date(),
+        windows: z
+          .array(
+            z.object({
+              startMinute: z
+                .number()
+                .int()
+                .min(0)
+                .max(1425)
+                .refine((value) => value % 15 === 0),
+              endMinute: z
+                .number()
+                .int()
+                .min(15)
+                .max(1440)
+                .refine((value) => value % 15 === 0),
+            })
+          )
+          .max(96),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.updateDayAvailability(ctx.userId, input)),
   createManualBlock: protectedProcedure
     .input(
       z.object({
@@ -123,6 +167,16 @@ export const plannerRouter = router({
       })
     )
     .mutation(({ ctx, input }) => plannerService.createManualBlock(ctx.userId, input)),
+  createManualCategoryBlock: protectedProcedure
+    .input(
+      z.object({
+        date: z.iso.date(),
+        category: z.enum(planningCategories),
+        startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+        endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
+      })
+    )
+    .mutation(({ ctx, input }) => plannerService.createManualCategoryBlock(ctx.userId, input)),
   updateBlockTime: protectedProcedure
     .input(
       z.object({
@@ -152,7 +206,12 @@ export const plannerRouter = router({
   acceptDraft: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
     .mutation(({ ctx, input }) => plannerService.acceptDraft(ctx.userId, input.date)),
-  generateDraft: protectedProcedure
+  clearDayPlan: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
-    .mutation(({ ctx, input }) => plannerService.generateDraft(ctx.userId, input.date)),
+    .mutation(({ ctx, input }) => plannerService.clearDayPlan(ctx.userId, input.date)),
+  generateDraft: protectedProcedure
+    .input(z.object({ date: z.iso.date(), options: generatorOptions.optional() }))
+    .mutation(({ ctx, input }) =>
+      plannerService.generateDraft(ctx.userId, input.date, input.options)
+    ),
 });

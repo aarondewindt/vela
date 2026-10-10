@@ -13,29 +13,30 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String 
-  emailVerified Boolean   @default(false)
-  image         String?
-  timezone      String    @default("Europe/Amsterdam") @db.VarChar(64)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  sessions      Session[]
-  accounts      Account[]
-  themes        Theme[]
-  locations     Location[]
-  tasks         Task[]
-  savedViews    SavedView[]
-  taskDependencies TaskDependency[]
-  taskOccurrences TaskOccurrence[]
-  dailyPlans    DailyPlan[]
-  dailyBlocks   DailyBlock[]
-  dayOverrides  DayOverride[]
-  calendarEvents CalendarEvent[]
-  checkins      Checkin[]
-  automationRuns AutomationRun[]
+  id                  String               @id
+  name                String
+  email               String
+  emailVerified       Boolean              @default(false)
+  image               String?
+  timezone            String               @default("Europe/Amsterdam") @db.VarChar(64)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sessions            Session[]
+  accounts            Account[]
+  themes              Theme[]
+  locations           Location[]
+  tasks               Task[]
+  savedViews          SavedView[]
+  taskDependencies    TaskDependency[]
+  taskOccurrences     TaskOccurrence[]
+  dailyPlans          DailyPlan[]
+  dailyBlocks         DailyBlock[]
+  dayOverrides        DayOverride[]
+  calendarEvents      CalendarEvent[]
+  checkins            Checkin[]
+  automationRuns      AutomationRun[]
   availabilityWindows AvailabilityWindow[]
+  plannerGenerationSettings PlannerGenerationSettings?
 
   @@unique([email])
   @@map("user")
@@ -111,6 +112,13 @@ enum TaskStatus {
   IN_PROGRESS
   DONE
   ARCHIVED
+}
+
+enum PlanningCategory {
+  WORK
+  LIFE
+  LEISURE
+  REST
 }
 
 enum DependencyType {
@@ -199,6 +207,7 @@ model Theme {
   brief     String?
   content   Json?    @db.JsonB
   color     String?  @db.VarChar(32)
+  category  PlanningCategory @default(WORK)
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
@@ -208,6 +217,21 @@ model Theme {
   @@unique([userId, name])
   @@index([userId])
   @@map("themes")
+}
+
+model PlannerGenerationSettings {
+  userId             String   @id
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workSessionMinutes Int      @default(90)
+  shortBreakMinutes  Int      @default(15)
+  leisureMinutes     Int      @default(60)
+  shortLeisureBlockMinutes Int @default(30)
+  maxLeisureBlockMinutes   Int @default(90)
+  fillExistingPlan   Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("planner_generation_settings")
 }
 
 model SavedView {
@@ -226,19 +250,19 @@ model SavedView {
 }
 
 model Location {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String   @db.VarChar(120)
-  brief       String?
-  content     Json?    @db.JsonB
-  timezone    String?  @db.VarChar(64)
-  latitude    Decimal? @db.Decimal(9, 6)
-  longitude   Decimal? @db.Decimal(9, 6)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tasks       Task[]
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String        @db.VarChar(120)
+  brief        String?
+  content      Json?         @db.JsonB
+  timezone     String?       @db.VarChar(64)
+  latitude     Decimal?      @db.Decimal(9, 6)
+  longitude    Decimal?      @db.Decimal(9, 6)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  tasks        Task[]
   dayOverrides DayOverride[]
 
   @@unique([userId, name])
@@ -247,31 +271,32 @@ model Location {
 }
 
 model Task {
-  id              String      @id @default(uuid()) @db.Uuid
-  userId          String
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  themeId         String?     @db.Uuid
-  theme           Theme?      @relation(fields: [themeId], references: [id], onDelete: SetNull)
-  locationId      String?     @db.Uuid
-  location        Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  title           String      @db.VarChar(240)
-  brief           String?
-  content         Json?       @db.JsonB
-  priority        Int         @default(3)
-  size            Int         @default(3)
-  status          TaskStatus  @default(BACKLOG)
-  firstStep       String?
-  dueDate         DateTime?   @db.Date
-  tags            String[]    @default([])
-  earliestStartAt DateTime?
+  id               String     @id @default(uuid()) @db.Uuid
+  userId           String
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  themeId          String?    @db.Uuid
+  theme            Theme?     @relation(fields: [themeId], references: [id], onDelete: SetNull)
+  category         PlanningCategory?
+  locationId       String?    @db.Uuid
+  location         Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  title            String     @db.VarChar(240)
+  brief            String?
+  content          Json?      @db.JsonB
+  priority         Int        @default(3)
+  size             Int        @default(3)
+  status           TaskStatus @default(BACKLOG)
+  firstStep        String?
+  dueDate          DateTime?  @db.Date
+  tags             String[]   @default([])
+  earliestStartAt  DateTime?
   estimatedMinutes Int?
-  leadTimeDays    Int?
-  isRecurring     Boolean     @default(false)
-  recurrenceRule  String?
-  recurrenceTz    String?     @db.VarChar(64)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  archivedAt      DateTime?
+  leadTimeDays     Int?
+  isRecurring      Boolean    @default(false)
+  recurrenceRule   String?
+  recurrenceTz     String?    @db.VarChar(64)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  archivedAt       DateTime?
 
   dependenciesBlocking  TaskDependency[] @relation("TaskBlocked")
   dependenciesDependsOn TaskDependency[] @relation("TaskDependsOn")
@@ -364,6 +389,9 @@ model DailyBlock {
   plan             DailyPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
   taskOccurrenceId String?         @db.Uuid
   taskOccurrence   TaskOccurrence? @relation(fields: [taskOccurrenceId], references: [id], onDelete: SetNull)
+  calendarEventId  String?         @db.Uuid
+  calendarEvent    CalendarEvent?  @relation(fields: [calendarEventId], references: [id], onDelete: SetNull)
+  category         PlanningCategory?
   title            String          @db.VarChar(240)
   brief            String?
   content          Json?           @db.JsonB
@@ -382,6 +410,7 @@ model DailyBlock {
   @@index([userId])
   @@index([planId])
   @@index([taskOccurrenceId])
+  @@index([calendarEventId])
   @@index([userId, startsAt])
   @@index([planId, position])
   @@index([planId, startsAt])
@@ -389,26 +418,40 @@ model DailyBlock {
 }
 
 model DayOverride {
-  id              String      @id @default(uuid()) @db.Uuid
-  userId          String
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  overrideDate    DateTime    @db.Date
-  workMode        DayWorkMode @default(CUSTOM)
-  startTime       DateTime?   @db.Time(6)
-  endTime         DateTime?   @db.Time(6)
-  capacityMinutes Int?
-  locationId      String?     @db.Uuid
-  location        Location?   @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  brief           String?
-  content         Json?       @db.JsonB
-  source          String      @default("manual") @db.VarChar(64)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                  String                   @id @default(uuid()) @db.Uuid
+  userId              String
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  overrideDate        DateTime                 @db.Date
+  workMode            DayWorkMode              @default(CUSTOM)
+  startTime           DateTime?                @db.Time(6)
+  endTime             DateTime?                @db.Time(6)
+  capacityMinutes     Int?
+  locationId          String?                  @db.Uuid
+  location            Location?                @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  brief               String?
+  content             Json?                    @db.JsonB
+  source              String                   @default("manual") @db.VarChar(64)
+  availabilityWindows DateAvailabilityWindow[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 
   @@unique([userId, overrideDate])
   @@index([userId])
   @@index([locationId])
   @@map("day_overrides")
+}
+
+model DateAvailabilityWindow {
+  id            String      @id @default(uuid()) @db.Uuid
+  dayOverrideId String      @db.Uuid
+  dayOverride   DayOverride @relation(fields: [dayOverrideId], references: [id], onDelete: Cascade)
+  startMinute   Int
+  endMinute     Int
+  createdAt     DateTime    @default(now())
+
+  @@unique([dayOverrideId, startMinute, endMinute])
+  @@index([dayOverrideId])
+  @@map("date_availability_windows")
 }
 
 model CalendarEvent {
@@ -428,6 +471,7 @@ model CalendarEvent {
   ownershipMarker    String?             @db.VarChar(120)
   rawPayload         Json?               @db.JsonB
   syncedAt           DateTime?
+  dailyBlocks        DailyBlock[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
@@ -439,24 +483,24 @@ model CalendarEvent {
 }
 
 model Checkin {
-  id               String          @id @default(uuid()) @db.Uuid
-  userId           String
-  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  planId           String?         @db.Uuid
-  plan             DailyPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
-  taskOccurrenceId String?         @db.Uuid
-  taskOccurrence   TaskOccurrence? @relation(fields: [taskOccurrenceId], references: [id], onDelete: SetNull)
-  blockId          String?         @db.Uuid
-  block            DailyBlock?     @relation(fields: [blockId], references: [id], onDelete: SetNull)
-  checkinAt        DateTime        @default(now())
-  energyLevel      Int?
-  focusLevel       Int?
-  moodLevel        Int?
-  brief            String?
-  content          Json?           @db.JsonB
-  commandText      String?
-  parsedCommandJson Json?          @db.JsonB
-  applied          Boolean         @default(false)
+  id                String          @id @default(uuid()) @db.Uuid
+  userId            String
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId            String?         @db.Uuid
+  plan              DailyPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  taskOccurrenceId  String?         @db.Uuid
+  taskOccurrence    TaskOccurrence? @relation(fields: [taskOccurrenceId], references: [id], onDelete: SetNull)
+  blockId           String?         @db.Uuid
+  block             DailyBlock?     @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  checkinAt         DateTime        @default(now())
+  energyLevel       Int?
+  focusLevel        Int?
+  moodLevel         Int?
+  brief             String?
+  content           Json?           @db.JsonB
+  commandText       String?
+  parsedCommandJson Json?           @db.JsonB
+  applied           Boolean         @default(false)
 
   @@index([userId])
   @@index([planId])

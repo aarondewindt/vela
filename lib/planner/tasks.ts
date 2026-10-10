@@ -5,6 +5,16 @@ export const TASKS_SCOPE = 'tasks';
 export const taskStatuses = ['BACKLOG', 'PAUSED', 'IN_PROGRESS', 'DONE', 'ARCHIVED'] as const;
 export type TaskStatusValue = (typeof taskStatuses)[number];
 
+export const planningCategories = ['WORK', 'LIFE', 'LEISURE', 'REST'] as const;
+export type PlanningCategoryValue = (typeof planningCategories)[number];
+
+export const planningCategoryLabels: Record<PlanningCategoryValue, string> = {
+  WORK: 'Work',
+  LIFE: 'Life',
+  LEISURE: 'Leisure',
+  REST: 'Rest',
+};
+
 export const taskStatusLabels: Record<TaskStatusValue, string> = {
   BACKLOG: 'Backlog',
   PAUSED: 'Paused',
@@ -54,6 +64,7 @@ export type TaskRow = {
   scheduledDate: Date | null;
   estimatedMinutes: number | null;
   themeId: string | null;
+  category: PlanningCategoryValue | null;
   tags: string[];
   createdAt: Date;
   updatedAt: Date;
@@ -64,6 +75,7 @@ export type ThemeRow = {
   name: string;
   brief: string | null;
   color: string | null;
+  category: PlanningCategoryValue;
   isActive: boolean;
   sortOrder: number;
   createdAt: Date;
@@ -105,6 +117,13 @@ export function getTaskProperties(themes: ThemeRow[], tags: string[]): PropertyD
     { key: 'scheduledDate', label: 'Scheduled', type: 'date', get: (t) => t.scheduledDate },
     { key: 'estimatedMinutes', label: 'Estimate', type: 'number', get: (t) => t.estimatedMinutes },
     {
+      key: 'category',
+      label: 'Category',
+      type: 'select',
+      get: (t) => t.category,
+      options: planningCategories.map((value) => ({ value, label: planningCategoryLabels[value] })),
+    },
+    {
       key: 'theme',
       label: 'Theme',
       type: 'select',
@@ -128,6 +147,7 @@ export function getTaskProperties(themes: ThemeRow[], tags: string[]): PropertyD
 const defaultVisible = [
   'brief',
   'status',
+  'category',
   'priority',
   'size',
   'dueDate',

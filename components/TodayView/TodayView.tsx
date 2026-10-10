@@ -1,14 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   Alert,
   Badge,
   Button,
+  Checkbox,
   Collapse,
   Group,
   Modal,
+  NumberInput,
   Paper,
   Select,
   SegmentedControl,
@@ -24,6 +26,7 @@ import {
   IconCheck,
   IconChevronLeft,
   IconChevronRight,
+  IconClock,
   IconList,
   IconPlus,
   IconSparkles,
@@ -33,21 +36,42 @@ import {
 import {
   useApplyStandardAvailabilityMutation,
   useAcceptDraftMutation,
+  useClearDayPlanMutation,
   useCreateManualBlockMutation,
+  useCreateManualCategoryBlockMutation,
   useDayDataQuery,
   useGenerateDraftMutation,
+  useGeneratorSettingsQuery,
   useRemoveBlockFromDayMutation,
   useTasksQuery,
   useThemesQuery,
   useUnskipBlockMutation,
+  useUpdateDayAvailabilityMutation,
   useUpdateBlockOutcomeMutation,
   useUpdateBlockTimeMutation,
+  useSaveGeneratorSettingsMutation,
 } from '@/lib/planner/query';
 import { usePlannerStore } from '@/lib/planner/store';
-import { taskStatusLabels } from '@/lib/planner/tasks';
+import {
+  planningCategories,
+  planningCategoryLabels,
+  taskStatusLabels,
+} from '@/lib/planner/tasks';
+import { DEFAULT_GENERATOR_OPTIONS, type GeneratorOptions } from '@/lib/planner/scheduling';
 import classes from './TodayView.module.css';
 
-type PlannerMode = 'day' | 'agenda';
+type PlannerMode = 'day' | 'agenda' | 'availability';
+type AvailabilityDraft = { key: string; startMinute: number; endMinute: number };
+
+const availabilityTimeOptions = Array.from({ length: 97 }, (_, index) => {
+  const minute = index * 15;
+  const hourLabel = String(Math.floor(minute / 60)).padStart(2, '0');
+  const minuteLabel = String(minute % 60).padStart(2, '0');
+  return {
+    value: String(minute),
+    label: minute === 1440 ? '24:00' : `${hourLabel}:${minuteLabel}`,
+  };
+});
 
 function dateFromPicker(value: Date | null) {
   if (!value) return null;
@@ -88,6 +112,42 @@ function formatTime(value: Date | string, timezone: string) {
     hourCycle: 'h23',
     timeZone: timezone,
   }).format(new Date(value));
+}
+
+function minuteOfDay(value: Date, timezone: string) {
+  const local = localDateTime(value, timezone);
+  const [hour, minute] = local.slice(11, 16).split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function getAvailabilityDraft(
+  date: string,
+  timezone: string,
+  windows: { start: Date; end: Date }[]
+): AvailabilityDraft[] {
+  const nextDay = shiftDate(date, 1);
+  return windows.map(({ start, end }, index) => {
+    const localEnd = localDateTime(end, timezone);
+    const endMinute = localEnd.slice(0, 10) === nextDay ? 1440 : minuteOfDay(end, timezone);
+    return {
+      key: `${start.getTime()}-${end.getTime()}-${index}`,
+      startMinute: minuteOfDay(start, timezone),
+      endMinute,
+    };
+  });
+}
+
+function findFreeAvailabilitySlot(windows: AvailabilityDraft[]) {
+  for (const duration of [60, 15]) {
+    for (let startMinute = 8 * 60; startMinute + duration <= 1440; startMinute += 15) {
+      const endMinute = startMinute + duration;
+      const overlaps = windows.some(
+        (window) => startMinute < window.endMinute && endMinute > window.startMinute
+      );
+      if (!overlaps) return { startMinute, endMinute };
+    }
+  }
+  return null;
 }
 
 function formatSelectedDate(value: string) {
@@ -195,9 +255,14 @@ export function TodayView() {
   const tasksQuery = useTasksQuery();
   const themesQuery = useThemesQuery();
   const generateDraft = useGenerateDraftMutation();
+  const generatorSettingsQuery = useGeneratorSettingsQuery();
+  const saveGeneratorSettings = useSaveGeneratorSettingsMutation();
   const acceptDraft = useAcceptDraftMutation();
+  const clearDayPlan = useClearDayPlanMutation();
   const applyStandardAvailability = useApplyStandardAvailabilityMutation();
+  const updateDayAvailability = useUpdateDayAvailabilityMutation();
   const createBlock = useCreateManualBlockMutation();
+  const createCategoryBlock = useCreateManualCategoryBlockMutation();
   const updateBlockTime = useUpdateBlockTimeMutation();
   const updateOutcome = useUpdateBlockOutcomeMutation();
   const removeBlock = useRemoveBlockFromDayMutation();
@@ -206,10 +271,24 @@ export function TodayView() {
   const [mode, setMode] = useState<PlannerMode>('day');
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
+  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityDraft[]>([]);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [addCategoryBlockOpen, setAddCategoryBlockOpen] = useState(false);
+  const [categoryBlockCategory, setCategoryBlockCategory] = useState<string>('LEISURE');
+  const [categoryBlockStart, setCategoryBlockStart] = useState('09:00');
+  const [categoryBlockEnd, setCategoryBlockEnd] = useState('10:00');
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [startAt, setStartAt] = useState('09:00');
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [clearPlanOpen, setClearPlanOpen] = useState(false);
+  const [generatorDraft, setGeneratorDraft] = useState<GeneratorOptions>(DEFAULT_GENERATOR_OPTIONS);
+
+  useEffect(() => {
+    if (generatorSettingsQuery.data) {
+      setGeneratorDraft(generatorSettingsQuery.data);
+    }
+  }, [generatorSettingsQuery.data]);
 
   const dayData = dayQuery.data;
   const plan = dayData?.plan;
@@ -225,6 +304,34 @@ export function TodayView() {
   );
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId) ?? null;
   const hasAvailability = (dayData?.availability.length ?? 0) > 0;
+  const orderedAvailabilityDraft = [...availabilityDraft].sort(
+    (a, b) => a.startMinute - b.startMinute
+  );
+  const availabilityDraftError = orderedAvailabilityDraft.some(
+    (window, index) =>
+      window.startMinute < 0 ||
+      window.startMinute >= window.endMinute ||
+      window.endMinute > 1440 ||
+      window.startMinute % 15 !== 0 ||
+      window.endMinute % 15 !== 0 ||
+      (index > 0 && window.startMinute < orderedAvailabilityDraft[index - 1].endMinute)
+  );
+  const generatorDraftError =
+    generatorDraft.workSessionMinutes < 15 ||
+    generatorDraft.workSessionMinutes > 240 ||
+    generatorDraft.workSessionMinutes % 15 !== 0 ||
+    generatorDraft.shortBreakMinutes < 5 ||
+    generatorDraft.shortBreakMinutes > 60 ||
+    generatorDraft.shortBreakMinutes % 5 !== 0 ||
+    generatorDraft.leisureMinutes < 0 ||
+    generatorDraft.leisureMinutes > 240 ||
+    generatorDraft.leisureMinutes % 15 !== 0 ||
+    generatorDraft.shortLeisureBlockMinutes < 15 ||
+    generatorDraft.shortLeisureBlockMinutes > 120 ||
+    generatorDraft.shortLeisureBlockMinutes % 15 !== 0 ||
+    generatorDraft.maxLeisureBlockMinutes < generatorDraft.shortLeisureBlockMinutes ||
+    generatorDraft.maxLeisureBlockMinutes > 240 ||
+    generatorDraft.maxLeisureBlockMinutes % 15 !== 0;
   const busyEvents = (dayData?.events ?? []).filter((event) => event.isBusy);
 
   const scheduleEvents = useMemo<ScheduleEventData[]>(() => {
@@ -235,13 +342,28 @@ export function TodayView() {
       title: block.title,
       start: localDateTime(block.startsAt, timezone),
       end: localDateTime(block.endsAt, timezone),
-      color:
-        themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')?.color ??
-        'gray',
+      color: block.calendarEventId
+        ? block.calendarEvent?.isBusy
+          ? 'red'
+          : 'gray'
+        : block.category === 'REST'
+          ? 'cyan'
+          : block.category === 'LEISURE'
+            ? 'green'
+            : themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
+                ?.color ?? 'gray',
       variant: 'light' as const,
-      payload: { kind: 'block', blockId: block.id, status: block.status },
+      display: block.calendarEventId && block.calendarEvent?.isBusy ? ('background' as const) : undefined,
+      payload: block.calendarEventId
+        ? { kind: 'calendar', isBusy: Boolean(block.calendarEvent?.isBusy) }
+        : { kind: 'block', blockId: block.id, status: block.status },
     }));
-    const calendarEvents = (dayData?.events ?? []).map((event) => ({
+    const linkedEventIds = new Set(
+      (dayData?.plan?.dailyBlocks ?? []).flatMap((block) =>
+        block.calendarEventId ? [block.calendarEventId] : []
+      )
+    );
+    const calendarEvents = (dayData?.events ?? []).filter((event) => !linkedEventIds.has(event.id)).map((event) => ({
       id: `calendar-${event.id}`,
       title: event.title,
       start: localDateTime(event.startsAt, timezone),
@@ -257,10 +379,15 @@ export function TodayView() {
   const error =
     dayQuery.error ??
     tasksQuery.error ??
+    generatorSettingsQuery.error ??
     generateDraft.error ??
+    saveGeneratorSettings.error ??
     acceptDraft.error ??
+    clearDayPlan.error ??
     applyStandardAvailability.error ??
+    updateDayAvailability.error ??
     createBlock.error ??
+    createCategoryBlock.error ??
     updateBlockTime.error ??
     updateOutcome.error ??
     removeBlock.error ??
@@ -270,6 +397,35 @@ export function TodayView() {
     setSelectedTaskId(null);
     setStartAt(time ?? '09:00');
     setAddTaskOpen(true);
+  };
+
+  const changeSelectedDate = (date: string) => {
+    setMode('day');
+    setSelectedDate(date);
+  };
+
+  const editAvailability = () => {
+    setAvailabilityDraft(getAvailabilityDraft(selectedDate, timezone, dayData?.availability ?? []));
+    setMode('availability');
+  };
+
+  const updateAvailabilityDraft = (
+    key: string,
+    field: 'startMinute' | 'endMinute',
+    value: string | null
+  ) => {
+    if (value === null) return;
+    setAvailabilityDraft((current) =>
+      current.map((window) => (window.key === key ? { ...window, [field]: Number(value) } : window))
+    );
+  };
+
+  const updateGeneratorDraft = (field: keyof GeneratorOptions, value: number | string) => {
+    const parsed = Number(value);
+    setGeneratorDraft((current) => ({
+      ...current,
+      [field]: Number.isFinite(parsed) ? parsed : 0,
+    }));
   };
 
   const addTaskAt = (taskId: string, startsAt: string) => {
@@ -349,7 +505,8 @@ export function TodayView() {
             <ActionIcon
               aria-label="Previous day"
               variant="default"
-              onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}
+              disabled={mode === 'availability'}
+              onClick={() => changeSelectedDate(shiftDate(selectedDate, -1))}
             >
               <IconChevronLeft size={16} />
             </ActionIcon>
@@ -357,8 +514,9 @@ export function TodayView() {
           <DatePickerInput
             aria-label="Planning date"
             value={selectedDate}
+            disabled={mode === 'availability'}
             onChange={(value) => {
-              if (value) setSelectedDate(value);
+              if (value) changeSelectedDate(value);
             }}
             valueFormat="ddd, MMM D"
             size="sm"
@@ -370,7 +528,8 @@ export function TodayView() {
             <ActionIcon
               aria-label="Next day"
               variant="default"
-              onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
+              disabled={mode === 'availability'}
+              onClick={() => changeSelectedDate(shiftDate(selectedDate, 1))}
             >
               <IconChevronRight size={16} />
             </ActionIcon>
@@ -378,7 +537,8 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
-            onClick={() => setSelectedDate(currentDateInTimezone(timezone))}
+            disabled={mode === 'availability'}
+            onClick={() => changeSelectedDate(currentDateInTimezone(timezone))}
           >
             Today
           </Button>
@@ -400,12 +560,9 @@ export function TodayView() {
         >
           <Group justify="space-between" align="center" wrap="wrap">
             <Text size="sm">
-              You can still add tasks manually. Set standard hours to enable automatic draft
-              planning.
+              You can still add tasks manually. Set standard hours or edit availability to enable
+              automatic draft planning.
             </Text>
-            <Button size="xs" variant="light" onClick={() => setAvailabilityOpen(true)}>
-              Set standard hours
-            </Button>
           </Group>
         </Alert>
       )}
@@ -413,7 +570,11 @@ export function TodayView() {
       <Group justify="space-between" align="center" wrap="wrap" gap="sm">
         <SegmentedControl
           value={mode}
-          onChange={(value) => setMode(value as PlannerMode)}
+          onChange={(value) => {
+            if (mode === 'availability') return;
+            if (value === 'availability') editAvailability();
+            else setMode(value as PlannerMode);
+          }}
           data={[
             {
               label: (
@@ -433,6 +594,15 @@ export function TodayView() {
               ),
               value: 'agenda',
             },
+            {
+              label: (
+                <Group gap={6} wrap="nowrap">
+                  <IconClock size={14} />
+                  Edit availability
+                </Group>
+              ),
+              value: 'availability',
+            },
           ]}
           size="xs"
         />
@@ -440,6 +610,15 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
+            disabled={mode === 'availability'}
+            onClick={() => setAvailabilityOpen(true)}
+          >
+            Standard hours
+          </Button>
+          <Button
+            size="xs"
+            variant="default"
+            disabled={mode === 'availability'}
             leftSection={<IconPlus size={14} />}
             onClick={() => {
               setBacklogOpen((open) => !open);
@@ -450,10 +629,18 @@ export function TodayView() {
           </Button>
           <Button
             size="xs"
+            variant="default"
+            disabled={mode === 'availability'}
+            onClick={() => setAddCategoryBlockOpen(true)}
+          >
+            Add category block
+          </Button>
+          <Button
+            size="xs"
             leftSection={<IconSparkles size={14} />}
             loading={generateDraft.isPending}
-            disabled={!hasAvailability}
-            onClick={() => generateDraft.mutate({ date: selectedDate })}
+            disabled={!hasAvailability || mode === 'availability'}
+            onClick={() => setGeneratorOpen(true)}
           >
             Generate draft
           </Button>
@@ -463,15 +650,29 @@ export function TodayView() {
               color="teal"
               leftSection={<IconCheck size={14} />}
               loading={acceptDraft.isPending}
+              disabled={mode === 'availability'}
               onClick={() => acceptDraft.mutate({ date: selectedDate })}
             >
               Accept draft
             </Button>
           )}
+          {plan && (
+            <Tooltip label="Clear this day's plan">
+              <ActionIcon
+                aria-label="Clear this day's plan"
+                variant="default"
+                color="red"
+                disabled={mode === 'availability'}
+                onClick={() => setClearPlanOpen(true)}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
       </Group>
 
-      <Collapse expanded={backlogOpen}>
+      <Collapse expanded={backlogOpen && mode !== 'availability'}>
         <Paper withBorder p="sm" radius="sm" className={classes.backlog}>
           <Group justify="space-between" mb="xs">
             <Text fw={600} size="sm">
@@ -508,6 +709,7 @@ export function TodayView() {
                       aria-label={`Add ${task.title} to the plan`}
                       variant="subtle"
                       color="teal"
+                      disabled={mode === 'availability'}
                       loading={createBlock.isPending && createBlock.variables?.taskId === task.id}
                       onClick={() => addToNextSlot(task)}
                     >
@@ -522,7 +724,123 @@ export function TodayView() {
       </Collapse>
 
       <Paper radius="sm" className={classes.scheduleSurface}>
-        {mode === 'day' ? (
+        {mode === 'availability' ? (
+          <Stack p="sm" gap="sm">
+            <Group justify="space-between" align="center" wrap="wrap">
+              <div>
+                <Text fw={600} size="sm">
+                  Availability for this day
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Changes apply to {formatSelectedDate(selectedDate)} only.
+                </Text>
+              </div>
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<IconPlus size={14} />}
+                disabled={
+                  availabilityDraft.length >= 96 || !findFreeAvailabilitySlot(availabilityDraft)
+                }
+                onClick={() => {
+                  const slot = findFreeAvailabilitySlot(availabilityDraft);
+                  if (slot) {
+                    setAvailabilityDraft((current) => [
+                      ...current,
+                      { ...slot, key: `new-${Date.now()}-${current.length}` },
+                    ]);
+                  }
+                }}
+              >
+                Add slot
+              </Button>
+            </Group>
+            {availabilityDraft.length === 0 ? (
+              <Text size="sm" c="dimmed">
+                No slots yet.
+              </Text>
+            ) : (
+              <Stack gap="xs">
+                {availabilityDraft.map((window, index) => (
+                  <Group key={window.key} wrap="nowrap" align="flex-end" gap="xs">
+                    <Select
+                      label={index === 0 ? 'Start' : undefined}
+                      aria-label={`Start time for slot ${index + 1}`}
+                      data={availabilityTimeOptions.slice(0, -1)}
+                      value={String(window.startMinute)}
+                      onChange={(value) =>
+                        updateAvailabilityDraft(window.key, 'startMinute', value)
+                      }
+                      searchable
+                      nothingFoundMessage="No time found"
+                      style={{ flex: 1 }}
+                    />
+                    <Text size="sm" pb={9} c="dimmed">
+                      to
+                    </Text>
+                    <Select
+                      label={index === 0 ? 'End' : undefined}
+                      aria-label={`End time for slot ${index + 1}`}
+                      data={availabilityTimeOptions.slice(1)}
+                      value={String(window.endMinute)}
+                      onChange={(value) => updateAvailabilityDraft(window.key, 'endMinute', value)}
+                      searchable
+                      nothingFoundMessage="No time found"
+                      style={{ flex: 1 }}
+                    />
+                    <Tooltip label="Remove slot">
+                      <ActionIcon
+                        aria-label={`Remove slot ${index + 1}`}
+                        variant="subtle"
+                        color="red"
+                        mb={4}
+                        onClick={() =>
+                          setAvailabilityDraft((current) =>
+                            current.filter((item) => item.key !== window.key)
+                          )
+                        }
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                ))}
+              </Stack>
+            )}
+            {availabilityDraftError && (
+              <Text size="xs" c="red" role="alert">
+                Slots must be at least 15 minutes, use 15-minute increments, and not overlap.
+              </Text>
+            )}
+            <Group justify="flex-end" mt="xs">
+              <Button
+                variant="default"
+                disabled={updateDayAvailability.isPending}
+                onClick={() => setMode('day')}
+              >
+                Cancel
+              </Button>
+              <Button
+                loading={updateDayAvailability.isPending}
+                disabled={availabilityDraftError}
+                onClick={() =>
+                  updateDayAvailability.mutate(
+                    {
+                      date: selectedDate,
+                      windows: orderedAvailabilityDraft.map(({ startMinute, endMinute }) => ({
+                        startMinute,
+                        endMinute,
+                      })),
+                    },
+                    { onSuccess: () => setMode('day') }
+                  )
+                }
+              >
+                Save
+              </Button>
+            </Group>
+          </Stack>
+        ) : mode === 'day' ? (
           <DayView
             date={selectedDate}
             onDateChange={setSelectedDate}
@@ -617,8 +935,8 @@ export function TodayView() {
       >
         <Stack>
           <Text size="sm" c="dimmed">
-            Weekdays use 18:30–22:30 and weekends use 10:00–18:00. Applying every week replaces your
-            current weekly availability.
+            Standard hours set weekdays to 08:00–08:45, 12:00–13:00, and 17:15–00:00, and weekends
+            to 10:00–00:00. Applying every week replaces your current weekly availability.
           </Text>
           <Button
             variant="default"
@@ -626,7 +944,12 @@ export function TodayView() {
             onClick={() =>
               applyStandardAvailability.mutate(
                 { date: selectedDate, scope: 'date' },
-                { onSuccess: () => setAvailabilityOpen(false) }
+                {
+                  onSuccess: () => {
+                    setAvailabilityOpen(false);
+                    setMode('day');
+                  },
+                }
               )
             }
           >
@@ -637,7 +960,12 @@ export function TodayView() {
             onClick={() =>
               applyStandardAvailability.mutate(
                 { date: selectedDate, scope: 'recurring' },
-                { onSuccess: () => setAvailabilityOpen(false) }
+                {
+                  onSuccess: () => {
+                    setAvailabilityOpen(false);
+                    setMode('day');
+                  },
+                }
               )
             }
           >
@@ -686,6 +1014,200 @@ export function TodayView() {
               }
             >
               Add to plan
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={generatorOpen}
+        onClose={() => setGeneratorOpen(false)}
+        title="Generate day plan"
+        centered
+        size="sm"
+      >
+        <Stack>
+          <NumberInput
+            label="Maximum work session"
+            suffix=" min"
+            min={15}
+            max={240}
+            step={15}
+            allowDecimal={false}
+            value={generatorDraft.workSessionMinutes}
+            onChange={(value) => updateGeneratorDraft('workSessionMinutes', value)}
+          />
+          <NumberInput
+            label="Short break"
+            suffix=" min"
+            min={5}
+            max={60}
+            step={5}
+            allowDecimal={false}
+            value={generatorDraft.shortBreakMinutes}
+            onChange={(value) => updateGeneratorDraft('shortBreakMinutes', value)}
+          />
+          <NumberInput
+            label="Leisure time"
+            suffix=" min"
+            min={0}
+            max={240}
+            step={15}
+            allowDecimal={false}
+            value={generatorDraft.leisureMinutes}
+            onChange={(value) => updateGeneratorDraft('leisureMinutes', value)}
+          />
+          <NumberInput
+            label="Short leisure block"
+            suffix=" min"
+            min={15}
+            max={120}
+            step={15}
+            allowDecimal={false}
+            value={generatorDraft.shortLeisureBlockMinutes}
+            onChange={(value) => updateGeneratorDraft('shortLeisureBlockMinutes', value)}
+          />
+          <NumberInput
+            label="Maximum leisure block"
+            suffix=" min"
+            min={15}
+            max={240}
+            step={15}
+            allowDecimal={false}
+            value={generatorDraft.maxLeisureBlockMinutes}
+            onChange={(value) => updateGeneratorDraft('maxLeisureBlockMinutes', value)}
+          />
+          <Checkbox
+            label="Fill open time in the current day plan"
+            checked={generatorDraft.fillExistingPlan}
+            onChange={(event) =>
+              setGeneratorDraft((current) => ({
+                ...current,
+                fillExistingPlan: event.currentTarget.checked,
+              }))
+            }
+          />
+          <Group justify="space-between">
+            <Button
+              variant="default"
+              loading={saveGeneratorSettings.isPending}
+              disabled={generatorDraftError}
+              onClick={() => saveGeneratorSettings.mutate(generatorDraft)}
+            >
+              Save as default
+            </Button>
+            <Group gap="xs">
+              <Button variant="subtle" onClick={() => setGeneratorOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                loading={generateDraft.isPending}
+                disabled={!hasAvailability || generatorSettingsQuery.isPending || generatorDraftError}
+                onClick={() =>
+                  generateDraft.mutate(
+                    { date: selectedDate, options: generatorDraft },
+                    { onSuccess: () => setGeneratorOpen(false) }
+                  )
+                }
+              >
+                Generate
+              </Button>
+            </Group>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={addCategoryBlockOpen}
+        onClose={() => setAddCategoryBlockOpen(false)}
+        title="Add category block"
+        centered
+        size="sm"
+      >
+        <Stack>
+          <Select
+            label="Category"
+            value={categoryBlockCategory}
+            data={planningCategories.map((category) => ({
+              value: category,
+              label: planningCategoryLabels[category],
+            }))}
+            onChange={(value) => value && setCategoryBlockCategory(value)}
+          />
+          <Select
+            label="Start time"
+            data={Array.from({ length: 72 }, (_, index) => {
+              const total = 6 * 60 + index * 15;
+              const time = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+              return { value: time, label: time };
+            })}
+            value={categoryBlockStart}
+            onChange={(value) => value && setCategoryBlockStart(value)}
+            searchable
+          />
+          <Select
+            label="End time"
+            data={Array.from({ length: 72 }, (_, index) => {
+              const total = 6 * 60 + (index + 1) * 15;
+              const time = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+              return { value: time, label: time };
+            })}
+            value={categoryBlockEnd}
+            onChange={(value) => value && setCategoryBlockEnd(value)}
+            searchable
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setAddCategoryBlockOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              loading={createCategoryBlock.isPending}
+              disabled={categoryBlockEnd <= categoryBlockStart}
+              onClick={() =>
+                createCategoryBlock.mutate(
+                  {
+                    date: selectedDate,
+                    category: categoryBlockCategory as (typeof planningCategories)[number],
+                    startsAt: `${selectedDate} ${categoryBlockStart}:00`,
+                    endsAt: `${selectedDate} ${categoryBlockEnd}:00`,
+                  },
+                  { onSuccess: () => setAddCategoryBlockOpen(false) }
+                )
+              }
+            >
+              Add block
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={clearPlanOpen}
+        onClose={() => setClearPlanOpen(false)}
+        title="Clear this day plan?"
+        centered
+        size="sm"
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Planned blocks will be removed and unfinished tasks returned to the task list. Calendar
+            events and tasks themselves will not be deleted.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setClearPlanOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              loading={clearDayPlan.isPending}
+              onClick={() =>
+                clearDayPlan.mutate(
+                  { date: selectedDate },
+                  { onSuccess: () => setClearPlanOpen(false) }
+                )
+              }
+            >
+              Clear plan
             </Button>
           </Group>
         </Stack>
@@ -768,23 +1290,25 @@ export function TodayView() {
                 >
                   Done for now
                 </Button>
-                <Button
-                  disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-                  loading={updateOutcome.isPending}
-                  onClick={() =>
-                    updateOutcome.mutate(
-                      {
-                        date: selectedDate,
-                        blockId: selectedBlock.id,
-                        outcome: 'DONE',
-                        completeTask: true,
-                      },
-                      { onSuccess: () => setSelectedBlockId(null) }
-                    )
-                  }
-                >
-                  Complete task
-                </Button>
+                {selectedBlock.taskOccurrenceId && (
+                  <Button
+                    disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
+                    loading={updateOutcome.isPending}
+                    onClick={() =>
+                      updateOutcome.mutate(
+                        {
+                          date: selectedDate,
+                          blockId: selectedBlock.id,
+                          outcome: 'DONE',
+                          completeTask: true,
+                        },
+                        { onSuccess: () => setSelectedBlockId(null) }
+                      )
+                    }
+                  >
+                    Complete task
+                  </Button>
+                )}
               </Group>
             </Group>
           </Stack>

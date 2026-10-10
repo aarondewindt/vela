@@ -24,6 +24,7 @@ import {
   taskStatusColors,
   taskStatusLabels,
   taskSizeLabel,
+  planningCategoryLabels,
   type TaskRow,
   type ThemeRow,
 } from '@/lib/planner/tasks';
@@ -56,6 +57,7 @@ const COLUMNS_KEY = 'tasks-table-columns';
 
 const columnWidths: Record<string, number> = {
   status: 120,
+  category: 110,
   priority: 90,
   size: 80,
   dueDate: 130,
@@ -83,6 +85,7 @@ function buildColumns(
         {taskStatusLabels[t.status]}
       </Badge>
     ),
+    category: (t) => (t.category ? planningCategoryLabels[t.category] : '—'),
     priority: (t) => `P${t.priority}`,
     size: (t) => taskSizeLabel(t.size),
     dueDate: (t) => formatDate(t.dueDate),

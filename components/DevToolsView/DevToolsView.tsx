@@ -21,13 +21,20 @@ import { notifications } from '@mantine/notifications';
 import { IconDatabasePlus, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/auth';
-import { taskSizeLabels, taskSizeValues, taskSizeLabel } from '@/lib/planner/tasks';
+import {
+  planningCategories,
+  planningCategoryLabels,
+  taskSizeLabels,
+  taskSizeValues,
+  taskSizeLabel,
+} from '@/lib/planner/tasks';
 import { trpc } from '@/lib/trpc/client';
 
 const initialGeneration = {
   count: 30,
   priorityWeights: [8, 18, 32, 26, 16],
   sizeWeights: [8, 20, 34, 26, 12],
+  categoryWeights: [50, 25, 15, 10],
   noDueDatePercent: 25,
   dueDateStartDays: -7,
   dueDateEndDays: 45,
@@ -130,7 +137,7 @@ export function DevToolsView() {
   };
 
   const updateWeight = (
-    kind: 'priorityWeights' | 'sizeWeights',
+    kind: 'priorityWeights' | 'sizeWeights' | 'categoryWeights',
     index: number,
     value: number | string
   ) => {
@@ -238,7 +245,7 @@ export function DevToolsView() {
               />
             </SimpleGrid>
 
-            <SimpleGrid cols={{ base: 1, md: 2 }}>
+            <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
               <Stack gap="xs">
                 <Text size="sm" fw={600}>
                   Priority distribution (relative weights)
@@ -278,6 +285,25 @@ export function DevToolsView() {
                       />
                     );
                   })}
+                </SimpleGrid>
+              </Stack>
+              <Stack gap="xs">
+                <Text size="sm" fw={600}>
+                  Category distribution (relative weights)
+                </Text>
+                <SimpleGrid cols={2} spacing="xs">
+                  {planningCategories.map((category, index) => (
+                    <NumberInput
+                      key={category}
+                      aria-label={`${planningCategoryLabels[category]} category weight`}
+                      label={planningCategoryLabels[category]}
+                      min={0}
+                      max={100}
+                      value={generation.categoryWeights[index]}
+                      onChange={(value) => updateWeight('categoryWeights', index, value)}
+                      disabled={disabled}
+                    />
+                  ))}
                 </SimpleGrid>
               </Stack>
             </SimpleGrid>
@@ -356,6 +382,7 @@ export function DevToolsView() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Task</Table.Th>
+                    <Table.Th>Category</Table.Th>
                     <Table.Th>Priority</Table.Th>
                     <Table.Th>Size</Table.Th>
                     <Table.Th>Due date</Table.Th>
@@ -368,6 +395,9 @@ export function DevToolsView() {
                   {(testTasks.data?.tasks ?? []).map((task) => (
                     <Table.Tr key={task.id}>
                       <Table.Td>{task.title}</Table.Td>
+                      <Table.Td>
+                        {task.category ? planningCategoryLabels[task.category] : 'None'}
+                      </Table.Td>
                       <Table.Td>P{task.priority}</Table.Td>
                       <Table.Td>{taskSizeLabel(task.size)}</Table.Td>
                       <Table.Td>{formatDueDate(task.dueDate)}</Table.Td>
@@ -380,7 +410,7 @@ export function DevToolsView() {
                   ))}
                   {!testTasks.isLoading && !testTasks.data?.count && (
                     <Table.Tr>
-                      <Table.Td colSpan={7}>
+                      <Table.Td colSpan={8}>
                         <Text c="dimmed" ta="center" py="md">
                           No test tasks found.
                         </Text>

@@ -119,6 +119,18 @@ export function useDayDataQuery(date: string) {
   return trpc.planner.getDayData.useQuery({ date });
 }
 
+export function useGeneratorSettingsQuery() {
+  return trpc.planner.getGeneratorSettings.useQuery();
+}
+
+export function useSaveGeneratorSettingsMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.saveGeneratorSettings.useMutation({
+    onSuccess: () => utils.planner.getGeneratorSettings.invalidate(),
+  });
+}
+
 export function useApplyStandardAvailabilityMutation() {
   const utils = trpc.useUtils();
 
@@ -127,10 +139,29 @@ export function useApplyStandardAvailabilityMutation() {
   });
 }
 
+export function useUpdateDayAvailabilityMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.updateDayAvailability.useMutation({
+    onSuccess: (_result, { date }) => utils.planner.getDayData.invalidate({ date }),
+  });
+}
+
 export function useCreateManualBlockMutation() {
   const utils = trpc.useUtils();
 
   return trpc.planner.createManualBlock.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
+export function useCreateManualCategoryBlockMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.createManualCategoryBlock.useMutation({
     onSuccess: (_result, { date }) => {
       utils.planner.getDayData.invalidate({ date });
       utils.planner.listTasks.invalidate();
@@ -198,6 +229,18 @@ export function useAcceptDraftMutation() {
     onSuccess: (_result, { date }) => {
       utils.planner.getPlan.invalidate({ date });
       utils.planner.getDayData.invalidate({ date });
+    },
+  });
+}
+
+export function useClearDayPlanMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.clearDayPlan.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getPlan.invalidate({ date });
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
     },
   });
 }
