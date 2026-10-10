@@ -59,11 +59,17 @@ import {
   useUpdateCategorySlotTimeMutation,
 } from '@/lib/planner/query';
 import { usePlannerStore } from '@/lib/planner/store';
-import { planningCategories, planningCategoryLabels, type TaskRow } from '@/lib/planner/tasks';
+import {
+  planningCategories,
+  planningCategoryLabels,
+  type PlanningCategoryValue,
+  type TaskRow,
+} from '@/lib/planner/tasks';
 import { DEFAULT_GENERATOR_OPTIONS, type GeneratorOptions } from '@/lib/planner/scheduling';
 import { useAppShellStore } from '@/store/app_shell_store';
 import { Property, PropertyPanel, ReadOnlyValue } from '../DataView/PropertyPanel';
 import { TaskView } from '../TasksView/TaskView';
+import { CATEGORY_DRAG_TYPE, CategoryPickerPane } from './CategoryPickerPane';
 import { TASK_DRAG_TYPE, TaskPickerPane } from './TaskPickerPane';
 import classes from './TodayView.module.css';
 
@@ -75,6 +81,8 @@ const categoryColors: Record<string, string> = {
   LEISURE: 'green',
   REST: 'cyan',
 };
+
+const DEFAULT_CATEGORY_SLOT_MINUTES = 60;
 
 type PlannerLayer = 'tasks' | 'categories' | 'availability';
 type ScheduleView = 'schedule' | 'agenda';
@@ -195,6 +203,8 @@ export function TodayView() {
   const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
   const [draggedTask, setDraggedTask] = useState<TaskRow | null>(null);
   const [draggedBlockId, setDraggedBlockId] = useState<string | null>(null);
+  const [draggedCategory, setDraggedCategory] = useState<PlanningCategoryValue | null>(null);
+  const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addCategoryBlockOpen, setAddCategoryBlockOpen] = useState(false);
@@ -409,6 +419,33 @@ export function TodayView() {
         (block) => ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) && overlaps(block.startsAt, block.endsAt)
       ) || busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
     );
+  };
+
+  const canPlaceCategoryAt = (start: string) => {
+    const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
+    const endMinute = startMinute + DEFAULT_CATEGORY_SLOT_MINUTES;
+    if (startMinute < 0 || endMinute > 1440) return false;
+    const overlaps = (startsAt: Date, endsAt: Date) =>
+      getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
+      getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
+    return !(
+      categorySlots.some((slot) => overlaps(slot.startsAt, slot.endsAt)) ||
+      busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
+    );
+  };
+
+  const addCategorySlotAt = (category: PlanningCategoryValue, start: string) => {
+    const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
+    if (startMinute < 0) return;
+    const endMinute = startMinute + DEFAULT_CATEGORY_SLOT_MINUTES;
+    const clock = (minute: number) =>
+      `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}:00`;
+    createCategoryBlock.mutate({
+      date: selectedDate,
+      category,
+      startsAt: `${selectedDate} ${clock(startMinute)}`,
+      endsAt: `${endMinute >= 1440 ? shiftDate(selectedDate, 1) : selectedDate} ${clock(endMinute)}`,
+    });
   };
 
   const updateScheduleTime = (eventId: string | number, newStart: string, newEnd: string) => {
@@ -892,6 +929,20 @@ export function TodayView() {
                 }}
               />
             )}
+            {scheduleView === 'schedule' && layer === 'categories' && (
+              <CategoryPickerPane
+                colors={categoryColors}
+                removeActive={Boolean(draggedSlotId)}
+                onCategoryDragStart={setDraggedCategory}
+                onCategoryDragEnd={() => setDraggedCategory(null)}
+                onRemoveDrop={() => {
+                  if (draggedSlotId) {
+                    removeCategorySlot.mutate({ date: selectedDate, slotId: draggedSlotId });
+                  }
+                  setDraggedSlotId(null);
+                }}
+              />
+            )}
           </Splitter.Pane>
           <Splitter.Pane defaultSize="75%" min="40%" aria-label="Day schedule">
             { scheduleView === 'schedule' ? 
@@ -967,14 +1018,30 @@ export function TodayView() {
                     ['PLANNED', 'SKIPPED'].includes(String(event.payload.status))
                   ) {
                     setDraggedBlockId(String(event.payload.blockId));
+                  } else if (layer === 'categories' && event.payload?.kind === 'category-slot') {
+                    setDraggedSlotId(String(event.payload.slotId));
                   }
                 }}
-                onEventDragEnd={() => setDraggedBlockId(null)}
+                onEventDragEnd={() => {
+                  setDraggedBlockId(null);
+                  setDraggedSlotId(null);
+                }}
                 canDropExternalEvent={({ dataTransfer, start }) =>
-                  dataTransfer.types.includes(TASK_DRAG_TYPE) &&
-                  (!draggedTask || canPlaceTaskAt(draggedTask, start))
+                  dataTransfer.types.includes(CATEGORY_DRAG_TYPE)
+                    ? layer === 'categories' && (!draggedCategory || canPlaceCategoryAt(start))
+                    : dataTransfer.types.includes(TASK_DRAG_TYPE) &&
+                      layer === 'tasks' &&
+                      (!draggedTask || canPlaceTaskAt(draggedTask, start))
                 }
                 onExternalEventDrop={(dataTransfer, dropDateTime) => {
+                  const category = dataTransfer.getData(CATEGORY_DRAG_TYPE);
+                  if (category) {
+                    setDraggedCategory(null);
+                    if ((planningCategories as readonly string[]).includes(category)) {
+                      addCategorySlotAt(category as PlanningCategoryValue, dropDateTime);
+                    }
+                    return;
+                  }
                   const taskId = dataTransfer.getData(TASK_DRAG_TYPE);
                   setDraggedTask(null);
                   if (!taskId) return;
