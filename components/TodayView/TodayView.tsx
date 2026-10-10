@@ -8,10 +8,13 @@ import {
   Button,
   Checkbox,
   Collapse,
+  ColorSwatch,
   Group,
+  HoverCard,
   Modal,
   NumberInput,
   Paper,
+  Portal,
   Select,
   SegmentedControl,
   Stack,
@@ -24,11 +27,14 @@ import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
 import {
   IconCalendar,
   IconCheck,
+  IconCircleCheck,
   IconChevronLeft,
   IconChevronRight,
   IconClock,
   IconList,
   IconPlus,
+  IconPlayerSkipForward,
+  IconRotateClockwise,
   IconSparkles,
   IconTargetArrow,
   IconTrash,
@@ -58,9 +64,20 @@ import {
   taskStatusLabels,
 } from '@/lib/planner/tasks';
 import { DEFAULT_GENERATOR_OPTIONS, type GeneratorOptions } from '@/lib/planner/scheduling';
+import { useAppShellStore } from '@/store/app_shell_store';
+import { Property, PropertyPanel, ReadOnlyValue } from '../DataView/PropertyPanel';
+import { TaskView } from '../TasksView/TaskView';
 import classes from './TodayView.module.css';
 
 type PlannerMode = 'day' | 'agenda' | 'availability';
+const swatchColor = (color: string) =>
+  color.startsWith('#') || color.includes('(') ? color : `var(--mantine-color-${color}-6)`;
+const categoryColors: Record<string, string> = {
+  WORK: 'blue',
+  LIFE: 'orange',
+  LEISURE: 'green',
+  REST: 'cyan',
+};
 type AvailabilityDraft = { key: string; startMinute: number; endMinute: number };
 
 const availabilityTimeOptions = Array.from({ length: 97 }, (_, index) => {
@@ -251,6 +268,7 @@ function getNextFreeTime(
 export function TodayView() {
   const selectedDate = usePlannerStore((state) => state.selectedDate);
   const setSelectedDate = usePlannerStore((state) => state.setSelectedDate);
+  const setAsideOpened = useAppShellStore((state) => state.set_aside_opened);
   const dayQuery = useDayDataQuery(selectedDate);
   const tasksQuery = useTasksQuery();
   const themesQuery = useThemesQuery();
@@ -269,6 +287,7 @@ export function TodayView() {
   const unskipBlock = useUnskipBlockMutation();
 
   const [mode, setMode] = useState<PlannerMode>('day');
+  const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
   const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityDraft[]>([]);
@@ -303,6 +322,9 @@ export function TodayView() {
       !['DONE', 'ARCHIVED', 'PAUSED'].includes(task.status) && !scheduledTaskIds.has(task.id)
   );
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId) ?? null;
+  const selectedTask = selectedBlock?.taskOccurrence?.taskId
+    ? tasks.find((task) => task.id === selectedBlock.taskOccurrence?.taskId)
+    : undefined;
   const hasAvailability = (dayData?.availability.length ?? 0) > 0;
   const orderedAvailabilityDraft = [...availabilityDraft].sort(
     (a, b) => a.startMinute - b.startMinute
@@ -333,6 +355,21 @@ export function TodayView() {
     generatorDraft.maxLeisureBlockMinutes > 240 ||
     generatorDraft.maxLeisureBlockMinutes % 15 !== 0;
   const busyEvents = (dayData?.events ?? []).filter((event) => event.isBusy);
+  const legendItems =
+    colorBy === 'category'
+      ? planningCategories.map((value) => ({
+          label: planningCategoryLabels[value],
+          color: categoryColors[value],
+        }))
+      : [
+          ...(themesQuery.data ?? []).map((theme) => ({
+            label: theme.name,
+            color: theme.color ?? 'gray',
+          })),
+          { label: 'No theme', color: 'gray' },
+        ];
+
+  useEffect(() => setAsideOpened(Boolean(selectedBlock)), [selectedBlock, setAsideOpened]);
 
   const scheduleEvents = useMemo<ScheduleEventData[]>(() => {
     const tasksById = new Map(tasks.map((task) => [task.id, task]));
@@ -346,12 +383,14 @@ export function TodayView() {
         ? block.calendarEvent?.isBusy
           ? 'red'
           : 'gray'
-        : block.category === 'REST'
-          ? 'cyan'
-          : block.category === 'LEISURE'
-            ? 'green'
-            : themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
-                ?.color ?? 'gray',
+        : colorBy === 'category'
+          ? categoryColors[
+              block.category ??
+                tasksById.get(block.taskOccurrence?.taskId ?? '')?.category ??
+                'WORK'
+            ] ?? 'gray'
+          : (themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
+              ?.color ?? 'gray'),
       variant: 'light' as const,
       display: block.calendarEventId && block.calendarEvent?.isBusy ? ('background' as const) : undefined,
       payload: block.calendarEventId
@@ -374,7 +413,7 @@ export function TodayView() {
       payload: { kind: 'calendar', isBusy: event.isBusy },
     }));
     return [...blockEvents, ...calendarEvents];
-  }, [dayData?.events, dayData?.plan?.dailyBlocks, tasks, themesQuery.data, timezone]);
+  }, [colorBy, dayData?.events, dayData?.plan?.dailyBlocks, tasks, themesQuery.data, timezone]);
 
   const error =
     dayQuery.error ??
@@ -466,6 +505,139 @@ export function TodayView() {
       endsAt: newEnd,
     });
   };
+
+  const closeSelectedBlock = () => setSelectedBlockId(null);
+  const selectedBlockActions = selectedBlock && (
+    <Group gap={4} wrap="nowrap">
+      <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+        {formatTime(selectedBlock.startsAt, timezone)}–{formatTime(selectedBlock.endsAt, timezone)}
+      </Text>
+      <Badge color={selectedBlock.status === 'DONE' ? 'green' : 'teal'} variant="light">
+        {selectedBlock.status.toLowerCase().replace('_', ' ')}
+      </Badge>
+      {selectedBlock.status === 'SKIPPED' ? (
+        <Tooltip label="Unskip">
+          <ActionIcon
+            aria-label="Unskip"
+            variant="subtle"
+            size="xs"
+            loading={unskipBlock.isPending}
+            onClick={() =>
+              unskipBlock.mutate(
+                { date: selectedDate, blockId: selectedBlock.id },
+                { onSuccess: closeSelectedBlock }
+              )
+            }
+          >
+            <IconRotateClockwise size={16} />
+          </ActionIcon>
+        </Tooltip>
+      ) : (
+        <Tooltip label="Skip">
+          <ActionIcon
+            aria-label="Skip"
+            variant="subtle"
+            size="xs"
+            disabled={selectedBlock.status === 'DONE'}
+            loading={updateOutcome.isPending}
+            onClick={() =>
+              updateOutcome.mutate(
+                { date: selectedDate, blockId: selectedBlock.id, outcome: 'SKIPPED' },
+                { onSuccess: closeSelectedBlock }
+              )
+            }
+          >
+            <IconPlayerSkipForward size={16} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+      <Tooltip label="Done for now">
+        <ActionIcon
+          aria-label="Done for now"
+          variant="subtle"
+          size="xs"
+          disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
+          loading={updateOutcome.isPending}
+          onClick={() =>
+            updateOutcome.mutate(
+              { date: selectedDate, blockId: selectedBlock.id, outcome: 'DONE' },
+              { onSuccess: closeSelectedBlock }
+            )
+          }
+        >
+          <IconCheck size={16} />
+        </ActionIcon>
+      </Tooltip>
+      {selectedBlock.taskOccurrenceId && (
+        <Tooltip label="Complete task">
+          <ActionIcon
+            aria-label="Complete task"
+            variant="subtle"
+            size="xs"
+            disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
+            loading={updateOutcome.isPending}
+            onClick={() =>
+              updateOutcome.mutate(
+                {
+                  date: selectedDate,
+                  blockId: selectedBlock.id,
+                  outcome: 'DONE',
+                  completeTask: true,
+                },
+                { onSuccess: closeSelectedBlock }
+              )
+            }
+          >
+            <IconCircleCheck size={16} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+      <Tooltip label="Remove from day">
+        <ActionIcon
+          aria-label="Remove from day"
+          variant="subtle"
+          size="xs"
+          color="red"
+          disabled={selectedBlock.status !== 'PLANNED' && selectedBlock.status !== 'SKIPPED'}
+          loading={removeBlock.isPending}
+          onClick={() =>
+            removeBlock.mutate(
+              { date: selectedDate, blockId: selectedBlock.id },
+              { onSuccess: closeSelectedBlock }
+            )
+          }
+        >
+          <IconTrash size={16} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+  const selectedBlockInspector = selectedBlock ? (
+    selectedTask ? (
+      <TaskView
+        task={selectedTask}
+        themes={themesQuery.data ?? []}
+        tagSuggestions={[...new Set(tasks.flatMap((task) => task.tags))].sort()}
+        onClose={closeSelectedBlock}
+        actions={selectedBlockActions}
+      />
+    ) : (
+      <PropertyPanel
+        kind="Plan block"
+        id={selectedBlock.id}
+        onClose={closeSelectedBlock}
+        actions={selectedBlockActions}
+      >
+        <Title order={3}>{selectedBlock.title}</Title>
+        {selectedBlock.brief && <Text size="sm">{selectedBlock.brief}</Text>}
+        <Property label="Category">
+          <ReadOnlyValue>
+            {planningCategoryLabels[selectedBlock.category ?? 'WORK']}
+          </ReadOnlyValue>
+        </Property>
+      </PropertyPanel>
+    )
+  ) : null;
 
   if (dayQuery.isPending || tasksQuery.isPending) {
     return <div className={classes.loading}>Loading your day...</div>;
@@ -607,6 +779,35 @@ export function TodayView() {
           size="xs"
         />
         <Group gap="xs">
+          <HoverCard position="bottom-start" withArrow shadow="md" openDelay={150}>
+            <HoverCard.Target>
+              <div>
+                <SegmentedControl
+                  size="xs"
+                  aria-label="Color blocks by"
+                  value={colorBy}
+                  onChange={(value) => setColorBy(value as 'theme' | 'category')}
+                  data={[
+                    { label: 'Color by theme', value: 'theme' },
+                    { label: 'Color by category', value: 'category' },
+                  ]}
+                />
+              </div>
+            </HoverCard.Target>
+            <HoverCard.Dropdown>
+              <Stack gap={6}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">
+                  {colorBy === 'theme' ? 'Themes' : 'Categories'}
+                </Text>
+                {legendItems.map((item) => (
+                  <Group key={item.label} gap="xs" wrap="nowrap">
+                    <ColorSwatch size={14} color={swatchColor(item.color)} />
+                    <Text size="sm">{item.label}</Text>
+                  </Group>
+                ))}
+              </Stack>
+            </HoverCard.Dropdown>
+          </HoverCard>
           <Button
             size="xs"
             variant="default"
@@ -1213,107 +1414,7 @@ export function TodayView() {
         </Stack>
       </Modal>
 
-      <Modal
-        opened={Boolean(selectedBlock)}
-        onClose={() => setSelectedBlockId(null)}
-        title={selectedBlock?.title ?? 'Planned task'}
-        centered
-        size="sm"
-      >
-        {selectedBlock && (
-          <Stack>
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">
-                {formatTime(selectedBlock.startsAt, timezone)}–
-                {formatTime(selectedBlock.endsAt, timezone)}
-              </Text>
-              <Badge color={selectedBlock.status === 'DONE' ? 'green' : 'teal'} variant="light">
-                {selectedBlock.status.toLowerCase().replace('_', ' ')}
-              </Badge>
-            </Group>
-            {selectedBlock.brief && <Text size="sm">{selectedBlock.brief}</Text>}
-            <Group justify="space-between">
-              <Button
-                color="red"
-                variant="subtle"
-                leftSection={<IconTrash size={14} />}
-                disabled={selectedBlock.status !== 'PLANNED' && selectedBlock.status !== 'SKIPPED'}
-                loading={removeBlock.isPending}
-                onClick={() =>
-                  removeBlock.mutate(
-                    { date: selectedDate, blockId: selectedBlock.id },
-                    { onSuccess: () => setSelectedBlockId(null) }
-                  )
-                }
-              >
-                Remove from day
-              </Button>
-              <Group>
-                {selectedBlock.status === 'SKIPPED' ? (
-                  <Button
-                    loading={unskipBlock.isPending}
-                    onClick={() =>
-                      unskipBlock.mutate(
-                        { date: selectedDate, blockId: selectedBlock.id },
-                        { onSuccess: () => setSelectedBlockId(null) }
-                      )
-                    }
-                  >
-                    Unskip
-                  </Button>
-                ) : (
-                  <Button
-                    variant="default"
-                    color="gray"
-                    disabled={selectedBlock.status === 'DONE'}
-                    loading={updateOutcome.isPending}
-                    onClick={() =>
-                      updateOutcome.mutate(
-                        { date: selectedDate, blockId: selectedBlock.id, outcome: 'SKIPPED' },
-                        { onSuccess: () => setSelectedBlockId(null) }
-                      )
-                    }
-                  >
-                    Skip
-                  </Button>
-                )}
-                <Button
-                  variant="default"
-                  disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-                  loading={updateOutcome.isPending}
-                  onClick={() =>
-                    updateOutcome.mutate(
-                      { date: selectedDate, blockId: selectedBlock.id, outcome: 'DONE' },
-                      { onSuccess: () => setSelectedBlockId(null) }
-                    )
-                  }
-                >
-                  Done for now
-                </Button>
-                {selectedBlock.taskOccurrenceId && (
-                  <Button
-                    disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-                    loading={updateOutcome.isPending}
-                    onClick={() =>
-                      updateOutcome.mutate(
-                        {
-                          date: selectedDate,
-                          blockId: selectedBlock.id,
-                          outcome: 'DONE',
-                          completeTask: true,
-                        },
-                        { onSuccess: () => setSelectedBlockId(null) }
-                      )
-                    }
-                  >
-                    Complete task
-                  </Button>
-                )}
-              </Group>
-            </Group>
-          </Stack>
-        )}
-      </Modal>
+      {selectedBlockInspector && <Portal target="#app-aside">{selectedBlockInspector}</Portal>}
     </Stack>
   );
 }

@@ -23,7 +23,14 @@ export const field = {
 export function Property({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Group gap="xs" wrap="nowrap" align="flex-start">
-      <Text size="sm" c="dimmed" w={96} h={ROW_HEIGHT} lh={`${ROW_HEIGHT}px`} style={{ flexShrink: 0 }}>
+      <Text
+        size="sm"
+        c="dimmed"
+        w={96}
+        h={ROW_HEIGHT}
+        lh={`${ROW_HEIGHT}px`}
+        style={{ flexShrink: 0 }}
+      >
         {label}
       </Text>
       <Box style={{ flex: 1, minWidth: 0 }}>{children}</Box>
@@ -81,21 +88,32 @@ type PropertyPanelProps = {
   // Remounts the body when the inspected item changes so uncontrolled inputs reset.
   id: string;
   onClose: () => void;
+  actions?: ReactNode;
   children: ReactNode;
   // Rendered below the property rows, e.g. a rich-text editor.
   content?: ReactNode;
 };
 
-export function PropertyPanel({ kind, id, onClose, children, content }: PropertyPanelProps) {
+export function PropertyPanel({
+  kind,
+  id,
+  onClose,
+  actions,
+  children,
+  content,
+}: PropertyPanelProps) {
   return (
     <Stack h="100%" gap={0}>
       <Group justify="space-between" p="md" wrap="nowrap">
         <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
           {kind}
         </Text>
-        <ActionIcon aria-label="Close inspector" variant="subtle" color="gray" onClick={onClose}>
-          <IconX size={16} />
-        </ActionIcon>
+        <Group gap="xs" wrap="nowrap">
+          {actions}
+          <ActionIcon aria-label="Close inspector" variant="subtle" color="gray" onClick={onClose}>
+            <IconX size={16} />
+          </ActionIcon>
+        </Group>
       </Group>
 
       <ScrollArea style={{ flex: 1 }} px="md" pb="md">

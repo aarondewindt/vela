@@ -11,6 +11,7 @@ import {
   type TaskRow,
   type ThemeRow,
 } from '@/lib/planner/tasks';
+import type { ReactNode } from 'react';
 import { Button } from '@mantine/core';
 import { IconTrash } from '@tabler/icons-react';
 import { PropertyPanel, ReadOnlyValue, Property, TitleField } from '../DataView/PropertyPanel';
@@ -29,9 +30,10 @@ type Props = {
   themes: ThemeRow[];
   tagSuggestions: string[];
   onClose: () => void;
+  actions?: ReactNode;
 };
 
-export function TaskView({ task, themes, tagSuggestions, onClose }: Props) {
+export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Props) {
   const update = useUpdateTaskMutation();
   const remove = useDeleteTaskMutation();
   const save = (patch: Parameters<typeof update.mutate>[0]['patch']) =>
@@ -42,6 +44,7 @@ export function TaskView({ task, themes, tagSuggestions, onClose }: Props) {
       kind="Task"
       id={task.id}
       onClose={onClose}
+      actions={actions}
       content={
         <>
           <TaskContentEditor taskId={task.id} />
