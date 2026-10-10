@@ -24,7 +24,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { DayView, type ScheduleEventData } from '@mantine/schedule';
+import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
 import {
   IconCalendar,
   IconCheck,
@@ -80,6 +80,7 @@ const categoryColors: Record<string, string> = {
 };
 
 type PlannerLayer = 'tasks' | 'categories' | 'availability';
+type ScheduleView = 'schedule' | 'agenda';
 
 function getMinuteInDay(value: Date, timezone: string, date: string) {
   const local = localDateTime(value, timezone);
@@ -260,6 +261,9 @@ export function TodayView() {
   const unskipBlock = useUnskipBlockMutation();
 
   const [layer, setLayer] = useState<PlannerLayer>('tasks');
+  
+  const [scheduleView, setScheduleView] = useState<ScheduleView>('schedule');
+
   const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
@@ -794,17 +798,30 @@ export function TodayView() {
       )}
 
       <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-        <SegmentedControl
-          aria-label="Planner layer"
-          value={layer}
-          onChange={(value) => setLayer(value as PlannerLayer)}
-          data={[
-            { label: 'Tasks', value: 'tasks' },
-            { label: 'Categorize', value: 'categories' },
-            { label: 'Availability', value: 'availability' },
-          ]}
-          size="xs"
-        />
+        <Group gap="xs">
+          <SegmentedControl
+            aria-label="Planner layer"
+            value={layer}
+            onChange={(value) => setLayer(value as PlannerLayer)}
+            data={[
+              { label: 'Tasks', value: 'tasks' },
+              { label: 'Categories', value: 'categories' },
+              { label: 'Availability', value: 'availability' },
+            ]}
+            size="xs"
+          />
+
+          <SegmentedControl
+            aria-label="Schedule view"
+            value={scheduleView}
+            onChange={(value) => setScheduleView(value as ScheduleView)}
+            data={[
+              { label: 'Schedule', value: 'schedule' },
+              { label: 'Agenda', value: 'agenda' },
+            ]}
+            size="xs"
+          />
+        </Group>
         <Group gap="xs">
           {layer === 'tasks' && (
             <>
@@ -967,97 +984,123 @@ export function TodayView() {
           style={{ minHeight: 420 }}
         >
           <Splitter.Pane defaultSize="25%" min="0%" aria-label="Future planner tools">
-            <div className={classes.splitterLeftPane} />
+            {/* <div className={classes.splitterLeftPane} /> */}
+
+            
           </Splitter.Pane>
           <Splitter.Pane defaultSize="75%" min="40%" aria-label="Day schedule">
-            <DayView
-              date={selectedDate}
-              onDateChange={setSelectedDate}
-              events={scheduleEvents}
-              classNames={{ dayViewSlot: classes.dayViewSlot }}
-              getTimeSlotProps={({ start, end }) => {
-                const isAvailable = dayData?.availability.some((window) => {
-                  const windowStart = localDateTime(window.start, timezone);
-                  const windowEnd = localDateTime(window.end, timezone);
-                  return start >= windowStart && end <= windowEnd;
-                });
-                return isAvailable ? { 'data-available': true } : undefined;
-              }}
-              startTime="06:00:00"
-              intervalMinutes={15}
-              slotHeight={48}
-              withHeader
-              withAgenda
-              withInteractiveBackgroundEvents
-              startScrollTime={
-                dayData?.availability[0]
-                  ? `${formatTime(dayData.availability[0].start, timezone)}:00`
-                  : '08:00:00'
-              }
-              withCurrentTimeIndicator
-              withEventsDragAndDrop
-              withEventResize
-              eventDragInterval={15}
-              eventResizeInterval={15}
-              canDragEvent={(event) =>
-                (layer === 'tasks' &&
-                  event.payload?.kind === 'block' &&
-                  event.payload?.status === 'PLANNED') ||
-                (layer === 'categories' &&
-                  event.payload?.kind === 'category-slot') ||
-                (layer === 'availability' && event.payload?.kind === 'availability')
-              }
-              canResizeEvent={(event) =>
-                (layer === 'tasks' &&
-                  event.payload?.kind === 'block' &&
-                  event.payload?.status === 'PLANNED') ||
-                (layer === 'categories' &&
-                  event.payload?.kind === 'category-slot') ||
-                (layer === 'availability' && event.payload?.kind === 'availability')
-              }
-              onTimeSlotClick={({ slotStart }) => {
-                if (layer === 'tasks') {
-                  const [, time] = slotStart.split(' ');
-                  openAddTask(time?.slice(0, 5));
-                }
-              }}
-              onEventClick={(event) => {
-                if (layer === 'categories' && event.payload?.kind === 'category-slot') {
-                  setSelectedCategorySlotId(String(event.payload.slotId));
-                } else if (
-                  layer === 'availability' &&
-                  event.payload?.kind === 'availability'
-                ) {
-                  setSelectedAvailabilityWindow({
-                    startMinute: event.payload.startMinute,
-                    endMinute: event.payload.endMinute,
+            { scheduleView === 'schedule' ? 
+              <DayView
+                date={selectedDate}
+                onDateChange={setSelectedDate}
+                events={scheduleEvents}
+                classNames={{ dayViewSlot: classes.dayViewSlot }}
+                getTimeSlotProps={({ start, end }) => {
+                  const isAvailable = dayData?.availability.some((window) => {
+                    const windowStart = localDateTime(window.start, timezone);
+                    const windowEnd = localDateTime(window.end, timezone);
+                    return start >= windowStart && end <= windowEnd;
                   });
-                } else if (layer === 'tasks' && event.payload?.kind === 'block') {
-                  setSelectedBlockId(String(event.payload.blockId));
+                  return isAvailable ? { 'data-available': true } : undefined;
+                }}
+                startTime="06:00:00"
+                intervalMinutes={15}
+                slotHeight={48}
+                withHeader={false}
+                withInteractiveBackgroundEvents
+                startScrollTime={
+                  dayData?.availability[0]
+                    ? `${formatTime(dayData.availability[0].start, timezone)}:00`
+                    : '08:00:00'
                 }
-              }}
-              onEventDrop={({ eventId, newStart, newEnd }) =>
-                updateScheduleTime(eventId, newStart, newEnd)
-              }
-              onEventResize={({ eventId, newStart, newEnd }) =>
-                updateScheduleTime(eventId, newStart, newEnd)
-              }
-              preventEventOverlap={(stillEvent, movingEvent) => {
-                if (
-                  stillEvent.payload?.kind === 'category-slot' ||
-                  movingEvent.payload?.kind === 'category-slot'
-                ) {
-                  return false;
+                withCurrentTimeIndicator
+                withEventsDragAndDrop
+                withEventResize
+                eventDragInterval={15}
+                eventResizeInterval={15}
+                canDragEvent={(event) =>
+                  (layer === 'tasks' &&
+                    event.payload?.kind === 'block' &&
+                    event.payload?.status === 'PLANNED') ||
+                  (layer === 'categories' &&
+                    event.payload?.kind === 'category-slot') ||
+                  (layer === 'availability' && event.payload?.kind === 'availability')
                 }
-                const stillIsBlock = stillEvent.payload?.kind === 'block';
-                const movingIsBlock = movingEvent.payload?.kind === 'block';
-                return (
-                  (stillIsBlock && (movingIsBlock || movingEvent.payload?.isBusy)) ||
-                  (movingIsBlock && (stillIsBlock || stillEvent.payload?.isBusy))
-                );
-              }}
-              withAllDaySlot={false}
-            />
+                canResizeEvent={(event) =>
+                  (layer === 'tasks' &&
+                    event.payload?.kind === 'block' &&
+                    event.payload?.status === 'PLANNED') ||
+                  (layer === 'categories' &&
+                    event.payload?.kind === 'category-slot') ||
+                  (layer === 'availability' && event.payload?.kind === 'availability')
+                }
+                onTimeSlotClick={({ slotStart }) => {
+                  if (layer === 'tasks') {
+                    const [, time] = slotStart.split(' ');
+                    openAddTask(time?.slice(0, 5));
+                  }
+                }}
+                onEventClick={(event) => {
+                  if (layer === 'categories' && event.payload?.kind === 'category-slot') {
+                    setSelectedCategorySlotId(String(event.payload.slotId));
+                  } else if (
+                    layer === 'availability' &&
+                    event.payload?.kind === 'availability'
+                  ) {
+                    setSelectedAvailabilityWindow({
+                      startMinute: event.payload.startMinute,
+                      endMinute: event.payload.endMinute,
+                    });
+                  } else if (layer === 'tasks' && event.payload?.kind === 'block') {
+                    setSelectedBlockId(String(event.payload.blockId));
+                  }
+                }}
+                onEventDrop={({ eventId, newStart, newEnd }) =>
+                  updateScheduleTime(eventId, newStart, newEnd)
+                }
+                onEventResize={({ eventId, newStart, newEnd }) =>
+                  updateScheduleTime(eventId, newStart, newEnd)
+                }
+                preventEventOverlap={(stillEvent, movingEvent) => {
+                  if (
+                    stillEvent.payload?.kind === 'category-slot' ||
+                    movingEvent.payload?.kind === 'category-slot'
+                  ) {
+                    return false;
+                  }
+                  const stillIsBlock = stillEvent.payload?.kind === 'block';
+                  const movingIsBlock = movingEvent.payload?.kind === 'block';
+                  return (
+                    (stillIsBlock && (movingIsBlock || movingEvent.payload?.isBusy)) ||
+                    (movingIsBlock && (stillIsBlock || stillEvent.payload?.isBusy))
+                  );
+                }}
+                withAllDaySlot={false}
+              />
+              : 
+              <AgendaView 
+                events={scheduleEvents} 
+                rangeStart={selectedDate}
+                rangeEnd={selectedDate}
+                onEventClick={(event) => {
+                  if (layer === 'categories' && event.payload?.kind === 'category-slot') {
+                    setSelectedCategorySlotId(String(event.payload.slotId));
+                  } else if (
+                    layer === 'availability' &&
+                    event.payload?.kind === 'availability'
+                  ) {
+                    setSelectedAvailabilityWindow({
+                      startMinute: event.payload.startMinute,
+                      endMinute: event.payload.endMinute,
+                    });
+                  } else if (layer === 'tasks' && event.payload?.kind === 'block') {
+                    setSelectedBlockId(String(event.payload.blockId));
+                  }
+                }}
+              />
+          
+            }
+            
           </Splitter.Pane>
         </Splitter>
       </Paper>
