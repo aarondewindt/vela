@@ -23,15 +23,13 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
+import { DayView, type ScheduleEventData } from '@mantine/schedule';
 import {
   IconCalendar,
   IconCheck,
   IconCircleCheck,
   IconChevronLeft,
   IconChevronRight,
-  IconClock,
-  IconList,
   IconPlus,
   IconPlayerSkipForward,
   IconRotateClockwise,
@@ -45,6 +43,7 @@ import {
   useClearDayPlanMutation,
   useCreateManualBlockMutation,
   useCreateManualCategoryBlockMutation,
+  useRemoveCategorySlotMutation,
   useDayDataQuery,
   useGenerateDraftMutation,
   useGeneratorSettingsQuery,
@@ -52,7 +51,6 @@ import {
   useTasksQuery,
   useThemesQuery,
   useUnskipBlockMutation,
-  useUpdateDayAvailabilityMutation,
   useUpdateBlockOutcomeMutation,
   useUpdateBlockTimeMutation,
   useSaveGeneratorSettingsMutation,
@@ -69,7 +67,6 @@ import { Property, PropertyPanel, ReadOnlyValue } from '../DataView/PropertyPane
 import { TaskView } from '../TasksView/TaskView';
 import classes from './TodayView.module.css';
 
-type PlannerMode = 'day' | 'agenda' | 'availability';
 const swatchColor = (color: string) =>
   color.startsWith('#') || color.includes('(') ? color : `var(--mantine-color-${color}-6)`;
 const categoryColors: Record<string, string> = {
@@ -78,26 +75,6 @@ const categoryColors: Record<string, string> = {
   LEISURE: 'green',
   REST: 'cyan',
 };
-type AvailabilityDraft = { key: string; startMinute: number; endMinute: number };
-
-const availabilityTimeOptions = Array.from({ length: 97 }, (_, index) => {
-  const minute = index * 15;
-  const hourLabel = String(Math.floor(minute / 60)).padStart(2, '0');
-  const minuteLabel = String(minute % 60).padStart(2, '0');
-  return {
-    value: String(minute),
-    label: minute === 1440 ? '24:00' : `${hourLabel}:${minuteLabel}`,
-  };
-});
-
-function dateFromPicker(value: Date | null) {
-  if (!value) return null;
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function shiftDate(value: string, amount: number) {
   const date = new Date(`${value}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + amount);
@@ -129,42 +106,6 @@ function formatTime(value: Date | string, timezone: string) {
     hourCycle: 'h23',
     timeZone: timezone,
   }).format(new Date(value));
-}
-
-function minuteOfDay(value: Date, timezone: string) {
-  const local = localDateTime(value, timezone);
-  const [hour, minute] = local.slice(11, 16).split(':').map(Number);
-  return hour * 60 + minute;
-}
-
-function getAvailabilityDraft(
-  date: string,
-  timezone: string,
-  windows: { start: Date; end: Date }[]
-): AvailabilityDraft[] {
-  const nextDay = shiftDate(date, 1);
-  return windows.map(({ start, end }, index) => {
-    const localEnd = localDateTime(end, timezone);
-    const endMinute = localEnd.slice(0, 10) === nextDay ? 1440 : minuteOfDay(end, timezone);
-    return {
-      key: `${start.getTime()}-${end.getTime()}-${index}`,
-      startMinute: minuteOfDay(start, timezone),
-      endMinute,
-    };
-  });
-}
-
-function findFreeAvailabilitySlot(windows: AvailabilityDraft[]) {
-  for (const duration of [60, 15]) {
-    for (let startMinute = 8 * 60; startMinute + duration <= 1440; startMinute += 15) {
-      const endMinute = startMinute + duration;
-      const overlaps = windows.some(
-        (window) => startMinute < window.endMinute && endMinute > window.startMinute
-      );
-      if (!overlaps) return { startMinute, endMinute };
-    }
-  }
-  return null;
 }
 
 function formatSelectedDate(value: string) {
@@ -278,19 +219,17 @@ export function TodayView() {
   const acceptDraft = useAcceptDraftMutation();
   const clearDayPlan = useClearDayPlanMutation();
   const applyStandardAvailability = useApplyStandardAvailabilityMutation();
-  const updateDayAvailability = useUpdateDayAvailabilityMutation();
   const createBlock = useCreateManualBlockMutation();
   const createCategoryBlock = useCreateManualCategoryBlockMutation();
+  const removeCategorySlot = useRemoveCategorySlotMutation();
   const updateBlockTime = useUpdateBlockTimeMutation();
   const updateOutcome = useUpdateBlockOutcomeMutation();
   const removeBlock = useRemoveBlockFromDayMutation();
   const unskipBlock = useUnskipBlockMutation();
 
-  const [mode, setMode] = useState<PlannerMode>('day');
   const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
-  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityDraft[]>([]);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [addCategoryBlockOpen, setAddCategoryBlockOpen] = useState(false);
   const [categoryBlockCategory, setCategoryBlockCategory] = useState<string>('LEISURE');
@@ -299,6 +238,7 @@ export function TodayView() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [startAt, setStartAt] = useState('09:00');
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [selectedCategorySlotId, setSelectedCategorySlotId] = useState<string | null>(null);
   const [generatorOpen, setGeneratorOpen] = useState(false);
   const [clearPlanOpen, setClearPlanOpen] = useState(false);
   const [generatorDraft, setGeneratorDraft] = useState<GeneratorOptions>(DEFAULT_GENERATOR_OPTIONS);
@@ -322,22 +262,12 @@ export function TodayView() {
       !['DONE', 'ARCHIVED', 'PAUSED'].includes(task.status) && !scheduledTaskIds.has(task.id)
   );
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId) ?? null;
+  const categorySlots = plan?.categorySlots ?? [];
+  const selectedCategorySlot = categorySlots.find((slot) => slot.id === selectedCategorySlotId) ?? null;
   const selectedTask = selectedBlock?.taskOccurrence?.taskId
     ? tasks.find((task) => task.id === selectedBlock.taskOccurrence?.taskId)
     : undefined;
   const hasAvailability = (dayData?.availability.length ?? 0) > 0;
-  const orderedAvailabilityDraft = [...availabilityDraft].sort(
-    (a, b) => a.startMinute - b.startMinute
-  );
-  const availabilityDraftError = orderedAvailabilityDraft.some(
-    (window, index) =>
-      window.startMinute < 0 ||
-      window.startMinute >= window.endMinute ||
-      window.endMinute > 1440 ||
-      window.startMinute % 15 !== 0 ||
-      window.endMinute % 15 !== 0 ||
-      (index > 0 && window.startMinute < orderedAvailabilityDraft[index - 1].endMinute)
-  );
   const generatorDraftError =
     generatorDraft.workSessionMinutes < 15 ||
     generatorDraft.workSessionMinutes > 240 ||
@@ -397,6 +327,16 @@ export function TodayView() {
         ? { kind: 'calendar', isBusy: Boolean(block.calendarEvent?.isBusy) }
         : { kind: 'block', blockId: block.id, status: block.status },
     }));
+    const categorySlotEvents = (dayData?.plan?.categorySlots ?? []).map((slot) => ({
+      id: `category-slot-${slot.id}`,
+      title: planningCategoryLabels[slot.category],
+      start: localDateTime(slot.startsAt, timezone),
+      end: localDateTime(slot.endsAt, timezone),
+      color: categoryColors[slot.category],
+      variant: 'light' as const,
+      display: 'background' as const,
+      payload: { kind: 'category-slot', slotId: slot.id, source: slot.source },
+    }));
     const linkedEventIds = new Set(
       (dayData?.plan?.dailyBlocks ?? []).flatMap((block) =>
         block.calendarEventId ? [block.calendarEventId] : []
@@ -412,8 +352,8 @@ export function TodayView() {
       display: event.isBusy ? ('background' as const) : ('default' as const),
       payload: { kind: 'calendar', isBusy: event.isBusy },
     }));
-    return [...blockEvents, ...calendarEvents];
-  }, [colorBy, dayData?.events, dayData?.plan?.dailyBlocks, tasks, themesQuery.data, timezone]);
+    return [...categorySlotEvents, ...blockEvents, ...calendarEvents];
+  }, [colorBy, dayData?.events, dayData?.plan?.categorySlots, dayData?.plan?.dailyBlocks, tasks, themesQuery.data, timezone]);
 
   const error =
     dayQuery.error ??
@@ -424,9 +364,9 @@ export function TodayView() {
     acceptDraft.error ??
     clearDayPlan.error ??
     applyStandardAvailability.error ??
-    updateDayAvailability.error ??
     createBlock.error ??
     createCategoryBlock.error ??
+    removeCategorySlot.error ??
     updateBlockTime.error ??
     updateOutcome.error ??
     removeBlock.error ??
@@ -439,24 +379,7 @@ export function TodayView() {
   };
 
   const changeSelectedDate = (date: string) => {
-    setMode('day');
     setSelectedDate(date);
-  };
-
-  const editAvailability = () => {
-    setAvailabilityDraft(getAvailabilityDraft(selectedDate, timezone, dayData?.availability ?? []));
-    setMode('availability');
-  };
-
-  const updateAvailabilityDraft = (
-    key: string,
-    field: 'startMinute' | 'endMinute',
-    value: string | null
-  ) => {
-    if (value === null) return;
-    setAvailabilityDraft((current) =>
-      current.map((window) => (window.key === key ? { ...window, [field]: Number(value) } : window))
-    );
   };
 
   const updateGeneratorDraft = (field: keyof GeneratorOptions, value: number | string) => {
@@ -677,7 +600,6 @@ export function TodayView() {
             <ActionIcon
               aria-label="Previous day"
               variant="default"
-              disabled={mode === 'availability'}
               onClick={() => changeSelectedDate(shiftDate(selectedDate, -1))}
             >
               <IconChevronLeft size={16} />
@@ -686,7 +608,6 @@ export function TodayView() {
           <DatePickerInput
             aria-label="Planning date"
             value={selectedDate}
-            disabled={mode === 'availability'}
             onChange={(value) => {
               if (value) changeSelectedDate(value);
             }}
@@ -700,7 +621,6 @@ export function TodayView() {
             <ActionIcon
               aria-label="Next day"
               variant="default"
-              disabled={mode === 'availability'}
               onClick={() => changeSelectedDate(shiftDate(selectedDate, 1))}
             >
               <IconChevronRight size={16} />
@@ -709,7 +629,6 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
-            disabled={mode === 'availability'}
             onClick={() => changeSelectedDate(currentDateInTimezone(timezone))}
           >
             Today
@@ -732,52 +651,13 @@ export function TodayView() {
         >
           <Group justify="space-between" align="center" wrap="wrap">
             <Text size="sm">
-              You can still add tasks manually. Set standard hours or edit availability to enable
-              automatic draft planning.
+              You can still add tasks manually. Set standard hours to enable automatic draft planning.
             </Text>
           </Group>
         </Alert>
       )}
 
-      <Group justify="space-between" align="center" wrap="wrap" gap="sm">
-        <SegmentedControl
-          value={mode}
-          onChange={(value) => {
-            if (mode === 'availability') return;
-            if (value === 'availability') editAvailability();
-            else setMode(value as PlannerMode);
-          }}
-          data={[
-            {
-              label: (
-                <Group gap={6} wrap="nowrap">
-                  <IconCalendar size={14} />
-                  Day
-                </Group>
-              ),
-              value: 'day',
-            },
-            {
-              label: (
-                <Group gap={6} wrap="nowrap">
-                  <IconList size={14} />
-                  Agenda
-                </Group>
-              ),
-              value: 'agenda',
-            },
-            {
-              label: (
-                <Group gap={6} wrap="nowrap">
-                  <IconClock size={14} />
-                  Edit availability
-                </Group>
-              ),
-              value: 'availability',
-            },
-          ]}
-          size="xs"
-        />
+      <Group justify="flex-end" align="center" wrap="wrap" gap="sm">
         <Group gap="xs">
           <HoverCard position="bottom-start" withArrow shadow="md" openDelay={150}>
             <HoverCard.Target>
@@ -811,7 +691,6 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
-            disabled={mode === 'availability'}
             onClick={() => setAvailabilityOpen(true)}
           >
             Standard hours
@@ -819,7 +698,6 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
-            disabled={mode === 'availability'}
             leftSection={<IconPlus size={14} />}
             onClick={() => {
               setBacklogOpen((open) => !open);
@@ -831,7 +709,6 @@ export function TodayView() {
           <Button
             size="xs"
             variant="default"
-            disabled={mode === 'availability'}
             onClick={() => setAddCategoryBlockOpen(true)}
           >
             Add category block
@@ -840,7 +717,7 @@ export function TodayView() {
             size="xs"
             leftSection={<IconSparkles size={14} />}
             loading={generateDraft.isPending}
-            disabled={!hasAvailability || mode === 'availability'}
+            disabled={!hasAvailability}
             onClick={() => setGeneratorOpen(true)}
           >
             Generate draft
@@ -851,7 +728,6 @@ export function TodayView() {
               color="teal"
               leftSection={<IconCheck size={14} />}
               loading={acceptDraft.isPending}
-              disabled={mode === 'availability'}
               onClick={() => acceptDraft.mutate({ date: selectedDate })}
             >
               Accept draft
@@ -863,7 +739,6 @@ export function TodayView() {
                 aria-label="Clear this day's plan"
                 variant="default"
                 color="red"
-                disabled={mode === 'availability'}
                 onClick={() => setClearPlanOpen(true)}
               >
                 <IconTrash size={16} />
@@ -873,7 +748,7 @@ export function TodayView() {
         </Group>
       </Group>
 
-      <Collapse expanded={backlogOpen && mode !== 'availability'}>
+      <Collapse expanded={backlogOpen}>
         <Paper withBorder p="sm" radius="sm" className={classes.backlog}>
           <Group justify="space-between" mb="xs">
             <Text fw={600} size="sm">
@@ -910,7 +785,6 @@ export function TodayView() {
                       aria-label={`Add ${task.title} to the plan`}
                       variant="subtle"
                       color="teal"
-                      disabled={mode === 'availability'}
                       loading={createBlock.isPending && createBlock.variables?.taskId === task.id}
                       onClick={() => addToNextSlot(task)}
                     >
@@ -925,124 +799,7 @@ export function TodayView() {
       </Collapse>
 
       <Paper radius="sm" className={classes.scheduleSurface}>
-        {mode === 'availability' ? (
-          <Stack p="sm" gap="sm">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <div>
-                <Text fw={600} size="sm">
-                  Availability for this day
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Changes apply to {formatSelectedDate(selectedDate)} only.
-                </Text>
-              </div>
-              <Button
-                size="xs"
-                variant="default"
-                leftSection={<IconPlus size={14} />}
-                disabled={
-                  availabilityDraft.length >= 96 || !findFreeAvailabilitySlot(availabilityDraft)
-                }
-                onClick={() => {
-                  const slot = findFreeAvailabilitySlot(availabilityDraft);
-                  if (slot) {
-                    setAvailabilityDraft((current) => [
-                      ...current,
-                      { ...slot, key: `new-${Date.now()}-${current.length}` },
-                    ]);
-                  }
-                }}
-              >
-                Add slot
-              </Button>
-            </Group>
-            {availabilityDraft.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                No slots yet.
-              </Text>
-            ) : (
-              <Stack gap="xs">
-                {availabilityDraft.map((window, index) => (
-                  <Group key={window.key} wrap="nowrap" align="flex-end" gap="xs">
-                    <Select
-                      label={index === 0 ? 'Start' : undefined}
-                      aria-label={`Start time for slot ${index + 1}`}
-                      data={availabilityTimeOptions.slice(0, -1)}
-                      value={String(window.startMinute)}
-                      onChange={(value) =>
-                        updateAvailabilityDraft(window.key, 'startMinute', value)
-                      }
-                      searchable
-                      nothingFoundMessage="No time found"
-                      style={{ flex: 1 }}
-                    />
-                    <Text size="sm" pb={9} c="dimmed">
-                      to
-                    </Text>
-                    <Select
-                      label={index === 0 ? 'End' : undefined}
-                      aria-label={`End time for slot ${index + 1}`}
-                      data={availabilityTimeOptions.slice(1)}
-                      value={String(window.endMinute)}
-                      onChange={(value) => updateAvailabilityDraft(window.key, 'endMinute', value)}
-                      searchable
-                      nothingFoundMessage="No time found"
-                      style={{ flex: 1 }}
-                    />
-                    <Tooltip label="Remove slot">
-                      <ActionIcon
-                        aria-label={`Remove slot ${index + 1}`}
-                        variant="subtle"
-                        color="red"
-                        mb={4}
-                        onClick={() =>
-                          setAvailabilityDraft((current) =>
-                            current.filter((item) => item.key !== window.key)
-                          )
-                        }
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Group>
-                ))}
-              </Stack>
-            )}
-            {availabilityDraftError && (
-              <Text size="xs" c="red" role="alert">
-                Slots must be at least 15 minutes, use 15-minute increments, and not overlap.
-              </Text>
-            )}
-            <Group justify="flex-end" mt="xs">
-              <Button
-                variant="default"
-                disabled={updateDayAvailability.isPending}
-                onClick={() => setMode('day')}
-              >
-                Cancel
-              </Button>
-              <Button
-                loading={updateDayAvailability.isPending}
-                disabled={availabilityDraftError}
-                onClick={() =>
-                  updateDayAvailability.mutate(
-                    {
-                      date: selectedDate,
-                      windows: orderedAvailabilityDraft.map(({ startMinute, endMinute }) => ({
-                        startMinute,
-                        endMinute,
-                      })),
-                    },
-                    { onSuccess: () => setMode('day') }
-                  )
-                }
-              >
-                Save
-              </Button>
-            </Group>
-          </Stack>
-        ) : mode === 'day' ? (
-          <DayView
+        <DayView
             date={selectedDate}
             onDateChange={setSelectedDate}
             events={scheduleEvents}
@@ -1059,7 +816,9 @@ export function TodayView() {
             // endTime="23:59:00"
             intervalMinutes={15}
             slotHeight={48}
-            withHeader={false}
+            withHeader
+            withAgenda
+            withInteractiveBackgroundEvents
             // startScrollTime="08:00:00"
             startScrollTime={
               dayData?.availability[0]
@@ -1082,8 +841,11 @@ export function TodayView() {
               openAddTask(time?.slice(0, 5));
             }}
             onEventClick={(event) => {
-              if (event.payload?.kind === 'block')
+              if (event.payload?.kind === 'category-slot') {
+                setSelectedCategorySlotId(String(event.payload.slotId));
+              } else if (event.payload?.kind === 'block') {
                 setSelectedBlockId(String(event.payload.blockId));
+              }
             }}
             onEventDrop={({ eventId, newStart, newEnd }) =>
               updateScheduleTime(eventId, newStart, newEnd)
@@ -1093,8 +855,8 @@ export function TodayView() {
             }
             preventEventOverlap={(stillEvent, movingEvent) => {
               if (
-                stillEvent.payload?.kind === 'availability' ||
-                movingEvent.payload?.kind === 'availability'
+                stillEvent.payload?.kind === 'category-slot' ||
+                movingEvent.payload?.kind === 'category-slot'
               ) {
                 return false;
               }
@@ -1107,17 +869,6 @@ export function TodayView() {
             }}
             withAllDaySlot={false}
           />
-        ) : (
-          <AgendaView
-            rangeStart={selectedDate}
-            rangeEnd={selectedDate}
-            events={scheduleEvents}
-            onEventClick={(event) => {
-              if (event.payload?.kind === 'block')
-                setSelectedBlockId(String(event.payload.blockId));
-            }}
-          />
-        )}
       </Paper>
 
       <Group justify="space-between" c="dimmed" className={classes.footer}>
@@ -1148,7 +899,6 @@ export function TodayView() {
                 {
                   onSuccess: () => {
                     setAvailabilityOpen(false);
-                    setMode('day');
                   },
                 }
               )
@@ -1164,7 +914,6 @@ export function TodayView() {
                 {
                   onSuccess: () => {
                     setAvailabilityOpen(false);
-                    setMode('day');
                   },
                 }
               )
@@ -1380,6 +1129,42 @@ export function TodayView() {
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(selectedCategorySlot)}
+        onClose={() => setSelectedCategorySlotId(null)}
+        title={selectedCategorySlot ? planningCategoryLabels[selectedCategorySlot.category] : 'Category slot'}
+        centered
+        size="sm"
+      >
+        {selectedCategorySlot && (
+          <Stack>
+            <Text size="sm" c="dimmed">
+              {formatTime(selectedCategorySlot.startsAt, timezone)}–
+              {formatTime(selectedCategorySlot.endsAt, timezone)}
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setSelectedCategorySlotId(null)}>
+                Close
+              </Button>
+              {selectedCategorySlot.source === 'MANUAL' && (
+                <Button
+                  color="red"
+                  loading={removeCategorySlot.isPending}
+                  onClick={() =>
+                    removeCategorySlot.mutate(
+                      { date: selectedDate, slotId: selectedCategorySlot.id },
+                      { onSuccess: () => setSelectedCategorySlotId(null) }
+                    )
+                  }
+                >
+                  Remove slot
+                </Button>
+              )}
+            </Group>
+          </Stack>
+        )}
       </Modal>
 
       <Modal

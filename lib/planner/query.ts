@@ -169,6 +169,17 @@ export function useCreateManualCategoryBlockMutation() {
   });
 }
 
+export function useRemoveCategorySlotMutation() {
+  const utils = trpc.useUtils();
+
+  return trpc.planner.removeCategorySlot.useMutation({
+    onSuccess: (_result, { date }) => {
+      utils.planner.getDayData.invalidate({ date });
+      utils.planner.listTasks.invalidate();
+    },
+  });
+}
+
 export function useUpdateBlockTimeMutation() {
   const utils = trpc.useUtils();
 

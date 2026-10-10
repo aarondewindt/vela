@@ -3,7 +3,7 @@ import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '../../generated/prisma/client';
-import { planningCategoryLabels, type PlanningCategoryValue, type TaskRow } from './tasks';
+import type { PlanningCategoryValue, TaskRow } from './tasks';
 import type { ViewConfig } from '@/lib/views/types';
 import { recurrenceMatchesDate } from './recurrence';
 import {
@@ -509,6 +509,7 @@ export const plannerService = {
             calendarEvent: { select: { id: true, isBusy: true } },
           },
         },
+        categorySlots: { orderBy: { startsAt: 'asc' } },
       },
     });
   },
@@ -713,12 +714,20 @@ export const plannerService = {
         select: { id: true, status: true },
       });
       // The task is open, so a closed occurrence on this day means it was reopened.
-      const [overlap, calendarConflict, existingBlock] = await Promise.all([
+      const [overlap, categorySlotOverlap, calendarConflict, existingBlock] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
             userId,
             planId: plan.id,
             status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt },
+          },
+          select: { id: true },
+        }),
+        transaction.dailyPlanCategorySlot.findFirst({
+          where: {
+            planId: plan.id,
             startsAt: { lt: endsAt },
             endsAt: { gt: startsAt },
           },
@@ -742,7 +751,7 @@ export const plannerService = {
           select: { id: true },
         }),
       ]);
-      if (overlap || calendarConflict || existingBlock) {
+      if (overlap || categorySlotOverlap || calendarConflict || existingBlock) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time is no longer available',
@@ -819,7 +828,7 @@ export const plannerService = {
           select: { id: true },
         });
       }
-      const [overlap, calendarConflict] = await Promise.all([
+      const [overlap, categorySlotOverlap, calendarConflict] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
             userId,
@@ -830,31 +839,51 @@ export const plannerService = {
           },
           select: { id: true },
         }),
+        transaction.dailyPlanCategorySlot.findFirst({
+          where: {
+            planId: plan.id,
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt },
+          },
+          select: { id: true },
+        }),
         transaction.calendarEvent.findFirst({
           where: { userId, isBusy: true, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
           select: { id: true },
         }),
       ]);
-      if (overlap || calendarConflict) {
+      if (overlap || categorySlotOverlap || calendarConflict) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time is no longer available',
         });
       }
-      return transaction.dailyBlock.create({
+      return transaction.dailyPlanCategorySlot.create({
         data: {
-          userId,
           planId: plan.id,
-          title: planningCategoryLabels[input.category],
           category: input.category,
           startsAt,
           endsAt,
-          durationMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
           source: 'MANUAL',
-          position: 0,
         },
       });
     });
+  },
+
+  async removeCategorySlot(userId: string, input: { date: string; slotId: string }) {
+    const planDate = new Date(`${input.date}T00:00:00.000Z`);
+    const slot = await prisma.dailyPlanCategorySlot.findFirst({
+      where: {
+        id: input.slotId,
+        source: 'MANUAL',
+        plan: { userId, planDate, isCurrent: true },
+      },
+      select: { id: true },
+    });
+    if (!slot) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Category slot not found' });
+    }
+    return prisma.dailyPlanCategorySlot.delete({ where: { id: slot.id } });
   },
 
   async updateBlockTime(
@@ -888,7 +917,7 @@ export const plannerService = {
       if (!block) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Editable block not found' });
       }
-      const [overlap, calendarConflict] = await Promise.all([
+      const [overlap, categorySlotOverlap, calendarConflict] = await Promise.all([
         transaction.dailyBlock.findFirst({
           where: {
             userId,
@@ -900,12 +929,20 @@ export const plannerService = {
           },
           select: { id: true },
         }),
+        transaction.dailyPlanCategorySlot.findFirst({
+          where: {
+            plan: { userId, planDate, isCurrent: true },
+            startsAt: { lt: endsAt },
+            endsAt: { gt: startsAt },
+          },
+          select: { id: true },
+        }),
         transaction.calendarEvent.findFirst({
           where: { userId, isBusy: true, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
           select: { id: true },
         }),
       ]);
-      if (overlap || calendarConflict) {
+      if (overlap || categorySlotOverlap || calendarConflict) {
         throw new TRPCError({
           code: 'CONFLICT',
           message: 'The selected time overlaps another event',
@@ -1080,6 +1117,7 @@ export const plannerService = {
         data: { status: 'ARCHIVED', isCurrent: false },
       });
       await transaction.dailyBlock.deleteMany({ where: { planId: plan.id } });
+      await transaction.dailyPlanCategorySlot.deleteMany({ where: { planId: plan.id } });
       await releaseOccurrences(
         transaction,
         userId,
@@ -1128,6 +1166,7 @@ export const plannerService = {
               calendarEvent: { select: { isBusy: true } },
             },
           },
+          categorySlots: { orderBy: { startsAt: 'asc' } },
         },
       }),
       prisma.taskDependency.findMany({
@@ -1168,25 +1207,12 @@ export const plannerService = {
     }
 
     const existingBlocks = currentPlan?.dailyBlocks ?? [];
-    const manualCategorySlots = existingBlocks.filter(
-      (block) =>
-        block.status === 'PLANNED' &&
-        block.taskOccurrenceId === null &&
-        block.calendarEventId === null &&
-        block.category !== null &&
-        (block.source === 'MANUAL' ||
-          (block.source === 'PLANNER' && block.category === 'LEISURE' && block.title === 'Leisure'))
-    );
+    const categorySlots = generatorOptions.fillExistingPlan ? (currentPlan?.categorySlots ?? []) : [];
     const protectedBlocks = generatorOptions.fillExistingPlan
-      ? existingBlocks.filter(
-          (block) =>
-            block.status !== 'CANCELED' &&
-            !manualCategorySlots.some((slot) => slot.id === block.id)
-        )
+      ? existingBlocks.filter((block) => block.status !== 'CANCELED')
       : existingBlocks.filter(
           (block) =>
-            (block.source === 'MANUAL' && block.status === 'PLANNED' &&
-              !manualCategorySlots.some((slot) => slot.id === block.id)) ||
+            (block.source === 'MANUAL' && block.status === 'PLANNED') ||
             (block.isFixed && ['PLANNED', 'IN_PROGRESS'].includes(block.status)) ||
             ['IN_PROGRESS', 'DONE'].includes(block.status)
         );
@@ -1298,13 +1324,13 @@ export const plannerService = {
       }
     }
     const existingLeisureMinutes = generatorOptions.fillExistingPlan
-      ? protectedBlocks
-          .filter(
-            (block) =>
-              block.category === 'LEISURE' &&
-              ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status)
+      ? categorySlots
+          .filter((slot) => slot.category === 'LEISURE')
+          .reduce(
+            (total, slot) =>
+              total + Math.ceil((slot.endsAt.getTime() - slot.startsAt.getTime()) / 60_000),
+            0
           )
-          .reduce((total, block) => total + block.durationMinutes, 0)
       : 0;
     profile.leisureMinutes = Math.max(
       0,
@@ -1394,11 +1420,11 @@ export const plannerService = {
       availability,
       busy,
       profile,
-      categorySlots: manualCategorySlots.map((block) => ({
-        id: block.id,
-        category: block.category!,
-        start: block.startsAt,
-        end: block.endsAt,
+      categorySlots: categorySlots.map((slot) => ({
+        id: slot.id,
+        category: slot.category,
+        start: slot.startsAt,
+        end: slot.endsAt,
       })),
     });
 
@@ -1471,7 +1497,7 @@ export const plannerService = {
           status: 'PLANNED' as const,
           source: 'PLANNER' as const,
         })),
-        ...[...schedule.breaks, ...schedule.reservations].map((block) => ({
+        ...schedule.breaks.map((block) => ({
           userId,
           title: block.title,
           brief: null,
@@ -1539,8 +1565,33 @@ export const plannerService = {
             })),
           },
           dailyBlocks: { create: [...copiedBlocks, ...plannedBlocks] },
+          categorySlots: {
+            create: [
+              ...categorySlots.map((slot) => ({
+                category: slot.category,
+                startsAt: slot.startsAt,
+                endsAt: slot.endsAt,
+                source: slot.source,
+              })),
+              ...schedule.leisure.map((slot) => ({
+                category: 'LEISURE' as const,
+                startsAt: slot.start,
+                endsAt: slot.end,
+                source: 'PLANNER' as const,
+              })),
+              ...schedule.reservations.map((slot) => ({
+                category: slot.category,
+                startsAt: slot.start,
+                endsAt: slot.end,
+                source: 'PLANNER' as const,
+              })),
+            ],
+          },
         },
-        include: { dailyBlocks: { orderBy: { startsAt: 'asc' } } },
+        include: {
+          dailyBlocks: { orderBy: { startsAt: 'asc' } },
+          categorySlots: { orderBy: { startsAt: 'asc' } },
+        },
       });
 
       for (const occurrenceId of occurrenceIds.values()) {

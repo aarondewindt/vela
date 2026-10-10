@@ -286,4 +286,53 @@ describe('scheduleCandidates', () => {
     expect(result.scheduled[0]).toMatchObject({ start: at(9), end: at(9, 30) });
     expect(result.unscheduled.map(({ candidate: item }) => item.id)).toEqual(['long-chore']);
   });
+
+  it('inserts REST blocks between sessions inside a Work category slot', () => {
+    const result = scheduleCandidates({
+      candidates: [candidate({ id: 'long-work', category: 'WORK', durationMinutes: 180 })],
+      availability: [{ start: at(9), end: at(13) }],
+      busy: [],
+      categorySlots: [{ id: 'work-slot', category: 'WORK', start: at(9), end: at(13) }],
+      profile: {
+        ...WEEKDAY_PLANNING_PROFILE,
+        sessionMinutes: 90,
+        gapMinutes: 15,
+        leisureMinutes: 0,
+      },
+    });
+
+    expect(result.scheduled.map(({ durationMinutes, start, end }) => [durationMinutes, start, end])).toEqual([
+      [90, at(9), at(10, 30)],
+      [90, at(10, 45), at(12, 15)],
+    ]);
+    expect(result.breaks.map(({ category, start, end }) => [category, start, end])).toEqual([
+      ['REST', at(10, 30), at(10, 45)],
+    ]);
+  });
+
+  it('inserts REST blocks between sessions inside a Leisure category slot', () => {
+    const result = scheduleCandidates({
+      candidates: [candidate({ id: 'long-leisure', category: 'LEISURE', durationMinutes: 150 })],
+      availability: [{ start: at(9), end: at(12) }],
+      busy: [],
+      categorySlots: [{ id: 'leisure-slot', category: 'LEISURE', start: at(9), end: at(12) }],
+      profile: {
+        ...WEEKDAY_PLANNING_PROFILE,
+        sessionMinutes: 90,
+        maxLeisureBlockMinutes: 60,
+        gapMinutes: 15,
+        leisureMinutes: 0,
+      },
+    });
+
+    expect(result.scheduled.map(({ durationMinutes, start, end }) => [durationMinutes, start, end])).toEqual([
+      [60, at(9), at(10)],
+      [60, at(10, 15), at(11, 15)],
+      [30, at(11, 30), at(12)],
+    ]);
+    expect(result.breaks.map(({ category, start, end }) => [category, start, end])).toEqual([
+      ['REST', at(10), at(10, 15)],
+      ['REST', at(11, 15), at(11, 30)],
+    ]);
+  });
 });

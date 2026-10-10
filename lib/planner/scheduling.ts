@@ -252,6 +252,7 @@ export function scheduleCandidates({
   const workWindows = subtractBusyIntervals(freeWindows, leisure);
   const scheduled: ScheduledCandidate[] = [];
   const scheduledWork: ScheduledCandidate[] = [];
+  const breaks: ScheduledCandidate[] = [];
   const reservations: ScheduledCandidate[] = [];
   const remainingByCandidate = new Map(
     candidates.map((candidate) => [candidate.id, candidate.durationMinutes])
@@ -268,49 +269,104 @@ export function scheduleCandidates({
   ].toSorted((a, b) => a.start.getTime() - b.start.getTime());
 
   for (const slot of allCategorySlots) {
-    let cursor = slot.start.getTime();
-    const slotEnd = slot.end.getTime();
-    while (cursor < slotEnd) {
-      const candidate = orderedCandidates.find(
-        (item) =>
-          item.category === slot.category &&
-          (remainingByCandidate.get(item.id) ?? 0) > 0 &&
-          item.durationMinutes > 0
-      );
-      if (!candidate) {
-        break;
+    const openWindows = subtractBusyIntervals(
+      [{ start: slot.start, end: slot.end }],
+      busy
+    );
+    const sessionLimit =
+      slot.category === 'LEISURE'
+        ? profile.maxLeisureBlockMinutes
+        : profile.sessionMinutes;
+
+    for (const openWindow of openWindows) {
+      let cursor = openWindow.start.getTime();
+      let continuousMinutes = 0;
+      const windowEnd = openWindow.end.getTime();
+      while (cursor < windowEnd) {
+        const candidate = orderedCandidates.find(
+          (item) =>
+            item.category === slot.category &&
+            (remainingByCandidate.get(item.id) ?? 0) > 0 &&
+            item.durationMinutes > 0
+        );
+        if (!candidate) {
+          break;
+        }
+
+        if (continuousMinutes >= sessionLimit) {
+          const breakMinutes = Math.max(0, profile.gapMinutes);
+          const breakEnd = cursor + breakMinutes * 60_000;
+          if (breakEnd + 60_000 > windowEnd) {
+            break;
+          }
+          const start = new Date(cursor);
+          const end = new Date(breakEnd);
+          breaks.push({
+            id: `break:${breaks.length}`,
+            title: 'Short break',
+            priority: 5,
+            size: 0,
+            tier: 'FILLER',
+            daysUntilDue: null,
+            dueAt: null,
+            durationMinutes: breakMinutes,
+            category: 'REST',
+            start,
+            end,
+          });
+          cursor = breakEnd;
+          continuousMinutes = 0;
+        }
+
+        const durationMinutes = Math.min(
+          Math.floor((windowEnd - cursor) / 60_000),
+          sessionLimit - continuousMinutes,
+          remainingByCandidate.get(candidate.id) ?? 0
+        );
+        if (durationMinutes <= 0) {
+          break;
+        }
+        const start = new Date(cursor);
+        const end = new Date(cursor + durationMinutes * 60_000);
+        scheduled.push({ ...candidate, durationMinutes, start, end });
+        remainingByCandidate.set(
+          candidate.id,
+          (remainingByCandidate.get(candidate.id) ?? 0) - durationMinutes
+        );
+        cursor = end.getTime();
+        continuousMinutes += durationMinutes;
       }
-      const durationMinutes = Math.min(
-        Math.floor((slotEnd - cursor) / 60_000),
-        remainingByCandidate.get(candidate.id) ?? 0
-      );
-      if (durationMinutes <= 0) {
-        break;
-      }
-      const start = new Date(cursor);
-      const end = new Date(cursor + durationMinutes * 60_000);
-      scheduled.push({ ...candidate, durationMinutes, start, end });
-      remainingByCandidate.set(
-        candidate.id,
-        (remainingByCandidate.get(candidate.id) ?? 0) - durationMinutes
-      );
-      cursor = end.getTime();
     }
 
-    const remainderMinutes = Math.floor((slotEnd - cursor) / 60_000);
-    if (remainderMinutes > 0) {
+    const assigned = scheduled
+      .filter((block) =>
+        orderedCandidates.some(
+          (candidate) => candidate.id === block.id && candidate.category === slot.category
+        )
+      )
+      .map(({ start, end }) => ({ start, end }));
+    const scheduledBreaks = breaks.map(({ start, end }) => ({ start, end }));
+    const unused = subtractBusyIntervals(
+      [{ start: slot.start, end: slot.end }],
+      [...busy, ...assigned, ...scheduledBreaks]
+    );
+    for (const [index, interval] of unused.entries()) {
+      const durationMinutes = Math.floor((interval.end.getTime() - interval.start.getTime()) / 60_000);
+      if (durationMinutes <= 0) {
+        continue;
+      }
       reservations.push({
-        id: `reservation:${slot.id}`,
+        id: `reservation:${slot.id}:${index}`,
         title: slot.category === 'LEISURE' ? 'Leisure' : slot.category,
         priority: 5,
         size: 0,
         tier: 'FILLER',
         daysUntilDue: null,
         dueAt: null,
-        durationMinutes: remainderMinutes,
+        durationMinutes,
         category: slot.category,
-        start: new Date(cursor),
-        end: slot.end,
+        start: interval.start,
+        end: interval.end,
       });
     }
   }
@@ -326,8 +382,6 @@ export function scheduleCandidates({
   const unscheduled: UnscheduledCandidate[] = candidates
     .filter((candidate) => candidate.durationMinutes <= 0)
     .map((candidate) => ({ candidate, reason: 'invalid-duration' }));
-  const breaks: ScheduledCandidate[] = [];
-
   for (const candidate of eligible) {
     let remaining = remainingByCandidate.get(candidate.id) ?? 0;
     while (remaining > 0) {

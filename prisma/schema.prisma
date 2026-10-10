@@ -169,6 +169,11 @@ enum BlockSource {
   AUTOMATION
 }
 
+enum CategorySlotSource {
+  MANUAL
+  PLANNER
+}
+
 enum DayWorkMode {
   NORMAL
   WFH
@@ -372,6 +377,7 @@ model DailyPlan {
   updatedAt       DateTime             @updatedAt
   finalizedAt     DateTime?
   dailyBlocks     DailyBlock[]
+  categorySlots   DailyPlanCategorySlot[]
   checkins        Checkin[]
 
   @@unique([userId, planDate, version])
@@ -415,6 +421,21 @@ model DailyBlock {
   @@index([planId, position])
   @@index([planId, startsAt])
   @@map("daily_blocks")
+}
+
+model DailyPlanCategorySlot {
+  id         String             @id @default(uuid()) @db.Uuid
+  planId     String             @db.Uuid
+  plan       DailyPlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category   PlanningCategory
+  startsAt   DateTime
+  endsAt     DateTime
+  source     CategorySlotSource @default(MANUAL)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([planId, startsAt])
+  @@map("daily_plan_category_slots")
 }
 
 model DayOverride {

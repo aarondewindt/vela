@@ -177,6 +177,9 @@ export const plannerRouter = router({
       })
     )
     .mutation(({ ctx, input }) => plannerService.createManualCategoryBlock(ctx.userId, input)),
+  removeCategorySlot: protectedProcedure
+    .input(z.object({ date: z.iso.date(), slotId: id }))
+    .mutation(({ ctx, input }) => plannerService.removeCategorySlot(ctx.userId, input)),
   updateBlockTime: protectedProcedure
     .input(
       z.object({
