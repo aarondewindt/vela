@@ -1143,12 +1143,7 @@ export const plannerService = {
         return { cleared: false };
       }
 
-      await transaction.dailyPlan.update({
-        where: { id: plan.id },
-        data: { status: 'ARCHIVED', isCurrent: false },
-      });
       await transaction.dailyBlock.deleteMany({ where: { planId: plan.id } });
-      await transaction.dailyPlanCategorySlot.deleteMany({ where: { planId: plan.id } });
       await releaseOccurrences(
         transaction,
         userId,
