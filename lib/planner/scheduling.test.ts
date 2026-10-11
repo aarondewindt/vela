@@ -273,18 +273,24 @@ describe('scheduleCandidates', () => {
     ]);
   });
 
-  it('keeps remaining category task effort inside its reserved category section', () => {
+  it('uses open time for unreserved categories before remaining reserved-category tasks', () => {
     const result = scheduleCandidates({
-      candidates: [candidate({ id: 'long-chore', category: 'LIFE', durationMinutes: 60 })],
+      candidates: [
+        candidate({ id: 'long-chore', category: 'LIFE', durationMinutes: 60 }),
+        candidate({ id: 'work-task', category: 'WORK', durationMinutes: 30 }),
+      ],
       availability: [{ start: at(9), end: at(11) }],
       busy: [],
       categorySlots: [{ id: 'life-slot', category: 'LIFE', start: at(9), end: at(9, 30) }],
-      profile: { ...WEEKDAY_PLANNING_PROFILE, leisureMinutes: 0 },
+      profile: { ...noLeisureProfile, gapMinutes: 0, sessionMinutes: 60 },
     });
 
-    expect(result.scheduled).toHaveLength(1);
-    expect(result.scheduled[0]).toMatchObject({ start: at(9), end: at(9, 30) });
-    expect(result.unscheduled.map(({ candidate: item }) => item.id)).toEqual(['long-chore']);
+    expect(result.scheduled.map(({ id, start, end }) => [id, start, end])).toEqual([
+      ['long-chore', at(9), at(9, 30)],
+      ['work-task', at(9, 30), at(10)],
+      ['long-chore', at(10), at(10, 30)],
+    ]);
+    expect(result.unscheduled).toEqual([]);
   });
 
   it('inserts REST blocks between sessions inside a Work category slot', () => {

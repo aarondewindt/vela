@@ -407,14 +407,15 @@ export function scheduleCandidates({
     }
   }
 
+  const reservedCategories = new Set(allCategorySlots.map(({ category }) => category));
   const eligible = candidates
-    .filter(
-      (candidate) =>
-        candidate.category !== 'LEISURE' &&
-        !allCategorySlots.some((slot) => slot.category === candidate.category)
-    )
+    .filter((candidate) => candidate.category !== 'LEISURE')
     .filter((candidate) => candidate.durationMinutes > 0)
-    .toSorted(compareCandidates);
+    .toSorted(
+      (a, b) =>
+        Number(reservedCategories.has(a.category)) - Number(reservedCategories.has(b.category)) ||
+        compareCandidates(a, b)
+    );
   const unscheduled: UnscheduledCandidate[] = candidates
     .filter((candidate) => candidate.durationMinutes <= 0)
     .map((candidate) => ({ candidate, reason: 'invalid-duration' }));
