@@ -35,3 +35,11 @@ This template comes with the following features:
 - `storybook` – starts storybook dev server
 - `storybook:build` – build production storybook bundle to `storybook-static`
 - `format:write` – formats all files with oxfmt
+
+## AI coding agents
+
+Vela supports GitHub Copilot and OpenAI Codex. Shared project instructions are in [AGENTS.md](AGENTS.md); shared architecture and agent setup are in [docs/architecture.md](docs/architecture.md) and [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md). Both agents discover the canonical project skills in `.agents/skills/`, including the Prisma skills.
+
+In VS Code, install the OpenAI Codex extension from the Extensions view and choose **Sign in with ChatGPT** using the subscription account that has Codex access; availability depends on the account's current plan entitlements. Copilot uses the existing VS Code GitHub sign-in. Codex reads the repository MCP configuration in `.codex/config.toml` after you trust the project; VS Code continues to use `.vscode/mcp.json`. Set `MANTINE_MCP_DATA_URL` in the environment that launches Codex if you need the Mantine MCP server; VS Code instead prompts for this value. Do not commit tokens or credentials.
+
+Keep the VS Code and Codex MCP definitions aligned when changing servers. To refresh installed skills after a Prisma upgrade, review the Prisma sources and run `npx skills update -p`; the skills are versioned independently of the Prisma npm package. For a substantial unfinished task, use the Git-tracked [agent handoff](docs/agent-handoff.md). Do not have agents edit one working tree simultaneously; use separate Git worktrees for concurrent tasks. See [the full agent workflow](docs/AGENT_WORKFLOW.md) for transport details and maintenance notes.

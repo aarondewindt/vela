@@ -1,0 +1,12 @@
+[mcp_servers.better-auth]
+url = "https://mcp.better-auth.com/mcp"
+
+[mcp_servers.mantine-mcp-server]
+command = "npx"
+args = ["@mantine/mcp-server"]
+env = { MANTINE_MCP_TIMEOUT_MS = "10000" }
+env_vars = ["MANTINE_MCP_DATA_URL"]
+
+[mcp_servers.next-devtools]
+command = "npx"
+args = ["-y", "next-devtools-mcp@latest"]

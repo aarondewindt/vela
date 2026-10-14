@@ -14,6 +14,7 @@
 		"ms-vscode.js-debug-nightly",
     "vunguyentuan.vscode-css-variables",
     "Prisma.prisma",
-    "Ollama.ollama"
+    "Ollama.ollama",
+    "openai.chatgpt"
   ]
 }

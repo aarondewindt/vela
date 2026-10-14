@@ -62,8 +62,6 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
         </>
       }
     >
-      <TaskCard task={task} theme={themes.find((theme) => theme.id === task.themeId) ?? null} />
-        
       <TitleField value={task.title} onSave={(title) => save({ title })} />
 
       <SelectProperty

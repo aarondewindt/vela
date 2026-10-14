@@ -8,6 +8,10 @@ yarn prisma generate
 yarn prisma studio
 ```
 
+
+## Models
+laya ai
+
 ## Task sizes
 
 The task `size` field is an integer with these user-facing labels:
