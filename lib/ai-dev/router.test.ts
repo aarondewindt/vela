@@ -10,6 +10,11 @@ jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/lib/ai', () => jest.requireActual('@/lib/ai/errors'));
 jest.mock('./service', () => ({ aiDevService: { listChatModels: jest.fn() } }));
 
+jest.mock('./conversations', () => ({
+  conversationService: { list: jest.fn(), get: jest.fn(), create: jest.fn(), delete: jest.fn() },
+}));
+
+import { conversationService } from './conversations';
 import { AiError } from '@/lib/ai';
 import { aiDevRouter } from './router';
 import { aiDevService } from './service';
@@ -40,5 +45,26 @@ describe('aiDevRouter', () => {
     await expect(
       aiDevRouter.createCaller({ userId: 'user-a' }).listChatModels()
     ).rejects.toMatchObject({ message: 'Ollama is offline.' });
+  });
+});
+
+describe('conversation authorization', () => {
+  const id = '45f6af99-9a30-4638-b05f-fb826b970379';
+  it('requires authentication for all saved conversation operations', async () => {
+    const caller = aiDevRouter.createCaller({ userId: null });
+    await expect(caller.listConversations()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(caller.getConversation({ id })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(caller.deleteConversation({ id })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(
+      caller.createConversation({ provider: 'ollama', modelId: 'chat:latest' })
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(conversationService.get).not.toHaveBeenCalled();
+  });
+  it('takes the owner from the authenticated context', async () => {
+    const caller = aiDevRouter.createCaller({ userId: 'user-a' });
+    await caller.getConversation({ id });
+    await caller.deleteConversation({ id });
+    expect(conversationService.get).toHaveBeenCalledWith('user-a', id);
+    expect(conversationService.delete).toHaveBeenCalledWith('user-a', id);
   });
 });

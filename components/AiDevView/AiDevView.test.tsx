@@ -1,32 +1,63 @@
 jest.mock('@ai-sdk/react', () => ({ useChat: jest.fn() }));
 jest.mock('ai', () => ({ DefaultChatTransport: jest.fn() }));
+jest.mock('@mantine/modals', () => ({ modals: { openConfirmModal: jest.fn() } }));
 jest.mock('@/lib/trpc/client', () => ({
-  trpc: { aiDev: { listChatModels: { useQuery: jest.fn() } } },
+  trpc: {
+    useUtils: jest.fn(),
+    aiDev: {
+      listChatModels: { useQuery: jest.fn() },
+      listConversations: { useQuery: jest.fn() },
+      getConversation: { useQuery: jest.fn() },
+      createConversation: { useMutation: jest.fn() },
+      deleteConversation: { useMutation: jest.fn() },
+    },
+  },
 }));
 
 import { useChat } from '@ai-sdk/react';
+import { modals } from '@mantine/modals';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { DefaultChatTransport } from 'ai';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { AiDevView } from './AiDevView';
 
+const id = '45f6af99-9a30-4638-b05f-fb826b970379';
+const saved = {
+  id,
+  title: 'Saved title',
+  selection: { provider: 'ollama', modelId: 'first:latest' },
+  updatedAt: new Date('2026-10-17T12:00:00Z'),
+  generating: false,
+  messages: [],
+  lastResponseStatus: null,
+};
 const sendMessage = jest.fn();
 const regenerate = jest.fn();
+const setMessages = jest.fn();
 const stop = jest.fn().mockResolvedValue(undefined);
 const refetch = jest.fn();
+const create = jest.fn();
+const remove = jest.fn();
+const invalidate = jest.fn();
 const query = {
-  data: [
-    { provider: 'ollama', id: 'first:latest', capabilities: ['chat'] },
-    { provider: 'ollama', id: 'second:latest', capabilities: ['chat'] },
-  ],
   isPending: false,
   isFetching: false,
   isSuccess: true,
+  isFetchedAfterMount: true,
   error: null,
   refetch,
 };
-const chat = { messages: [], status: 'ready', error: undefined, sendMessage, regenerate, stop };
+const chat = {
+  messages: [],
+  status: 'ready',
+  error: undefined,
+  sendMessage,
+  regenerate,
+  setMessages,
+  stop,
+};
 
 beforeAll(() => {
   Object.defineProperty(document, 'fonts', {
@@ -38,51 +69,78 @@ beforeAll(() => {
   HTMLElement.prototype.setPointerCapture = jest.fn();
   HTMLElement.prototype.releasePointerCapture = jest.fn();
 });
-
 beforeEach(() => {
   jest.clearAllMocks();
   (useChat as jest.Mock).mockReturnValue(chat);
-  (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue(query);
+  (trpc.useUtils as jest.Mock).mockReturnValue({
+    aiDev: { listConversations: { invalidate }, getConversation: { invalidate } },
+  });
+  (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+    ...query,
+    data: [{ provider: 'ollama', id: 'first:latest', capabilities: ['chat'] }],
+  });
+  (trpc.aiDev.listConversations.useQuery as jest.Mock).mockReturnValue({
+    ...query,
+    data: [{ id, title: 'Saved title', modelId: 'first:latest' }],
+  });
+  (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({ ...query, data: saved });
+  (trpc.aiDev.createConversation.useMutation as jest.Mock).mockReturnValue({
+    mutate: create,
+    isPending: false,
+  });
+  (trpc.aiDev.deleteConversation.useMutation as jest.Mock).mockReturnValue({
+    mutate: remove,
+    isPending: false,
+  });
 });
-
-async function chooseModel(user: ReturnType<typeof userEvent.setup>, name = 'first:latest') {
-  await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
-  await user.click(await screen.findByRole('option', { name }));
+async function openSaved(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('combobox', { name: 'Saved conversations' }));
+  await user.click(await screen.findByRole('option', { name: 'Saved title · first:latest' }));
 }
 
-describe('AiDevView', () => {
-  it('requires a model and a message before sending', async () => {
+describe('AiDevView saved conversations', () => {
+  it('creates a saved conversation with the chosen model before chatting', async () => {
     const user = userEvent.setup();
     render(<AiDevView />);
-    expect(screen.getByText('Start a conversation')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
-    await chooseModel(user);
-    await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Hello');
-    await user.click(screen.getByRole('button', { name: 'Send' }));
-    expect(sendMessage).toHaveBeenCalledWith(
-      { text: 'Hello' },
-      { body: { selection: { provider: 'ollama', modelId: 'first:latest' } } }
-    );
-    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeDisabled();
+    await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    await user.click(await screen.findByRole('option', { name: 'first:latest' }));
+    await user.click(screen.getByRole('button', { name: 'Start conversation' }));
+    expect(create).toHaveBeenCalledWith({ provider: 'ollama', modelId: 'first:latest' });
   });
-
-  it('uses the current model selection on each request', async () => {
+  it('opens saved history and locks its persisted model selection', async () => {
+    const messages = [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'Saved message' }] }];
+    (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: { ...saved, messages },
+    });
+    (useChat as jest.Mock).mockReturnValue({ ...chat, messages });
     const user = userEvent.setup();
     render(<AiDevView />);
-    await chooseModel(user);
-    await chooseModel(user, 'second:latest');
+    await openSaved(user);
+    expect(screen.getByText('Saved message')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeDisabled();
+    expect(useChat).toHaveBeenCalledWith(expect.objectContaining({ id, messages }));
+  });
+  it('sends only the latest user message for a saved conversation', async () => {
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    await openSaved(user);
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Hello{Enter}');
-    expect(sendMessage).toHaveBeenCalledWith(
-      { text: 'Hello' },
-      { body: { selection: { provider: 'ollama', modelId: 'second:latest' } } }
-    );
+    expect(sendMessage).toHaveBeenCalledWith({ text: 'Hello' });
+    const message = { id: 'u', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
+    const transport = (DefaultChatTransport as jest.Mock).mock.calls[0][0];
+    expect(
+      transport.prepareSendMessagesRequest({
+        id,
+        messages: [message, { role: 'assistant', id: 'a' }],
+      })
+    ).toEqual({ body: { conversationId: id, message } });
   });
-
   it('keeps Shift+Enter as a line break', async () => {
     const user = userEvent.setup();
     render(<AiDevView />);
-    await chooseModel(user);
+    await openSaved(user);
     await user.type(
       screen.getByRole('textbox', { name: 'Message' }),
       'First{Shift>}{Enter}{/Shift}Second'
@@ -90,76 +148,87 @@ describe('AiDevView', () => {
     expect(sendMessage).not.toHaveBeenCalled();
     expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('First\nSecond');
   });
-
-  it('cancels the active stream and clears the draft on a new conversation', async () => {
+  it('stops the old chat when starting a new conversation', async () => {
     const user = userEvent.setup();
     render(<AiDevView />);
-    await chooseModel(user);
-    await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Draft');
+    await openSaved(user);
     await user.click(screen.getByRole('button', { name: 'New conversation' }));
     expect(stop).toHaveBeenCalled();
-    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('');
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toHaveValue('first:latest');
+    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeEnabled();
+    expect(screen.queryByRole('textbox', { name: 'Message' })).not.toBeInTheDocument();
   });
-
-  it('renders streamed messages and offers cancellation while busy', async () => {
-    (useChat as jest.Mock).mockReturnValue({
-      ...chat,
-      status: 'streaming',
-      messages: [
-        { id: 'u', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
-        { id: 'a', role: 'assistant', parts: [{ type: 'text', text: 'A streamed reply' }] },
-      ],
+  it('offers retry for a restored incomplete response', async () => {
+    (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: { ...saved, lastResponseStatus: 'INTERRUPTED' },
     });
     const user = userEvent.setup();
     render(<AiDevView />);
-    expect(screen.getByRole('article', { name: 'Assistant message' })).toHaveTextContent(
-      'A streamed reply'
-    );
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Stop response' }));
-    expect(stop).toHaveBeenCalled();
+    await openSaved(user);
+    await user.click(screen.getByRole('button', { name: 'Retry response' }));
+    expect(regenerate).toHaveBeenCalled();
+  });
+  it('disables sending while another generation is still active', async () => {
+    (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: { ...saved, generating: true },
+    });
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    await openSaved(user);
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
+    expect(screen.getByText(/A response is being generated/)).toBeInTheDocument();
+  });
+  it('requires confirmation before deleting a saved conversation', async () => {
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    await openSaved(user);
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(remove).not.toHaveBeenCalled();
+    (modals.openConfirmModal as jest.Mock).mock.calls[0][0].onConfirm();
+    expect(remove).toHaveBeenCalledWith({ id });
+  });
+  it('does not display cached private data before a fresh authorized read', () => {
+    (trpc.aiDev.listConversations.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      isFetchedAfterMount: false,
+      data: [{ id, title: 'Other session title', modelId: 'first:latest' }],
+    });
+    render(<AiDevView />);
+    expect(screen.getByRole('combobox', { name: 'Saved conversations' })).toBeDisabled();
+    expect(screen.queryByText(/Other session title/)).not.toBeInTheDocument();
   });
 
-  it('retries a failed response with the selected model', async () => {
+  it('keeps cached private conversations hidden when the fresh read fails', () => {
+    (trpc.aiDev.listConversations.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      error: new Error('Unauthorized'),
+      data: [{ id, title: 'Other session title', modelId: 'first:latest' }],
+    });
+    render(<AiDevView />);
+    expect(screen.getByRole('combobox', { name: 'Saved conversations' })).toBeDisabled();
+    expect(screen.queryByText(/Other session title/)).not.toBeInTheDocument();
+  });
+
+  it('preserves a locally failed send when saved history refreshes', async () => {
     const user = userEvent.setup();
     const view = render(<AiDevView />);
-    await chooseModel(user);
+    await openSaved(user);
     (useChat as jest.Mock).mockReturnValue({
       ...chat,
+      error: new Error('A response is already being generated.'),
       status: 'error',
-      error: new Error('Ollama is unavailable.'),
+    });
+    (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: { ...saved, updatedAt: new Date('2026-10-17T12:01:00Z') },
     });
     view.rerender(
       <>
         <AiDevView />
       </>
     );
-    expect(screen.getByText('Ollama is unavailable.')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Retry response' }));
-    expect(regenerate).toHaveBeenCalledWith({
-      body: { selection: { provider: 'ollama', modelId: 'first:latest' } },
-    });
-  });
-
-  it('shows provider discovery errors with a retry action', async () => {
-    (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
-      ...query,
-      isSuccess: false,
-      error: new Error('Set OLLAMA_BASE_URL to enable Ollama.'),
-    });
-    const user = userEvent.setup();
-    render(<AiDevView />);
-    expect(screen.getByText('Set OLLAMA_BASE_URL to enable Ollama.')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Retry loading models' }));
-    expect(refetch).toHaveBeenCalled();
-  });
-
-  it('shows when no chat-capable models are available', () => {
-    (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({ ...query, data: [] });
-    render(<AiDevView />);
-    expect(screen.getByText(/No chat models are installed/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    expect(setMessages).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Retry response' })).toBeEnabled();
   });
 });

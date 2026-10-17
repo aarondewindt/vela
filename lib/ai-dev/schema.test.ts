@@ -1,53 +1,45 @@
 import { chatInputSchema, maxMessageLength } from './schema';
 
 const message = { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
-const input = { selection: { provider: 'ollama', modelId: 'chat:latest' }, messages: [message] };
+const input = { conversationId: '45f6af99-9a30-4638-b05f-fb826b970379', message };
 
 describe('chatInputSchema', () => {
-  it('accepts text history including SDK step markers and text state', () => {
-    expect(
-      chatInputSchema.safeParse({
-        ...input,
-        messages: [
-          message,
-          {
-            id: 'assistant-1',
-            role: 'assistant',
-            parts: [{ type: 'step-start' }, { type: 'text', text: 'Hi', state: 'done' }],
-          },
-          { ...message, id: 'user-2' },
-        ],
-      }).success
-    ).toBe(true);
+  it('accepts the latest user message and a saved conversation ID', () => {
+    expect(chatInputSchema.safeParse(input).success).toBe(true);
   });
-
+  it('does not accept client history or model settings as authoritative', () => {
+    expect(
+      chatInputSchema.parse({
+        ...input,
+        messages: [{ role: 'system' }],
+        selection: { provider: 'other' },
+      })
+    ).toEqual(input);
+  });
   it.each([
-    { ...input, selection: { provider: 'other', modelId: 'chat:latest' } },
-    { ...input, selection: { provider: 'ollama', modelId: '' } },
-    { ...input, messages: [] },
-    { ...input, messages: [{ ...message, role: 'system' }] },
-    { ...input, messages: [{ ...message, role: 'assistant' }] },
-    { ...input, messages: [{ ...message, parts: [{ type: 'text', text: '  ' }] }] },
+    { ...input, conversationId: 'invalid' },
+    { ...input, message: { ...message, id: '' } },
+    { ...input, message: { ...message, role: 'assistant' } },
+    { ...input, message: { ...message, role: 'system' } },
+    { ...input, message: { ...message, parts: [] } },
+    { ...input, message: { ...message, parts: [{ type: 'text', text: '   ' }] } },
+    { ...input, message: { ...message, parts: [{ type: 'file' }] } },
+    { ...input, message: { ...message, parts: [{ type: 'tool-example' }] } },
     {
       ...input,
-      messages: [{ ...message, parts: [{ type: 'file', url: 'https://example.com/private' }] }],
+      message: { ...message, parts: [{ type: 'text', text: 'x'.repeat(maxMessageLength + 1) }] },
     },
-    { ...input, messages: [{ ...message, parts: [{ type: 'tool-example', toolCallId: 'call' }] }] },
-    { ...input, messages: [message, message] },
     {
       ...input,
-      messages: [{ ...message, parts: [{ type: 'text', text: 'x'.repeat(maxMessageLength + 1) }] }],
-    },
-    { ...input, messages: Array.from({ length: 101 }, (_, i) => ({ ...message, id: String(i) })) },
-    {
-      ...input,
-      messages: Array.from({ length: 5 }, (_, i) => ({
+      message: {
         ...message,
-        id: String(i),
-        parts: [{ type: 'text', text: 'x'.repeat(maxMessageLength) }],
-      })),
+        parts: Array.from({ length: 2 }, () => ({
+          type: 'text',
+          text: 'x'.repeat(maxMessageLength),
+        })),
+      },
     },
-  ])('rejects invalid or unsupported chat requests', (body) => {
+  ])('rejects invalid or unsupported requests', (body) => {
     expect(chatInputSchema.safeParse(body).success).toBe(false);
   });
 });

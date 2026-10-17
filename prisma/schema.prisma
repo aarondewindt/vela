@@ -37,9 +37,57 @@ model User {
   automationRuns      AutomationRun[]
   availabilityWindows AvailabilityWindow[]
   plannerGenerationSettings PlannerGenerationSettings?
+  aiConversations     AiConversation[]
 
   @@unique([email])
   @@map("user")
+}
+
+enum AiMessageRole {
+  user
+  assistant
+}
+
+enum AiMessageStatus {
+  COMPLETED
+  GENERATING
+  INTERRUPTED
+  FAILED
+}
+
+model AiConversation {
+  id                   String      @id @default(uuid()) @db.Uuid
+  userId               String
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title                String      @default("New conversation") @db.VarChar(240)
+  provider             String      @db.VarChar(64)
+  modelId              String      @db.VarChar(200)
+  activeGenerationId   String?     @db.Uuid
+  generationStartedAt  DateTime?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  messages             AiMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  conversationId String          @db.Uuid
+  conversation   AiConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id             String          @db.VarChar(128)
+  role           AiMessageRole
+  parts          Json            @db.JsonB
+  position       Int
+  status         AiMessageStatus @default(COMPLETED)
+  replyToId      String?         @db.VarChar(128)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@id([conversationId, id])
+  @@unique([conversationId, position])
+  @@unique([conversationId, replyToId])
+  @@map("ai_messages")
 }
 
 model AvailabilityWindow {

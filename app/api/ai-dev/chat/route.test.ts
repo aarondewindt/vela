@@ -5,14 +5,15 @@ jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/lib/ai', () => jest.requireActual('@/lib/ai/errors'));
 jest.mock('@/lib/ai-dev/service', () => ({ aiDevService: { streamChat: jest.fn() } }));
 
+import { TRPCError } from '@trpc/server';
 import { auth } from '@/lib/auth';
 import { AiError } from '@/lib/ai';
 import { aiDevService } from '@/lib/ai-dev/service';
 import { POST } from './route';
 
 const body = {
-  selection: { provider: 'ollama', modelId: 'chat:latest' },
-  messages: [{ id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] }],
+  conversationId: '45f6af99-9a30-4638-b05f-fb826b970379',
+  message: { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] },
 };
 function request(value: unknown = body, headers?: HeadersInit) {
   return new Request('http://localhost:3000/api/ai-dev/chat', {
@@ -77,7 +78,7 @@ describe('AI Dev chat endpoint', () => {
 
   it('validates message parts before invoking the service', async () => {
     const response = await POST(
-      request({ ...body, messages: [{ id: 'u', role: 'user', parts: [{ type: 'file' }] }] })
+      request({ ...body, message: { id: 'u', role: 'user', parts: [{ type: 'file' }] } })
     );
     expect(response.status).toBe(400);
     expect(aiDevService.streamChat).not.toHaveBeenCalled();
@@ -90,7 +91,7 @@ describe('AI Dev chat endpoint', () => {
     (aiDevService.streamChat as jest.Mock).mockResolvedValue(stream);
     const req = request(body, { origin: 'http://localhost:3000' });
     await expect(POST(req)).resolves.toBe(stream);
-    expect(aiDevService.streamChat).toHaveBeenCalledWith(body, req.signal);
+    expect(aiDevService.streamChat).toHaveBeenCalledWith('user-a', body, req.signal);
     expect(auth.api.getSession).toHaveBeenCalledWith({ headers: req.headers });
   });
 
@@ -126,4 +127,11 @@ describe('AI Dev chat endpoint', () => {
     expect(await response.text()).not.toContain('private');
     expect(aiDevService.streamChat).not.toHaveBeenCalled();
   });
+});
+
+it('returns not found when the authenticated user does not own the conversation', async () => {
+  (aiDevService.streamChat as jest.Mock).mockRejectedValue(
+    new TRPCError({ code: 'NOT_FOUND', message: 'Conversation not found.' })
+  );
+  expect((await POST(request())).status).toBe(404);
 });

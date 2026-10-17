@@ -1,49 +1,48 @@
 # Shared Agent Handoff
 
-This Git-tracked file is a task checkpoint for handing significant unfinished work between Copilot and Codex. It does not synchronize or preserve chat histories. Keep it brief, update it only when another agent is likely to resume the task, and remove sensitive values before recording anything.
+This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** AI Phases 1 and 2 implemented; persistence is the next phase
+**Status:** AI Phases 1–3 implemented; embeddings playground is next
 **Last updated:** 2026-10-17
 
 ## Objective
 
-Build reusable Vercel AI SDK infrastructure, then AI Dev chat, persistence and an embeddings playground. User approved Phases 1 and 2; keep subsequent phases incremental.
+Build reusable Vercel AI SDK infrastructure, AI Dev chat, conversation persistence and an embeddings playground. User approved through Phase 3; continue incrementally.
 
 ## Relevant files
 
-- `lib/ai/`: shared server-only Ollama discovery, capability-aware model resolution, typed errors and colocated tests.
-- `lib/ai-dev/`, `app/ai-dev/page.tsx`, `app/api/ai-dev/chat/route.ts`, `components/AiDevView/`: Phase 2 chat consumer, model query, streaming route and focused tests.
-- `docs/AI.md`: configuration, public API, dependencies and runtime verification details.
-- `vela.env.example`, `package.json`, `yarn.lock`, `jest.setup.cjs`.
+- `lib/ai/`: shared server-only Ollama discovery, model resolution and typed errors.
+- `lib/ai-dev/conversations.ts`: owner-scoped conversation/message persistence, retry semantics and generation leases.
+- `lib/ai-dev/`: service, protected tRPC router, request schema, error mapping and focused tests.
+- `app/ai-dev/page.tsx`, `app/api/ai-dev/chat/route.ts`, `components/AiDevView/`: authenticated chat and saved-conversation UI.
+- `prisma/schema.prisma`, `prisma/migrations/20261017183136_ai_dev_conversations/migration.sql`.
+- `docs/AI.md`: configuration, APIs, persistence protocol and embedding constraints.
 
 ## Work completed
 
-Implemented Phase 1 without AI Dev UI, API or database changes. Local ignored Ollama configuration now points to the host PC's router-reserved static LAN address, supplied by the user and verified reachable from the container; no private environment files are tracked. A temporary guarded Next.js verification route was removed after successful checks.
-
-Phase 2 adds `/ai-dev`, navigation, authenticated model discovery and a text-only streamed chat with cancellation, retry and new-conversation reset. Messages stay in AI SDK UI memory and clear on navigation/reload. No database changes. The current development server lacked the Ollama environment setting; the ignored `.env.local` now contains only that setting copied from `vela.env` for normal Next.js loading. Test account credentials were read only for authorized browser login and were not added to source or logs.
+Shared Ollama infrastructure, streamed chat and saved conversations are implemented. The additive Phase 3 migration was applied locally and Prisma Client regenerated. Users can create, reopen, continue and delete conversations. Partial replies and completion status persist; retries preserve stable message IDs. Temporary verification routes and database fixtures were removed. Credentials were read only for authorized test login, never copied into source or logs.
 
 ## Decisions and rationale
 
-- Shared infrastructure lives in `lib/ai`, independently of future `lib/ai-dev` services.
-- Use `ai@7.0.142` and `ollama-ai-provider-v2@4.0.1`; the newer SDK patch was still quarantined by Yarn.
-- Discover exact installed IDs and capabilities through Ollama metadata; do not infer capabilities from model names.
-- User requires one embedding configuration per collection/vector table, independently selected for each collection. Store configuration at collection level; model or vector-affecting configuration changes require a complete reindex. No mixed-model rows or global embedding-model requirement. See `docs/AI.md` for the agreed future persistence constraints; no vector storage/configuration system has been implemented.
-- Phase 0 proposal: tRPC for models/persistence/embedding requests, authenticated route handler for chat streaming, existing Mantine shell for AI Dev pages. No admin-role system exists; signed-in access was recommended.
-- Phase 2 uses `@ai-sdk/react@4.0.146` with `ai@7.0.142`. Current model selection is sent per request to avoid stale transport configuration. New conversations remount chat state and cancel active generation. The streaming route checks the external Host header because Next.js can use an internal hostname in `request.url`.
+- Shared AI infrastructure remains independent of AI Dev. Dependencies: `ai@7.0.142`, `@ai-sdk/react@4.0.146`, `ollama-ai-provider-v2@4.0.1`; the SDK patch satisfies Yarn's quarantine policy.
+- Conversation provider/model selection is fixed at creation. Streaming requests send only a conversation ID and latest user UI message; the server loads authoritative history and model settings.
+- Stable user IDs, one assistant reply per user message, and composite database constraints prevent duplicate rows. Completed retries replay saved text; incomplete retries replace the same assistant row. Different content cannot reuse an existing user ID.
+- Short transactions claim generation leases; inference runs outside transactions. Three-minute expiry recovers abandoned placeholders. Finalization checks owner and generation token, protecting newer attempts and deleted conversations from late callbacks.
+- Structured text/step parts are stored as JSONB. Cancellation/disconnection saves available partial text. A process crash can lose unsaved partial output; lease expiry makes the saved user turn retryable. No per-token writes or background jobs.
+- tRPC/TanStack Query owns saved data; AI SDK UI owns the active stream. Private cached conversation data is hidden until a fresh successful authorized read. Failed local sends are preserved for retry when saved history refreshes.
+- Each future embedding collection/vector table gets one configuration, independently of other collections. Model/configuration changes require a full reindex. No mixed-model rows or global embedding-model requirement. No vector storage/configuration system is implemented yet.
 
 ## Outstanding issues
 
-- `vela.env` is injected at container creation; keep its Ollama setting aligned with any `.env.local` override when configuration changes.
-- Repository-wide lint has existing failures in untouched planner/UI/auth files. AI files pass scoped lint and formatting.
+- Keep the Ollama setting in ignored `vela.env` aligned with any ignored `.env.local` override. The host PC uses its router-reserved LAN address; localhost inside the container is not the host.
+- Repository-wide lint has pre-existing failures in untouched planner/UI/auth files. Changed AI files pass lint and formatting.
 
 ## Next steps
 
-After user authorization, implement Phase 3 conversation persistence, owner-scoped reads/writes, stable message IDs, structured parts and interrupted-response handling. Read `docs/AI.md` and relevant Prisma skills before schema/query changes. Embeddings UI is Phase 4; persistent embedding storage remains outside those phases.
+After user authorization, implement Phase 4: embedding model selection, single-text vector dimensions/preview, two-text cosine comparison, and meaningful errors. Reuse `lib/ai/`; `qwen3-embedding:0.6b` is installed and was verified to return 1,024-dimensional vectors. Persistent embeddings, pgvector, configuration storage and reindex machinery remain future work.
 
 ## Validation performed
 
-- Live Next.js discovery, generation and streaming succeeded against Ollama 0.40.6 with `llama3.1:8b`; embedding resolution correctly rejected the chat-only model.
-- After the user installed `qwen3-embedding:0.6b`, Next.js discovery, embedding resolution, single/batch embedding calls and cosine comparison succeeded. Observed output: 1,024 dimensions, all finite; identical-input cosine approximately 1. Temporary verification route removed.
-- Phase 2: 93 Jest tests and TypeScript checks pass. Changed-file Oxlint, Stylelint and formatting checks pass; broad lint reports failures only in untouched planner/UI/auth files.
-- Production build passes with `NODE_ENV=production yarn build`. The initial sandboxed build stalled; only its verified orphaned build process was stopped before the successful build outside the sandbox. The development server was left running.
-- Browser: test-account login, chat-only model filtering, streamed generation, follow-up context, cancellation, new-conversation reset, simulated network error/retry and mobile layout passed. Anonymous model discovery and chat return 401. No browser runtime errors were reported.
+- 117 Jest tests, typecheck, scoped Oxlint/Stylelint/format checks and production build (`NODE_ENV=production yarn build`) pass.
+- 13 live PostgreSQL checks passed: foreign read/delete/list/stream rejection, concurrent generation, stable retry rows/IDs, completed replay, content immutability, authoritative history, abandoned lease recovery, stale callback protection and cascading deletion. Synthetic fixture users/conversations were cleaned up.
+- Browser with authorized test account and `llama3.1:8b`: messages restored after reload and continued using saved context; cancellation saved partial text; retry kept the same six message rows and assistant ID; completed replay returned a complete SDK stream without duplicates; confirmed deletion returned 404 on a subsequent read. Test conversation removed and browser signed out/closed. No browser runtime errors were reported.

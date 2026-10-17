@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       return failure(input.error.issues[0]?.message ?? 'The chat request is invalid.', 400);
     }
 
-    return await aiDevService.streamChat(input.data, request.signal);
+    return await aiDevService.streamChat(session.user.id, input.data, request.signal);
   } catch (error) {
     const { message, status } = getAiDevError(error);
     return failure(message, status);

@@ -16,19 +16,77 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
-import { IconMessagePlus, IconRefresh, IconSend, IconPlayerStop } from '@tabler/icons-react';
+import { modals } from '@mantine/modals';
+import {
+  IconMessagePlus,
+  IconRefresh,
+  IconSend,
+  IconPlayerStop,
+  IconTrash,
+} from '@tabler/icons-react';
+import type { inferRouterOutputs } from '@trpc/server';
 import { DefaultChatTransport } from 'ai';
 import { useEffect, useRef, useState } from 'react';
-import type { AiModelSelection } from '@/lib/ai';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
+import type { AppRouter } from '@/lib/trpc/root';
 import classes from './AiDevView.module.css';
 
+type SavedConversation = inferRouterOutputs<AppRouter>['aiDev']['getConversation'];
+
 export function AiDevView() {
+  const utils = trpc.useUtils();
   const models = trpc.aiDev.listChatModels.useQuery(undefined, { retry: false });
+  const conversations = trpc.aiDev.listConversations.useQuery(undefined, {
+    retry: false,
+    refetchOnMount: 'always',
+  });
   const [modelId, setModelId] = useState<string | null>(null);
-  const [conversation, setConversation] = useState(0);
-  const selection = models.data?.find((model) => model.id === modelId);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const detail = trpc.aiDev.getConversation.useQuery(
+    { id: conversationId! },
+    {
+      enabled: Boolean(conversationId),
+      retry: false,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: false,
+      refetchInterval: (query) => (query.state.data?.generating ? 2000 : false),
+    }
+  );
+  const [mutationError, setMutationError] = useState<string | null>(null);
+  const create = trpc.aiDev.createConversation.useMutation({
+    onSuccess: async ({ id }) => {
+      setConversationId(id);
+      await utils.aiDev.listConversations.invalidate();
+    },
+    onError: (error) => setMutationError(error.message),
+  });
+  const remove = trpc.aiDev.deleteConversation.useMutation({
+    onSuccess: async () => {
+      setConversationId(null);
+      await utils.aiDev.listConversations.invalidate();
+    },
+    onError: (error) => setMutationError(error.message),
+  });
+  // Do not render another session's cached data before a fresh authorized read.
+  const saved =
+    conversations.isFetchedAfterMount && !conversations.error ? (conversations.data ?? []) : [];
+  const current = detail.isFetchedAfterMount && !detail.error ? detail.data : undefined;
+  const selection = conversationId
+    ? current?.selection
+    : modelId
+      ? { provider: 'ollama' as const, modelId }
+      : null;
+  const modelOptions = models.data?.map((model) => ({ value: model.id, label: model.id })) ?? [];
+  if (selection && !modelOptions.some((option) => option.value === selection.modelId)) {
+    modelOptions.push({ value: selection.modelId, label: selection.modelId });
+  }
+  const refresh = () => {
+    void utils.aiDev.listConversations.invalidate();
+    if (conversationId) {
+      void utils.aiDev.getConversation.invalidate({ id: conversationId });
+    }
+  };
 
   return (
     <Container size="lg" py="xl">
@@ -36,10 +94,78 @@ export function AiDevView() {
         <div>
           <Title order={2}>AI Dev</Title>
           <Text c="dimmed" mt={4}>
-            Chat with an installed model.
+            Chat with an installed model. Conversations are saved to your account.
           </Text>
         </div>
-
+        <Group align="flex-end">
+          <Select
+            className={classes.modelPicker}
+            label="Saved conversations"
+            placeholder="Open a conversation"
+            searchable
+            data={saved.map((conversation) => ({
+              value: conversation.id,
+              label: `${conversation.title} · ${conversation.modelId}`,
+            }))}
+            value={conversationId}
+            onChange={(id) => {
+              setMutationError(null);
+              setConversationId(id);
+            }}
+            disabled={
+              !conversations.isFetchedAfterMount ||
+              Boolean(conversations.error) ||
+              create.isPending ||
+              remove.isPending
+            }
+          />
+          <Button
+            variant="light"
+            leftSection={<IconMessagePlus size={16} />}
+            onClick={() => {
+              if (current) {
+                setModelId(current.selection.modelId);
+              }
+              setConversationId(null);
+              setMutationError(null);
+            }}
+          >
+            New conversation
+          </Button>
+          <Button
+            variant="default"
+            color="red"
+            leftSection={<IconTrash size={16} />}
+            disabled={!current}
+            loading={remove.isPending}
+            onClick={() => {
+              if (!current) {
+                return;
+              }
+              modals.openConfirmModal({
+                title: 'Delete conversation',
+                children: <Text>Delete this conversation and all its messages?</Text>,
+                labels: { confirm: 'Delete', cancel: 'Cancel' },
+                confirmProps: { color: 'red' },
+                onConfirm: () => {
+                  setMutationError(null);
+                  remove.mutate({ id: current.id });
+                },
+              });
+            }}
+          >
+            Delete
+          </Button>
+        </Group>
+        {conversations.error && (
+          <Alert color="red" title="Could not load conversations">
+            <Text size="sm">{conversations.error.message}</Text>
+            <Button variant="light" size="compact-sm" onClick={() => void conversations.refetch()}>
+              Retry loading conversations
+            </Button>
+          </Alert>
+        )}
+        {mutationError && <Alert color="red">{mutationError}</Alert>}
         {models.isPending && (
           <Group role="status">
             <Loader size="sm" />
@@ -61,60 +187,110 @@ export function AiDevView() {
             No chat models are installed in Ollama. Install one, then refresh.
           </Alert>
         )}
-
-        <ChatPanel
-          key={conversation}
-          selection={selection ? { provider: selection.provider, modelId: selection.id } : null}
-          modelPicker={(busy) => (
-            <Group align="flex-end">
-              <Select
-                className={classes.modelPicker}
-                label="Chat model"
-                placeholder="Choose a chat model"
-                searchable
-                allowDeselect={false}
-                data={models.data?.map((model) => ({ value: model.id, label: model.id })) ?? []}
-                value={modelId}
-                onChange={setModelId}
-                disabled={busy || models.isPending || Boolean(models.error)}
-                error={
-                  modelId && !selection && models.isSuccess
-                    ? 'Choose an available chat model.'
-                    : undefined
-                }
-              />
-              <Button
-                variant="default"
-                leftSection={<IconRefresh size={16} />}
-                loading={models.isFetching}
-                disabled={busy}
-                onClick={() => void models.refetch()}
-              >
-                Refresh models
-              </Button>
-            </Group>
-          )}
-          onNewConversation={() => setConversation((value) => value + 1)}
-        />
+        <Group align="flex-end">
+          <Select
+            className={classes.modelPicker}
+            label="Chat model"
+            placeholder="Choose a chat model"
+            searchable
+            allowDeselect={false}
+            data={modelOptions}
+            value={selection?.modelId ?? null}
+            onChange={setModelId}
+            disabled={
+              Boolean(conversationId) ||
+              models.isPending ||
+              Boolean(models.error) ||
+              create.isPending
+            }
+          />
+          <Button
+            variant="default"
+            leftSection={<IconRefresh size={16} />}
+            loading={models.isFetching}
+            onClick={() => void models.refetch()}
+          >
+            Refresh models
+          </Button>
+        </Group>
+        {!conversationId ? (
+          <Paper withBorder p="xl" radius="md">
+            <Center className={classes.empty}>
+              <Stack align="center" gap="sm">
+                <Title order={4}>Start a conversation</Title>
+                <Text size="sm" c="dimmed">
+                  Choose a model to start a saved conversation.
+                </Text>
+                <Button
+                  disabled={!selection || Boolean(models.error)}
+                  loading={create.isPending}
+                  onClick={() => {
+                    if (selection) {
+                      setMutationError(null);
+                      create.mutate(selection);
+                    }
+                  }}
+                >
+                  Start conversation
+                </Button>
+              </Stack>
+            </Center>
+          </Paper>
+        ) : detail.error ? (
+          <Alert color="red" title="Could not open conversation">
+            <Text>{detail.error.message}</Text>
+            <Button variant="light" onClick={() => void detail.refetch()}>
+              Retry opening conversation
+            </Button>
+          </Alert>
+        ) : !current ? (
+          <Group role="status">
+            <Loader size="sm" />
+            <Text>Loading conversation…</Text>
+          </Group>
+        ) : (
+          <ChatPanel key={current.id} conversation={current} onSaved={refresh} />
+        )}
       </Stack>
     </Container>
   );
 }
 
-type ChatPanelProps = {
-  selection: AiModelSelection | null;
-  modelPicker: (busy: boolean) => React.ReactNode;
-  onNewConversation: () => void;
-};
-
-function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps) {
-  const [transport] = useState(() => new DefaultChatTransport({ api: '/api/ai-dev/chat' }));
-  const { messages, sendMessage, regenerate, status, error, stop } = useChat({ transport });
+function ChatPanel({
+  conversation,
+  onSaved,
+}: {
+  conversation: SavedConversation;
+  onSaved: () => void;
+}) {
+  const [transport] = useState(
+    () =>
+      new DefaultChatTransport({
+        api: '/api/ai-dev/chat',
+        prepareSendMessagesRequest: ({ id, messages }) => ({
+          body: {
+            conversationId: id,
+            message: messages.filter((message) => message.role === 'user').at(-1),
+          },
+        }),
+      })
+  );
+  const { messages, sendMessage, regenerate, setMessages, status, error, stop } = useChat({
+    id: conversation.id,
+    messages: conversation.messages,
+    transport,
+    onFinish: onSaved,
+    onError: onSaved,
+  });
   const [input, setInput] = useState('');
   const viewport = useRef<HTMLDivElement>(null);
   const followResponse = useRef(true);
+  const loadedVersion = useRef(conversation.updatedAt.getTime());
   const busy = status === 'submitted' || status === 'streaming';
-
+  const generatingElsewhere = conversation.generating && !busy;
+  const incomplete =
+    conversation.lastResponseStatus === 'INTERRUPTED' ||
+    conversation.lastResponseStatus === 'FAILED';
   useEffect(
     () => () => {
       void stop();
@@ -122,39 +298,37 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
     [stop]
   );
   useEffect(() => {
+    if (
+      !busy &&
+      !error &&
+      !conversation.generating &&
+      loadedVersion.current !== conversation.updatedAt.getTime()
+    ) {
+      setMessages(conversation.messages);
+      loadedVersion.current = conversation.updatedAt.getTime();
+    }
+  }, [busy, error, conversation, setMessages]);
+  useEffect(() => {
     if (followResponse.current && viewport.current) {
       viewport.current.scrollTo({ top: viewport.current.scrollHeight });
     }
   }, [messages, status]);
-
   const submit = () => {
-    if (!selection || !input.trim() || busy || error) {
+    if (!input.trim() || busy || error || generatingElsewhere) {
       return;
     }
     followResponse.current = true;
-    void sendMessage({ text: input.trim() }, { body: { selection } });
+    void sendMessage({ text: input.trim() });
     setInput('');
   };
-
   return (
     <Stack gap="md">
-      {modelPicker(busy)}
-      <Group justify="space-between">
-        <Text size="sm" c="dimmed">
-          Conversations clear when you leave or reload this page.
-        </Text>
-        <Button
-          variant="light"
-          leftSection={<IconMessagePlus size={16} />}
-          onClick={async () => {
-            await stop();
-            onNewConversation();
-          }}
-        >
-          New conversation
-        </Button>
-      </Group>
-
+      {generatingElsewhere && (
+        <Alert color="blue">
+          A response is being generated for this conversation. Saved history will refresh when it
+          finishes.
+        </Alert>
+      )}
       <Paper withBorder p="md" radius="md">
         <ScrollArea
           className={classes.transcript}
@@ -170,12 +344,7 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
           <Stack gap="md" role="log" aria-label="Conversation" aria-live="polite">
             {messages.length === 0 && (
               <Center className={classes.empty}>
-                <Stack gap="xs" align="center">
-                  <Title order={4}>Start a conversation</Title>
-                  <Text size="sm" c="dimmed">
-                    Choose a model and send your first message.
-                  </Text>
-                </Stack>
+                <Text c="dimmed">Send your first message.</Text>
               </Center>
             )}
             {messages.map((message) => (
@@ -210,19 +379,19 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
           </Stack>
         </ScrollArea>
       </Paper>
-
-      {error && (
-        <Alert color="red" title="Could not complete the response">
+      {!busy && (error || incomplete) && (
+        <Alert color={error ? 'red' : 'yellow'} title="Response incomplete">
           <Stack gap="sm">
-            <Text size="sm">{error.message}</Text>
+            <Text size="sm">
+              {error?.message ??
+                'The previous response was interrupted or failed. You can retry it or send another message.'}
+            </Text>
             <Button
               variant="light"
               size="compact-sm"
-              disabled={!selection || busy}
+              disabled={generatingElsewhere}
               onClick={() => {
-                if (selection) {
-                  void regenerate({ body: { selection } });
-                }
+                void regenerate();
               }}
             >
               Retry response
@@ -230,7 +399,6 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
           </Stack>
         </Alert>
       )}
-
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -253,7 +421,7 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
                 submit();
               }
             }}
-            disabled={!selection || busy || Boolean(error)}
+            disabled={busy || Boolean(error) || generatingElsewhere}
           />
           <Group justify="space-between">
             <Text size="xs" c="dimmed">
@@ -271,7 +439,7 @@ function ChatPanel({ selection, modelPicker, onNewConversation }: ChatPanelProps
               <Button
                 type="submit"
                 leftSection={<IconSend size={16} />}
-                disabled={!selection || !input.trim() || Boolean(error)}
+                disabled={!input.trim() || Boolean(error) || generatingElsewhere}
               >
                 Send
               </Button>
