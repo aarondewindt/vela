@@ -34,6 +34,8 @@ Next.js pages and Mantine components
 
 The Prisma datasource is PostgreSQL, configured through `prisma.config.ts`; connection settings come from the runtime environment. Prisma 7 uses the `prisma-client` generator and PostgreSQL driver adapter in this repository. Review the schema and migrations before changing persistent models.
 
+The development database uses `.devcontainer/postgres/Dockerfile` to add pinned pgvector source to PostgreSQL 18 Alpine. Compose builds the image and retains the existing PostgreSQL data volume; a Prisma migration enables the `vector` extension per database. Synthetic storage and exact cosine search checks cover 1,024, 2,560 and 4,096 dimensions. Persistent embedding collections and their configuration/reindex services are still future work. Build, migration and verification commands are in [AI infrastructure](AI.md#postgresql-vector-support).
+
 Keep business rules deterministic and testable in feature services. Validate untrusted inputs at the tRPC boundary with existing Zod patterns, scope reads and writes to the authenticated user, and use existing typed error handling. AI, REST, background jobs and Vela-owned MCP integrations may be added as interfaces over the same service behavior; none should bypass it to mutate the database directly.
 
 Important future product goals and deployment assumptions are documented in [PROJECT_PLAN.md](PROJECT_PLAN.md). This file describes current code organization and distinguishes implemented paths from planned ones.

@@ -7,7 +7,7 @@
 	"workspaceFolder": "/workspaces/vela",
 	"shutdownAction": "stopCompose",
 	"postCreateCommand": "yarn install",
-	"postStartCommand": "docker compose -f .devcontainer/docker-compose.inner.yml up -d",
+	"postStartCommand": "docker compose -f .devcontainer/docker-compose.inner.yml up -d --build",
 	"forwardPorts": [3000, 5050],
 	"customizations": {
 		"vscode": {

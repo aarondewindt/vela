@@ -79,6 +79,30 @@ The Mantine view uses tRPC/TanStack mutations for temporary results and local co
 
 Phase 4 was verified on 2026-10-17 with all 154 Jest tests (15 suites), typecheck, changed-file Oxlint/Stylelint/format checks and a production build. Browser checks with the authorized test account and `qwen3-embedding:0.6b` confirmed 1,024 dimensions, a 16-value preview, identical-text similarity `1.000000`, different-text comparison and result invalidation after editing. Signed-out discovery/generation returned 401; blank/oversized inputs, a missing model, a chat-only model and an empty comparison input returned 400. Desktop and 390-pixel layouts were inspected; the narrow layout had no horizontal overflow. The test browser was signed out and closed afterward. These checks verify functionality, not retrieval quality for a future application feature.
 
+## PostgreSQL vector support
+
+The development database image is built from `.devcontainer/postgres/Dockerfile`, extending `postgres:18-alpine` with pgvector 0.8.7. The release archive is pinned and SHA-256 checked. Build dependencies and downloaded source are removed in the same layer; `OPTFLAGS=""` avoids host-specific CPU compilation and `with_llvm=no` avoids the optional LLVM build toolchain. Extension installation happens during the image build, before PostgreSQL starts.
+
+`.devcontainer/docker-compose.inner.yml` builds this image and preserves the `vela-postgres-data` volume at `/var/lib/postgresql`. The dev container's `postStartCommand` runs Compose with `--build`, which reuses cached layers when the Dockerfile is unchanged. To rebuild the database manually from the repository root:
+
+```sh
+docker compose -f .devcontainer/docker-compose.inner.yml up -d --build db
+```
+
+After PostgreSQL is ready, run `yarn prisma migrate dev` during development, or `yarn prisma migrate deploy` when applying existing migrations to another environment. Migration `20261017210033_enable_pgvector` executes `CREATE EXTENSION IF NOT EXISTS vector`. Keeping activation in migration history enables the extension in both existing databases and Prisma shadow databases. A fresh-init script alone would not cover an existing data volume. Other environments must install pgvector on the database server before applying this migration. No Prisma package, generator setting or application schema change is required for this extension-only migration; future Prisma 7 vector fields and operations will use `Unsupported` types and parameterized SQL.
+
+Run the repeatable SQL verification after migrating:
+
+```sh
+docker compose -f .devcontainer/docker-compose.inner.yml exec -T db \
+  sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+  < .devcontainer/postgres/verify.sql
+```
+
+This checks temporary vectors at 1,024, 2,560 and 4,096 dimensions, including identical/opposite/orthogonal cosine scores and exact nearest-neighbor ordering. All test rows are rolled back. On 2026-10-17 the image build, isolated fresh-database test, normal Prisma migration/shadow workflow and live development database checks passed with PostgreSQL 18.6 and pgvector 0.8.7. The replacement container retained the existing volume and all application table row counts were unchanged. No persistent embedding collection was created.
+
+Dimension count belongs to each collection's configuration; 1,024 is not an application-wide limit. The current pgvector `vector` type stores up to 16,000 dimensions, while its HNSW/IVFFlat indexes support up to 2,000 dimensions for `vector` or 4,000 for `halfvec`. Exact cosine search supports all three verified sizes. Future approximate search at 4,096 dimensions needs a different indexing representation, such as binary quantization with reranking against the stored original vectors; it must not silently discard dimensions. See the [pgvector type reference](https://github.com/pgvector/pgvector#vector-type) and [indexing guidance](https://github.com/pgvector/pgvector#frequently-asked-questions).
+
 ## Embedding configuration ownership
 
 The agreed direction for future persistent embeddings is **one embedding configuration per collection/vector table**, with independent configurations for different collections. Vela must not require one global embedding model. For example, ingredient matching and document search can each select a model and settings suited to their own collection. The current resolver already takes an explicit model selection on every call and imposes no global embedding default.
