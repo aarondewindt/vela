@@ -6,7 +6,7 @@ export async function getCurrentSession() {
     const session = await auth.api.getSession({
       headers: await headers(),
     });
-    return session?.data || null;
+    return session ?? null;
   } catch (error) {
     return null;
   }
