@@ -2,12 +2,12 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** AI Phases 1–3 implemented; embeddings playground is next
+**Status:** AI Phases 1–4 complete
 **Last updated:** 2026-10-17
 
 ## Objective
 
-Build reusable Vercel AI SDK infrastructure, AI Dev chat, conversation persistence and an embeddings playground. User approved through Phase 3; continue incrementally.
+Build reusable Vercel AI SDK infrastructure, AI Dev chat, conversation persistence and an embeddings playground. All authorized phases are implemented and verified. Further application features need a new scope discussion.
 
 ## Relevant files
 
@@ -15,12 +15,15 @@ Build reusable Vercel AI SDK infrastructure, AI Dev chat, conversation persisten
 - `lib/ai-dev/conversations.ts`: owner-scoped conversation/message persistence, retry semantics and generation leases.
 - `lib/ai-dev/`: service, protected tRPC router, request schema, error mapping and focused tests.
 - `app/ai-dev/page.tsx`, `app/api/ai-dev/chat/route.ts`, `components/AiDevView/`: authenticated chat and saved-conversation UI.
+- `app/ai-dev/embeddings/page.tsx`, `components/EmbeddingsView/`, `lib/ai-dev/embeddings.ts`: authenticated temporary embeddings playground and service.
 - `prisma/schema.prisma`, `prisma/migrations/20261017183136_ai_dev_conversations/migration.sql`.
 - `docs/AI.md`: configuration, APIs, persistence protocol and embedding constraints.
 
 ## Work completed
 
 Shared Ollama infrastructure, streamed chat and saved conversations are implemented. The additive Phase 3 migration was applied locally and Prisma Client regenerated. Users can create, reopen, continue and delete conversations. Partial replies and completion status persist; retries preserve stable message IDs. Temporary verification routes and database fixtures were removed. Credentials were read only for authorized test login, never copied into source or logs.
+
+Phase 4 adds explicit embedding model selection, single-text dimensions/preview and two-text cosine comparison. Protected tRPC mutations use the shared resolver plus AI SDK `embed`/`embedMany`; full vectors stay on the server and only the first 16 values are returned. Text is preserved as entered, model truncation is disabled, inference is bounded to 120 seconds with no automatic retries, and invalid comparison vectors are rejected. Results are temporary; no migration or dependency changes were needed. The sidebar now groups Chat and Embeddings under AI Dev.
 
 ## Decisions and rationale
 
@@ -39,10 +42,11 @@ Shared Ollama infrastructure, streamed chat and saved conversations are implemen
 
 ## Next steps
 
-After user authorization, implement Phase 4: embedding model selection, single-text vector dimensions/preview, two-text cosine comparison, and meaningful errors. Reuse `lib/ai/`; `qwen3-embedding:0.6b` is installed and was verified to return 1,024-dimensional vectors. Persistent embeddings, pgvector, configuration storage and reindex machinery remain future work.
+Discuss the first application feature to consume AI or embeddings, its quality criteria and, if needed, its collection configuration/full-reindex workflow. No further implementation is authorized yet. Persistent embeddings, pgvector, configuration storage and reindex machinery remain future work. The playground sends raw text without task-specific instructions; retrieval quality still needs evaluation for each consuming feature.
 
 ## Validation performed
 
-- 117 Jest tests, typecheck, scoped Oxlint/Stylelint/format checks and production build (`NODE_ENV=production yarn build`) pass.
+- All 154 Jest tests (15 suites), typecheck, scoped Oxlint/Stylelint/format checks and production build (`NODE_ENV=production yarn build`) pass after Phase 4.
 - 13 live PostgreSQL checks passed: foreign read/delete/list/stream rejection, concurrent generation, stable retry rows/IDs, completed replay, content immutability, authoritative history, abandoned lease recovery, stale callback protection and cascading deletion. Synthetic fixture users/conversations were cleaned up.
 - Browser with authorized test account and `llama3.1:8b`: messages restored after reload and continued using saved context; cancellation saved partial text; retry kept the same six message rows and assistant ID; completed replay returned a complete SDK stream without duplicates; confirmed deletion returned 404 on a subsequent read. Test conversation removed and browser signed out/closed. No browser runtime errors were reported.
+- Phase 4 browser with `qwen3-embedding:0.6b`: 1,024 dimensions and a 16-value preview, identical-text cosine 1.000000, unrelated-text comparison, result invalidation after edits and responsive layout at 390 pixels without horizontal overflow. Signed-out APIs returned 401; invalid/oversized text, missing/chat-only models and blank comparison input returned 400. No database fixtures or temporary routes were needed; browser signed out/closed after testing.

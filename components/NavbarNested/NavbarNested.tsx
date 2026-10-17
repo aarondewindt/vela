@@ -16,7 +16,15 @@ const navbar_map = [
     ],
   },
   { label: 'Settings', icon: GearIcon, link: '/settings' },
-  { label: 'AI Dev', icon: ChatCircleIcon, link: '/ai-dev' },
+  {
+    label: 'AI Dev',
+    icon: ChatCircleIcon,
+    pathPattern: /^\/ai-dev(?:\/|$)/,
+    links: [
+      { label: 'Chat', link: '/ai-dev' },
+      { label: 'Embeddings', link: '/ai-dev/embeddings' },
+    ],
+  },
   { label: 'Dev tools', icon: BugIcon, link: '/dev-tools' },
 ];
 

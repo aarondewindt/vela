@@ -3,7 +3,13 @@ import { protectedProcedure, router } from '@/lib/trpc/server';
 import { getAiDevError } from './errors';
 import { aiDevService } from './service';
 import { conversationService } from './conversations';
-import { conversationIdSchema, selectionSchema } from './schema';
+import { embeddingService } from './embeddings';
+import {
+  comparisonInputSchema,
+  conversationIdSchema,
+  embeddingInputSchema,
+  selectionSchema,
+} from './schema';
 
 async function call<T>(operation: () => Promise<T>): Promise<T> {
   try {
@@ -22,6 +28,13 @@ async function call<T>(operation: () => Promise<T>): Promise<T> {
 
 export const aiDevRouter = router({
   listChatModels: protectedProcedure.query(() => call(() => aiDevService.listChatModels())),
+  listEmbeddingModels: protectedProcedure.query(() => call(() => embeddingService.listModels())),
+  generateEmbedding: protectedProcedure
+    .input(embeddingInputSchema)
+    .mutation(({ input }) => call(() => embeddingService.generate(input))),
+  compareEmbeddings: protectedProcedure
+    .input(comparisonInputSchema)
+    .mutation(({ input }) => call(() => embeddingService.compare(input))),
   listConversations: protectedProcedure.query(({ ctx }) =>
     call(() => conversationService.list(ctx.userId))
   ),

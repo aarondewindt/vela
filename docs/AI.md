@@ -1,6 +1,6 @@
 # Shared AI infrastructure
 
-Phase 1 adds server-only Ollama infrastructure in `lib/ai/`. It is independent of AI Dev, Prisma, tRPC and UI code. Phase 2 adds the AI Dev chat consumer, and Phase 3 adds owner-scoped conversation persistence. The embeddings playground is the next phase.
+Phase 1 adds server-only Ollama infrastructure in `lib/ai/`. It is independent of AI Dev, Prisma, tRPC and UI code. Phase 2 adds the AI Dev chat consumer, Phase 3 adds owner-scoped conversation persistence, and Phase 4 adds the temporary embeddings playground. All four implementation phases are complete.
 
 ## Configuration
 
@@ -63,9 +63,21 @@ Only one generation can run per conversation. Concurrent attempts receive a conf
 
 SDK stream completion/cancellation persists structured response parts and a `COMPLETED`, `INTERRUPTED` or `FAILED` status. Partial text is saved when cancellation/disconnection reaches the server. A process crash can lose partial text that has not reached finalization; the saved user message and placeholder remain recoverable after lease expiry. There are no per-token database writes. Saved text-part state is normalized for restoration, and empty or failed assistant content is omitted from inference history. A storage failure is surfaced as an error rather than treating the response as durably saved.
 
-The implementation uses `@ai-sdk/react@4.0.146`, matching `ai@7.0.142`. The embeddings playground remains Phase 4; persistent embedding storage is separate future work.
+The implementation uses `@ai-sdk/react@4.0.146`, matching `ai@7.0.142`. Persistent embedding storage is separate future work.
 
 Phase 3 was verified on 2026-10-17 with 117 Jest tests, typecheck, changed-file lint/format checks and a production build. Thirteen live PostgreSQL checks covered cross-user denial, concurrent requests, retry deduplication, authoritative history, lease recovery, stale callbacks and cascading deletion; temporary fixtures and the verification route were removed. Browser checks with the authorized test account confirmed streamed persistence, restoration after reload, continued context, interrupted-response retry and confirmed deletion. Retrying an interrupted three-turn conversation preserved its six rows and assistant ID; a subsequent completed-response replay returned the saved ID and a complete SDK UI stream without adding rows. Repository-wide lint still reports errors in untouched planner/UI/auth files.
+
+## Embeddings playground
+
+Open **AI Dev → Embeddings** at `/ai-dev/embeddings`. Like chat, the page checks the server-side Better Auth session. Select an installed embedding-capable model explicitly; there is no default application model. The navigation groups Chat and Embeddings under AI Dev.
+
+`aiDev.listEmbeddingModels` is a protected tRPC query using shared discovery. The protected `aiDev.generateEmbedding` and `aiDev.compareEmbeddings` mutations validate inputs and delegate to `lib/ai-dev/embeddings.ts`. That service resolves the selected model through `lib/ai/` and calls AI SDK `embed` or `embedMany`. Comparison embeds both texts with the same resolved model and computes cosine similarity over the complete vectors on the server. Only dimensions and the first 16 values of each vector are returned, alongside the provider/model selection and comparison score.
+
+Each text must be nonblank and at most 16,000 characters. Inputs are sent exactly as entered, with no automatic instructions, prefixes, normalization or chunking. Ollama truncation is disabled, so inputs exceeding the model context fail rather than producing a silently shortened embedding. Inference has a 120-second deadline and automatic retries are disabled. Model/capability errors, rejected inputs and generation failures surface safe messages without provider payloads. Invalid, non-finite, mismatched or zero comparison vectors are rejected; rounding at the cosine bounds is clamped to `[-1, 1]`.
+
+The Mantine view uses tRPC/TanStack mutations for temporary results and local component state for text/model selection. It shows loading, empty and error states, disables changes during inference, and clears affected results when text or model selection changes. Mutation results are discarded after unmounting; there are no database writes or persistent vectors. Similarity is displayed as a raw cosine score, not a probability or a calibrated matching threshold.
+
+Phase 4 was verified on 2026-10-17 with all 154 Jest tests (15 suites), typecheck, changed-file Oxlint/Stylelint/format checks and a production build. Browser checks with the authorized test account and `qwen3-embedding:0.6b` confirmed 1,024 dimensions, a 16-value preview, identical-text similarity `1.000000`, different-text comparison and result invalidation after editing. Signed-out discovery/generation returned 401; blank/oversized inputs, a missing model, a chat-only model and an empty comparison input returned 400. Desktop and 390-pixel layouts were inspected; the narrow layout had no horizontal overflow. The test browser was signed out and closed afterward. These checks verify functionality, not retrieval quality for a future application feature.
 
 ## Embedding configuration ownership
 

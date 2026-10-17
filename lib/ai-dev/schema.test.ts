@@ -1,4 +1,10 @@
-import { chatInputSchema, maxMessageLength } from './schema';
+import {
+  chatInputSchema,
+  comparisonInputSchema,
+  embeddingInputSchema,
+  maxEmbeddingTextLength,
+  maxMessageLength,
+} from './schema';
 
 const message = { id: 'user-1', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
 const input = { conversationId: '45f6af99-9a30-4638-b05f-fb826b970379', message };
@@ -41,5 +47,41 @@ describe('chatInputSchema', () => {
     },
   ])('rejects invalid or unsupported requests', (body) => {
     expect(chatInputSchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('embedding input schemas', () => {
+  const selection = { provider: 'ollama', modelId: 'qwen3-embedding:0.6b' };
+  it('preserves exact input text and requires an explicit model', () => {
+    expect(embeddingInputSchema.parse({ selection, text: '  Hello\n' })).toEqual({
+      selection,
+      text: '  Hello\n',
+    });
+    expect(embeddingInputSchema.safeParse({ text: 'Hello' }).success).toBe(false);
+    expect(comparisonInputSchema.safeParse({ selection, textA: 'A', textB: 'B' }).success).toBe(
+      true
+    );
+  });
+  it.each(['', ' \n\t', 'x'.repeat(maxEmbeddingTextLength + 1)])(
+    'rejects blank or oversized text',
+    (text) => {
+      expect(embeddingInputSchema.safeParse({ selection, text }).success).toBe(false);
+      expect(comparisonInputSchema.safeParse({ selection, textA: text, textB: 'B' }).success).toBe(
+        false
+      );
+      expect(comparisonInputSchema.safeParse({ selection, textA: 'A', textB: text }).success).toBe(
+        false
+      );
+    }
+  );
+  it('rejects unsupported providers and empty model IDs', () => {
+    expect(
+      embeddingInputSchema.safeParse({ selection: { ...selection, provider: 'other' }, text: 'A' })
+        .success
+    ).toBe(false);
+    expect(
+      embeddingInputSchema.safeParse({ selection: { ...selection, modelId: '' }, text: 'A' })
+        .success
+    ).toBe(false);
   });
 });

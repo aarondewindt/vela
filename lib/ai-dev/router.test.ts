@@ -9,6 +9,9 @@ jest.mock('superjson', () => ({
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/lib/ai', () => jest.requireActual('@/lib/ai/errors'));
 jest.mock('./service', () => ({ aiDevService: { listChatModels: jest.fn() } }));
+jest.mock('./embeddings', () => ({
+  embeddingService: { listModels: jest.fn(), generate: jest.fn(), compare: jest.fn() },
+}));
 
 jest.mock('./conversations', () => ({
   conversationService: { list: jest.fn(), get: jest.fn(), create: jest.fn(), delete: jest.fn() },
@@ -18,9 +21,61 @@ import { conversationService } from './conversations';
 import { AiError } from '@/lib/ai';
 import { aiDevRouter } from './router';
 import { aiDevService } from './service';
+import { embeddingService } from './embeddings';
 
 beforeEach(() => {
   jest.resetAllMocks();
+});
+
+describe('embedding procedures', () => {
+  const selection = { provider: 'ollama' as const, modelId: 'embedding:latest' };
+  it('requires authentication for discovery and inference', async () => {
+    const caller = aiDevRouter.createCaller({ userId: null });
+    await expect(caller.listEmbeddingModels()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    await expect(caller.generateEmbedding({ selection, text: 'Hello' })).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+    });
+    await expect(
+      caller.compareEmbeddings({ selection, textA: 'First', textB: 'Second' })
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(embeddingService.listModels).not.toHaveBeenCalled();
+    expect(embeddingService.generate).not.toHaveBeenCalled();
+    expect(embeddingService.compare).not.toHaveBeenCalled();
+  });
+  it('delegates validated input and returns results', async () => {
+    const caller = aiDevRouter.createCaller({ userId: 'user-a' });
+    (embeddingService.listModels as jest.Mock).mockResolvedValue([]);
+    (embeddingService.generate as jest.Mock).mockResolvedValue({ dimensions: 1024 });
+    (embeddingService.compare as jest.Mock).mockResolvedValue({ similarity: 0.75 });
+    await expect(caller.listEmbeddingModels()).resolves.toEqual([]);
+    await expect(caller.generateEmbedding({ selection, text: 'Hello' })).resolves.toEqual({
+      dimensions: 1024,
+    });
+    await expect(
+      caller.compareEmbeddings({ selection, textA: 'First', textB: 'Second' })
+    ).resolves.toEqual({ similarity: 0.75 });
+    expect(embeddingService.generate).toHaveBeenCalledWith({ selection, text: 'Hello' });
+    expect(embeddingService.compare).toHaveBeenCalledWith({
+      selection,
+      textA: 'First',
+      textB: 'Second',
+    });
+  });
+  it('rejects blank inputs before inference', async () => {
+    await expect(
+      aiDevRouter.createCaller({ userId: 'user-a' }).generateEmbedding({ selection, text: '  ' })
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(embeddingService.generate).not.toHaveBeenCalled();
+  });
+  it('masks unknown provider errors', async () => {
+    (embeddingService.generate as jest.Mock).mockRejectedValue(new Error('private provider body'));
+    await expect(
+      aiDevRouter.createCaller({ userId: 'user-a' }).generateEmbedding({ selection, text: 'Hello' })
+    ).rejects.toMatchObject({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: 'AI Dev is temporarily unavailable. Please try again.',
+    });
+  });
 });
 
 describe('aiDevRouter', () => {

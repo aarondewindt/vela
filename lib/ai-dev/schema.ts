@@ -31,3 +31,20 @@ export const chatInputSchema = z.object({
   }),
 });
 export type ChatInput = z.infer<typeof chatInputSchema>;
+
+export const maxEmbeddingTextLength = 16_000;
+const embeddingTextSchema = z
+  .string()
+  .max(maxEmbeddingTextLength)
+  .refine((text) => text.trim().length > 0, 'Enter text to embed.');
+export const embeddingInputSchema = z.object({
+  selection: selectionSchema,
+  text: embeddingTextSchema,
+});
+export const comparisonInputSchema = z.object({
+  selection: selectionSchema,
+  textA: embeddingTextSchema,
+  textB: embeddingTextSchema,
+});
+export type EmbeddingInput = z.infer<typeof embeddingInputSchema>;
+export type ComparisonInput = z.infer<typeof comparisonInputSchema>;
