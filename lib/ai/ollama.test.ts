@@ -4,7 +4,12 @@ jest.mock('server-only', () => ({}));
 jest.mock('ollama-ai-provider-v2', () => ({ createOllama: jest.fn() }));
 
 import { createOllama } from 'ollama-ai-provider-v2';
-import { discoverModels, resolveChatModel, resolveEmbeddingModel } from './ollama';
+import {
+  discoverModels,
+  resolveChatModel,
+  resolveEmbeddingModel,
+  resolveEmbeddingModelWithIdentity,
+} from './ollama';
 
 const originalBaseURL = process.env.OLLAMA_BASE_URL;
 const originalFetch = global.fetch;
@@ -15,6 +20,27 @@ const provider = {
   languageModel: jest.fn(() => chatModel),
   embeddingModel: jest.fn(() => embeddingModel),
 };
+
+describe('persistent embedding identity', () => {
+  it('returns the exact installed model digest with the resolved model', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({ models: [{ name: 'vectors:latest', digest: 'sha256:abc' }] })
+      )
+      .mockResolvedValueOnce(jsonResponse({ capabilities: ['embedding'] }));
+    await expect(
+      resolveEmbeddingModelWithIdentity({ provider: 'ollama', modelId: 'vectors:latest' })
+    ).resolves.toEqual({ model: embeddingModel, digest: 'sha256:abc' });
+  });
+  it('refuses persistent embedding without a reported model digest', async () => {
+    fetchMock
+      .mockResolvedValueOnce(installedModels('vectors:latest'))
+      .mockResolvedValueOnce(jsonResponse({ capabilities: ['embedding'] }));
+    await expect(
+      resolveEmbeddingModelWithIdentity({ provider: 'ollama', modelId: 'vectors:latest' })
+    ).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESPONSE' });
+  });
+});
 
 function jsonResponse(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status });

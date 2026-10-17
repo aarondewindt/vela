@@ -1,0 +1,9 @@
+.modelPicker {
+  flex: 1;
+  min-width: min(100%, 220px);
+}
+
+.description {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

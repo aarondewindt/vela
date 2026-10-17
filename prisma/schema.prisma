@@ -350,6 +350,7 @@ model Task {
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
   archivedAt       DateTime?
+  embedding        TaskEmbedding?
 
   dependenciesBlocking  TaskDependency[] @relation("TaskBlocked")
   dependenciesDependsOn TaskDependency[] @relation("TaskDependsOn")
@@ -362,6 +363,29 @@ model Task {
   @@index([themeId])
   @@index([locationId])
   @@map("tasks")
+}
+
+model EmbeddingCollectionConfig {
+  key            String    @id @db.VarChar(120)
+  configuration  Json?     @db.JsonB
+  revision       Int       @default(0)
+  leaseId        String?   @db.Uuid
+  leaseExpiresAt DateTime?
+  lastError      String?   @db.VarChar(500)
+  updatedAt      DateTime  @updatedAt
+
+  @@map("embedding_collection_configs")
+}
+
+model TaskEmbedding {
+  taskId          String                @id @db.Uuid
+  task            Task                  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  embedding       Unsupported("vector")
+  sourceHash      String                @db.Char(64)
+  sourceUpdatedAt DateTime
+  indexedAt       DateTime              @default(now())
+
+  @@map("task_embeddings")
 }
 
 model TaskDependency {

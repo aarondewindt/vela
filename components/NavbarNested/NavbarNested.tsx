@@ -13,6 +13,7 @@ const navbar_map = [
     links: [
       { label: 'Today', link: '/planner/today' },
       { label: 'Tasks', link: '/planner/tasks' },
+      { label: 'Fuzzy task search', link: '/planner/task-search' },
     ],
   },
   { label: 'Settings', icon: GearIcon, link: '/settings' },

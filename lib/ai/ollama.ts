@@ -15,7 +15,9 @@ export type AiModel = {
 const discoveryTimeoutMs = 10_000;
 const inferenceTimeoutMs = 120_000;
 const discoveryBatchSize = 4;
-const modelsSchema = z.object({ models: z.array(z.object({ name: z.string().min(1) })) });
+const modelsSchema = z.object({
+  models: z.array(z.object({ name: z.string().min(1), digest: z.string().optional() })),
+});
 const modelInfoSchema = z.object({ capabilities: z.array(z.string()) });
 
 function getBaseURL(): string {
@@ -156,7 +158,8 @@ async function resolveModel(selection: AiModelSelection, capability: AiModelCapa
 
   const baseURL = getBaseURL();
   const { models } = await request(baseURL, 'tags', modelsSchema);
-  if (!models.some(({ name }) => name === selection.modelId)) {
+  const installed = models.find(({ name }) => name === selection.modelId);
+  if (!installed) {
     throw new AiError('MODEL_NOT_FOUND', 'Select an installed Ollama model.');
   }
 
@@ -168,18 +171,31 @@ async function resolveModel(selection: AiModelSelection, capability: AiModelCapa
     );
   }
 
-  return createOllama({
+  const provider = createOllama({
     baseURL,
     fetch: (input, init) => fetchOllama(input, init, inferenceTimeoutMs),
   });
+  return { provider, digest: installed.digest };
 }
 
 export async function resolveChatModel(selection: AiModelSelection) {
-  const provider = await resolveModel(selection, 'chat');
+  const { provider } = await resolveModel(selection, 'chat');
   return provider.languageModel(selection.modelId);
 }
 
 export async function resolveEmbeddingModel(selection: AiModelSelection) {
-  const provider = await resolveModel(selection, 'embedding');
+  const { provider } = await resolveModel(selection, 'embedding');
   return provider.embeddingModel(selection.modelId);
+}
+
+/** Persistent collections must detect replacements behind a mutable model tag. */
+export async function resolveEmbeddingModelWithIdentity(selection: AiModelSelection) {
+  const { provider, digest } = await resolveModel(selection, 'embedding');
+  if (!digest) {
+    throw new AiError(
+      'INVALID_PROVIDER_RESPONSE',
+      'Ollama did not report a model digest. Persistent embeddings require model identity.'
+    );
+  }
+  return { model: provider.embeddingModel(selection.modelId), digest };
 }

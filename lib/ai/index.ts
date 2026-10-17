@@ -5,6 +5,7 @@ export {
   discoverModels,
   resolveChatModel,
   resolveEmbeddingModel,
+  resolveEmbeddingModelWithIdentity,
   type AiModel,
   type AiModelCapability,
   type AiModelSelection,
