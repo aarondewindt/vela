@@ -1,6 +1,6 @@
 # Shared AI infrastructure
 
-Phase 1 adds server-only Ollama infrastructure in `lib/ai/`. It is independent of AI Dev, Prisma, tRPC and UI code. AI Dev chat, conversation persistence and the embeddings playground are later phases.
+Phase 1 adds server-only Ollama infrastructure in `lib/ai/`. It is independent of AI Dev, Prisma, tRPC and UI code. Phase 2 adds the AI Dev chat consumer. Conversation persistence and the embeddings playground are later phases.
 
 ## Configuration
 
@@ -38,6 +38,20 @@ Both resolvers check the exact installed model ID (including its tag) and reques
 Metadata requests have a 10-second deadline; inference requests have a 120-second deadline and preserve caller cancellation. Discovery calls do not retry automatically. AI SDK callers own inference retry policy and overall operation deadlines. HTTP and network failures, invalid responses, configuration errors and invalid model selections throw `AiError` with a stable `code`. Provider response bodies and raw network errors are not included in these messages. SDK inference responses retain the SDK's own error handling.
 
 API adapters must authenticate callers, validate input and map errors to their transport's error types. Future AI tools must delegate state changes to Vela's deterministic application services.
+
+## AI Dev chat
+
+Open `/ai-dev` from the application navigation and sign in with a normal Vela account. The page checks the server-side Better Auth session before rendering the chat view. There is no separate administrator role. `aiDev.listChatModels` is a protected tRPC query over the shared discovery service and returns only chat-capable models.
+
+Select a model and send plain text. Enter sends; Shift+Enter adds a line. AI SDK UI `useChat` owns the transient messages and stream status. A stable `DefaultChatTransport` sends the current model selection with each request, including retries. Text renders without Markdown, attachments, reasoning displays or tools. The user can stop generation, retry a failed response or start a new conversation. Starting a new conversation cancels the current request, creates fresh chat state and preserves the selected model. Leaving or reloading the page clears conversation history.
+
+`POST /api/ai-dev/chat` verifies the session, rejects cross-site requests and non-JSON content, validates text-only user/assistant history, and delegates to `aiDevService.streamChat`. Origin checks use the external Host header because Next.js may use an internal hostname in `request.url`. Client-supplied system messages, tools and attachments are rejected. API input limits are 100 messages, 16,000 characters per text part and 64,000 text characters across the request. Oversized conversations receive an error directing the user to start a new one.
+
+The service resolves the selected chat model and converts structured UI messages to model messages. It omits empty assistant messages left by interrupted generations. Generation is capped at 2,048 output tokens and 120 seconds, with automatic inference retries disabled. Request cancellation is forwarded to the SDK and shared provider. Responses use the SDK UI stream protocol and `private, no-store` caching. Known discovery/model-selection errors are returned as safe messages; unknown server errors and mid-stream provider failures are masked. The SDK's default provider-error logging is disabled because the error is surfaced through the UI stream instead.
+
+The implementation uses `@ai-sdk/react@4.0.146`, matching `ai@7.0.142`. Tests cover the page's client interactions, request validation, API authentication/errors, service streaming configuration and protected model discovery. Persistence, conversation deletion and ownership of saved conversations remain Phase 3 work.
+
+Phase 2 was verified on 2026-10-17 with the authorized test account and `llama3.1:8b`: streaming, follow-up context, cancellation, reset and recovery after a simulated network failure succeeded in the browser. Mobile layout and anonymous API rejection were also checked. All 93 Jest tests, typecheck, changed-file lint/format checks and the production build (`NODE_ENV=production yarn build`) pass. Repository-wide lint still reports errors in untouched files.
 
 ## Embedding configuration ownership
 

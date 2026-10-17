@@ -1,0 +1,27 @@
+.modelPicker {
+  flex: 1;
+  min-width: min(100%, 220px);
+}
+
+.transcript {
+  height: min(58dvh, 680px);
+  min-height: 240px;
+}
+
+.empty {
+  min-height: 240px;
+}
+
+.message {
+  min-width: 0;
+  border-inline-start: 3px solid var(--mantine-color-default-border);
+}
+
+.message[data-role='user'] {
+  border-inline-start-color: var(--mantine-color-blue-outline);
+}
+
+.messageText {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

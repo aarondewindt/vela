@@ -2,7 +2,7 @@ import { Box, ScrollArea } from '@mantine/core';
 import { LinksGroup } from '../NavbarLinksGroup/NavbarLinksGroup';
 import classes from './NavbarNested.module.css';
 import CurrentUserBadge from '../CurrentUserBadge';
-import { GaugeIcon, KanbanIcon, BugIcon, GearIcon } from '@phosphor-icons/react';
+import { GaugeIcon, KanbanIcon, BugIcon, GearIcon, ChatCircleIcon } from '@phosphor-icons/react';
 
 const navbar_map = [
   { label: 'Dashboard', icon: GaugeIcon, link: '/' },
@@ -16,7 +16,8 @@ const navbar_map = [
     ],
   },
   { label: 'Settings', icon: GearIcon, link: '/settings' },
-  { label: 'Dev tools', icon: BugIcon, link: '/dev-tools' }
+  { label: 'AI Dev', icon: ChatCircleIcon, link: '/ai-dev' },
+  { label: 'Dev tools', icon: BugIcon, link: '/dev-tools' },
 ];
 
 export function NavbarNested() {
