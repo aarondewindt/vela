@@ -24,6 +24,7 @@ Next.js pages and Mantine components
 - `components/` contains feature and shared UI, including `TodayView`, `TasksView`, `ApplicationShell` and settings components. Mantine's shared theme is in `theme.ts`; component styles are colocated CSS modules and global styles are in `app/globals.css`.
 - `lib/trpc/` contains the client, provider, context and root router. Feature routers and services live under `lib/planner/`, `lib/settings/` and `lib/dev-tools/`. Keep transport procedures small and reusable behavior in services.
 - `lib/prisma.ts` constructs Prisma Client with `@prisma/adapter-pg`. The Prisma schema and migrations are in `prisma/`; generated client code is written to `generated/prisma/` and is not source-controlled.
+- `lib/ai/` contains shared server-only Ollama model discovery and AI SDK model resolution. Configuration, timeouts and usage are documented in [AI infrastructure](AI.md). It does not depend on AI Dev or perform application state changes.
 - `store/` contains Zustand UI stores. Use tRPC/TanStack Query for persistent server state rather than copying it into these stores. See [FRONTEND_API.md](FRONTEND_API.md) for the state ownership rules.
 - Jest tests are colocated with relevant components and services. `test-utils/` contains shared render helpers.
 
