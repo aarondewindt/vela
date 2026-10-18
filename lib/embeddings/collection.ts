@@ -99,6 +99,16 @@ export function createEmbeddingCollection<Result>(adapter: EmbeddingCollectionAd
     session: Awaited<ReturnType<typeof embeddingSession>>,
     leaseId: string
   ) {
+    if (
+      (adapter.maxDocuments !== undefined && documents.length > adapter.maxDocuments) ||
+      (adapter.maxVectorValues !== undefined &&
+        documents.length * config.dimensions > adapter.maxVectorValues)
+    ) {
+      throw new EmbeddingCollectionError(
+        'PRECONDITION_FAILED',
+        'This collection exceeds its in-memory indexing limit. Use a smaller model or reduce the active catalog.'
+      );
+    }
     const records: EmbeddingWrite[] = [];
     for (let offset = 0; offset < documents.length; offset += batchSize) {
       await renew(leaseId);
@@ -234,12 +244,12 @@ export function createEmbeddingCollection<Result>(adapter: EmbeddingCollectionAd
       });
     },
 
-    async search(userId: string, query: string, limit: number) {
+    async search(userId: string, query: string, limit: number, signal?: AbortSignal) {
       const row = await prisma.embeddingCollectionConfig.findUnique({
         where: { key: adapter.key },
       });
       const config = configuration(row?.configuration, adapter.preparationVersion);
-      const session = await embeddingSession(config, config);
+      const session = await embeddingSession(config, config, signal);
       const [vector] = await session.embed([config.queryPrefix + query], config.dimensions);
       await session.verifyIdentity();
       const results = await prisma.$transaction(async (db) => {

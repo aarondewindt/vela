@@ -1,0 +1,14 @@
+.productGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--mantine-spacing-md);
+}
+
+.productName {
+  overflow-wrap: anywhere;
+}
+
+.search {
+  flex: 1;
+  min-width: min(100%, 240px);
+}

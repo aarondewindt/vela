@@ -2,7 +2,14 @@ import { Box, ScrollArea } from '@mantine/core';
 import { LinksGroup } from '../NavbarLinksGroup/NavbarLinksGroup';
 import classes from './NavbarNested.module.css';
 import CurrentUserBadge from '../CurrentUserBadge';
-import { GaugeIcon, KanbanIcon, BugIcon, GearIcon, ChatCircleIcon } from '@phosphor-icons/react';
+import {
+  GaugeIcon,
+  KanbanIcon,
+  BugIcon,
+  GearIcon,
+  ChatCircleIcon,
+  ForkKnifeIcon,
+} from '@phosphor-icons/react';
 
 const navbar_map = [
   { label: 'Dashboard', icon: GaugeIcon, link: '/' },
@@ -14,6 +21,16 @@ const navbar_map = [
       { label: 'Today', link: '/planner/today' },
       { label: 'Tasks', link: '/planner/tasks' },
       { label: 'Fuzzy task search', link: '/planner/task-search' },
+    ],
+  },
+  {
+    label: 'Nutrition',
+    icon: ForkKnifeIcon,
+    pathPattern: /^\/nutrition(?:\/|$)/,
+    links: [
+      { label: 'Diary', link: '/nutrition' },
+      { label: 'Food products', link: '/nutrition/products' },
+      { label: 'Daily goals', link: '/nutrition/settings' },
     ],
   },
   { label: 'Settings', icon: GearIcon, link: '/settings' },

@@ -13,31 +13,36 @@ datasource db {
 }
 
 model User {
-  id                  String               @id
-  name                String
-  email               String
-  emailVerified       Boolean              @default(false)
-  image               String?
-  timezone            String               @default("Europe/Amsterdam") @db.VarChar(64)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  sessions            Session[]
-  accounts            Account[]
-  themes              Theme[]
-  locations           Location[]
-  tasks               Task[]
-  savedViews          SavedView[]
-  taskDependencies    TaskDependency[]
-  taskOccurrences     TaskOccurrence[]
-  dailyPlans          DailyPlan[]
-  dailyBlocks         DailyBlock[]
-  dayOverrides        DayOverride[]
-  calendarEvents      CalendarEvent[]
-  checkins            Checkin[]
-  automationRuns      AutomationRun[]
-  availabilityWindows AvailabilityWindow[]
+  id                        String                     @id
+  name                      String
+  email                     String
+  emailVerified             Boolean                    @default(false)
+  image                     String?
+  timezone                  String                     @default("Europe/Amsterdam") @db.VarChar(64)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  sessions                  Session[]
+  accounts                  Account[]
+  themes                    Theme[]
+  locations                 Location[]
+  tasks                     Task[]
+  savedViews                SavedView[]
+  taskDependencies          TaskDependency[]
+  taskOccurrences           TaskOccurrence[]
+  dailyPlans                DailyPlan[]
+  dailyBlocks               DailyBlock[]
+  dayOverrides              DayOverride[]
+  calendarEvents            CalendarEvent[]
+  checkins                  Checkin[]
+  automationRuns            AutomationRun[]
+  availabilityWindows       AvailabilityWindow[]
   plannerGenerationSettings PlannerGenerationSettings?
-  aiConversations     AiConversation[]
+  aiConversations           AiConversation[]
+  products                  Product[]
+  nutritionLogEntries       NutritionLogEntry[]
+  nutritionGoals            NutritionGoals?
+  nutritionIndexJob         NutritionProductIndexJob?
+  nutritionDrafts           NutritionMealDraft[]
 
   @@unique([email])
   @@map("user")
@@ -386,6 +391,266 @@ model TaskEmbedding {
   indexedAt       DateTime              @default(now())
 
   @@map("task_embeddings")
+}
+
+enum ProductCalculationMode {
+  DIRECT
+  CALCULATED
+}
+
+enum NutritionReferenceUnit {
+  G
+  ML
+  SERVING
+}
+
+enum NutritionQuantityUnit {
+  G
+  KG
+  ML
+  L
+  SERVING
+}
+
+enum ProductSourceType {
+  MANUAL
+  DATASET
+  AI_ESTIMATE
+  EXTERNAL_API
+}
+
+enum ProductVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  ESTIMATED
+}
+
+model Product {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  userId                 String
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                   String                    @db.VarChar(240)
+  brand                  String?                   @db.VarChar(240)
+  description            String?
+  aliases                String[]                  @default([])
+  normalizedName         String                    @db.VarChar(240)
+  normalizedAliases      String[]                  @default([])
+  searchText             String
+  searchUpdatedAt        DateTime                  @default(now())
+  calculationMode        ProductCalculationMode    @default(DIRECT)
+  referenceQuantity      Decimal                   @db.Decimal(20, 8)
+  referenceUnit          NutritionReferenceUnit
+  referenceLabel         String?                   @db.VarChar(80)
+  calories               Decimal?                  @db.Decimal(20, 8)
+  protein                Decimal?                  @db.Decimal(20, 8)
+  carbohydrates          Decimal?                  @db.Decimal(20, 8)
+  fat                    Decimal?                  @db.Decimal(20, 8)
+  fiber                  Decimal?                  @db.Decimal(20, 8)
+  servingSizeQuantity    Decimal?                  @db.Decimal(20, 8)
+  servingSizeUnit        NutritionReferenceUnit?
+  servingSizeIsEstimated Boolean                   @default(false)
+  densityGramsPerMl      Decimal?                  @db.Decimal(20, 8)
+  densityIsEstimated     Boolean                   @default(false)
+  yieldQuantity          Decimal?                  @db.Decimal(20, 8)
+  yieldUnit              NutritionReferenceUnit?
+  sourceType             ProductSourceType         @default(MANUAL)
+  sourceName             String?                   @db.VarChar(240)
+  sourceRecordId         String?                   @db.VarChar(240)
+  sourceVersion          String?                   @db.VarChar(120)
+  sourceSnapshot         Json?                     @db.JsonB
+  importedAt             DateTime?
+  verificationStatus     ProductVerificationStatus @default(UNVERIFIED)
+  userModifiedAt         DateTime?
+  archivedAt             DateTime?
+  version                Int                       @default(1)
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  servings               ProductServing[]
+  components             ProductComponent[]        @relation("ProductParent")
+  usedIn                 ProductComponent[]        @relation("ProductChild")
+  logEntries             NutritionLogEntry[]
+  embedding              ProductEmbedding?
+
+  @@unique([userId, id])
+  @@unique([userId, sourceType, sourceName, sourceRecordId])
+  @@index([userId, archivedAt, normalizedName])
+  @@map("products")
+}
+
+model ProductEmbedding {
+  productId       String                @id @db.Uuid
+  product         Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  embedding       Unsupported("vector")
+  sourceHash      String                @db.Char(64)
+  sourceUpdatedAt DateTime
+  indexedAt       DateTime              @default(now())
+
+  @@map("product_embeddings")
+}
+
+model NutritionProductIndexJob {
+  userId            String    @id
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revision          Int       @default(1)
+  completedRevision Int       @default(0)
+  attempts          Int       @default(0)
+  runAfter          DateTime  @default(now())
+  leaseId           String?   @db.Uuid
+  leaseExpiresAt    DateTime?
+  lastError         String?   @db.VarChar(500)
+  updatedAt         DateTime  @updatedAt
+
+  @@index([runAfter])
+  @@map("nutrition_product_index_jobs")
+}
+
+model ProductServing {
+  id             String                 @id @default(uuid()) @db.Uuid
+  productId      String                 @db.Uuid
+  product        Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name           String                 @db.VarChar(80)
+  normalizedName String                 @db.VarChar(80)
+  aliases        String[]               @default([])
+  quantity       Decimal                @db.Decimal(20, 8)
+  canonicalUnit  NutritionReferenceUnit
+  isDefault      Boolean                @default(false)
+  isEstimated    Boolean                @default(false)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  components     ProductComponent[]
+
+  @@unique([productId, id])
+  @@unique([productId, normalizedName])
+  @@map("product_servings")
+}
+
+model ProductComponent {
+  id              String                @id @default(uuid()) @db.Uuid
+  userId          String
+  parentProductId String                @db.Uuid
+  childProductId  String                @db.Uuid
+  parentProduct   Product               @relation("ProductParent", fields: [userId, parentProductId], references: [userId, id], onDelete: Cascade)
+  childProduct    Product               @relation("ProductChild", fields: [userId, childProductId], references: [userId, id], onDelete: Restrict)
+  quantity        Decimal               @db.Decimal(20, 8)
+  unit            NutritionQuantityUnit
+  servingId       String?               @db.Uuid
+  serving         ProductServing?       @relation(fields: [childProductId, servingId], references: [productId, id], onDelete: Restrict, onUpdate: NoAction)
+  sortOrder       Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([parentProductId, sortOrder])
+  @@index([childProductId])
+  @@index([childProductId, servingId])
+  @@map("product_components")
+}
+
+enum NutritionMealCategory {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACKS
+}
+
+enum NutritionDraftStatus {
+  DRAFT
+  CONFIRMED
+  DISCARDED
+}
+
+enum NutritionDraftTurnStatus {
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+model NutritionMealDraft {
+  id                  String                @id @default(uuid()) @db.Uuid
+  userId              String
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String                @default("Meal draft") @db.VarChar(120)
+  logDate             DateTime              @db.Date
+  mealCategory        NutritionMealCategory
+  provider            String                @db.VarChar(40)
+  modelId             String                @db.VarChar(200)
+  status              NutritionDraftStatus  @default(DRAFT)
+  revision            Int                   @default(1)
+  items               Json                  @default("[]") @db.JsonB
+  questions           String[]              @default([])
+  generationId        String?               @db.Uuid
+  generationExpiresAt DateTime?
+  confirmedEntryIds   String[]              @default([]) @db.Uuid
+  confirmedAt         DateTime?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  turns               NutritionDraftTurn[]
+
+  @@index([userId, status, updatedAt])
+  @@map("nutrition_meal_drafts")
+}
+
+model NutritionDraftTurn {
+  id                String                   @id @db.Uuid
+  draftId           String                   @db.Uuid
+  draft             NutritionMealDraft       @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  userText          String
+  assistantText     String?
+  status            NutritionDraftTurnStatus @default(GENERATING)
+  requestedRevision Int
+  error             String?                  @db.VarChar(500)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@index([draftId, createdAt])
+  @@map("nutrition_draft_turns")
+}
+
+model NutritionLogEntry {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  userId              String
+  user                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId           String?                @db.Uuid
+  product             Product?               @relation(fields: [productId], references: [id], onDelete: SetNull)
+  logDate             DateTime               @db.Date
+  mealCategory        NutritionMealCategory
+  productNameSnapshot String                 @db.VarChar(240)
+  quantity            Decimal                @db.Decimal(20, 8)
+  unit                NutritionQuantityUnit
+  servingId           String?                @db.Uuid
+  unitLabelSnapshot   String                 @db.VarChar(80)
+  resolvedQuantity    Decimal                @db.Decimal(20, 8)
+  referenceUnit       NutritionReferenceUnit
+  calories            Decimal                @db.Decimal(20, 8)
+  protein             Decimal                @db.Decimal(20, 8)
+  carbohydrates       Decimal                @db.Decimal(20, 8)
+  fat                 Decimal                @db.Decimal(20, 8)
+  fiber               Decimal?               @db.Decimal(20, 8)
+  estimated           Boolean                @default(false)
+  referenceSnapshot   Json                   @db.JsonB
+  requestId           String                 @db.Uuid
+  requestHash         String                 @db.Char(64)
+  version             Int                    @default(1)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([userId, requestId])
+  @@index([userId, logDate, mealCategory])
+  @@index([productId])
+  @@map("nutrition_log_entries")
+}
+
+model NutritionGoals {
+  userId        String   @id
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calories      Decimal? @db.Decimal(20, 8)
+  protein       Decimal? @db.Decimal(20, 8)
+  carbohydrates Decimal? @db.Decimal(20, 8)
+  fat           Decimal? @db.Decimal(20, 8)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("nutrition_goals")
 }
 
 model TaskDependency {

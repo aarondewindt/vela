@@ -75,9 +75,11 @@ async function request<T>(
   baseURL: string,
   path: string,
   schema: z.ZodType<T>,
-  modelId?: string
+  modelId?: string,
+  signal?: AbortSignal
 ): Promise<T> {
   const response = await fetchOllama(`${baseURL}/${path}`, {
+    signal,
     ...(modelId
       ? {
           method: 'POST',
@@ -122,8 +124,8 @@ async function request<T>(
   return result.data;
 }
 
-async function describeModel(baseURL: string, id: string): Promise<AiModel> {
-  const { capabilities } = await request(baseURL, 'show', modelInfoSchema, id);
+async function describeModel(baseURL: string, id: string, signal?: AbortSignal): Promise<AiModel> {
+  const { capabilities } = await request(baseURL, 'show', modelInfoSchema, id, signal);
   const supported: AiModelCapability[] = [];
   if (capabilities.includes('completion')) {
     supported.push('chat');
@@ -151,19 +153,23 @@ export async function discoverModels(): Promise<AiModel[]> {
   return discovered;
 }
 
-async function resolveModel(selection: AiModelSelection, capability: AiModelCapability) {
+async function resolveModel(
+  selection: AiModelSelection,
+  capability: AiModelCapability,
+  signal?: AbortSignal
+) {
   if (selection.provider !== 'ollama') {
     throw new AiError('PROVIDER_NOT_SUPPORTED', 'The selected AI provider is not supported.');
   }
 
   const baseURL = getBaseURL();
-  const { models } = await request(baseURL, 'tags', modelsSchema);
+  const { models } = await request(baseURL, 'tags', modelsSchema, undefined, signal);
   const installed = models.find(({ name }) => name === selection.modelId);
   if (!installed) {
     throw new AiError('MODEL_NOT_FOUND', 'Select an installed Ollama model.');
   }
 
-  const model = await describeModel(baseURL, selection.modelId);
+  const model = await describeModel(baseURL, selection.modelId, signal);
   if (!model.capabilities.includes(capability)) {
     throw new AiError(
       'MODEL_NOT_SUPPORTED',
@@ -178,8 +184,8 @@ async function resolveModel(selection: AiModelSelection, capability: AiModelCapa
   return { provider, digest: installed.digest };
 }
 
-export async function resolveChatModel(selection: AiModelSelection) {
-  const { provider } = await resolveModel(selection, 'chat');
+export async function resolveChatModel(selection: AiModelSelection, signal?: AbortSignal) {
+  const { provider } = await resolveModel(selection, 'chat', signal);
   return provider.languageModel(selection.modelId);
 }
 
@@ -189,8 +195,11 @@ export async function resolveEmbeddingModel(selection: AiModelSelection) {
 }
 
 /** Persistent collections must detect replacements behind a mutable model tag. */
-export async function resolveEmbeddingModelWithIdentity(selection: AiModelSelection) {
-  const { provider, digest } = await resolveModel(selection, 'embedding');
+export async function resolveEmbeddingModelWithIdentity(
+  selection: AiModelSelection,
+  signal?: AbortSignal
+) {
+  const { provider, digest } = await resolveModel(selection, 'embedding', signal);
   if (!digest) {
     throw new AiError(
       'INVALID_PROVIDER_RESPONSE',

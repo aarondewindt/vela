@@ -11,6 +11,9 @@ export type EmbeddingWrite = { document: EmbeddingDocument; vector?: number[] };
 export interface EmbeddingCollectionAdapter<Result> {
   key: string;
   preparationVersion: string;
+  // Optional bounds for collections that stage vectors in server memory.
+  maxDocuments?: number;
+  maxVectorValues?: number;
   // lock=true is used only inside the short publication transaction.
   documents(
     db: Prisma.TransactionClient,

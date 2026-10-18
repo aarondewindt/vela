@@ -1,6 +1,7 @@
 import 'server-only';
 
 export { AiError, type AiErrorCode } from './errors';
+export { generateStructured } from './structured';
 export {
   discoverModels,
   resolveChatModel,

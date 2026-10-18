@@ -95,6 +95,16 @@ it('reuses unchanged vectors while refreshing their source timestamp', async () 
   expect(session.embed).not.toHaveBeenCalled();
   expect(adapter.write).toHaveBeenCalledWith(prisma, [{ document: doc, vector: undefined }]);
 });
+it('rejects configured staging limits before document inference or publication', async () => {
+  for (const limits of [{ maxDocuments: 0 }, { maxVectorValues: 2 }]) {
+    const bounded = createEmbeddingCollection({ ...adapter, ...limits });
+    await expect(bounded.synchronize('user-a')).rejects.toMatchObject({
+      code: 'PRECONDITION_FAILED',
+    });
+  }
+  expect(session.embed).not.toHaveBeenCalled();
+  expect(adapter.write).not.toHaveBeenCalled();
+});
 it('does not publish a task that changed while inference was running', async () => {
   (adapter.documents as jest.Mock)
     .mockResolvedValueOnce([doc])
@@ -159,7 +169,7 @@ it('rejects search when there is no active configuration', async () => {
 });
 it('uses the saved configuration and passes ownership to exact search', async () => {
   await engine.search('user-a', 'test', 10);
-  expect(embeddingSession).toHaveBeenCalledWith(config, config);
+  expect(embeddingSession).toHaveBeenCalledWith(config, config, undefined);
   expect(session.embed).toHaveBeenCalledWith(['Query: test'], 3);
   expect(adapter.search).toHaveBeenCalledWith(prisma, 'user-a', [1, 0, 0], 10);
 });

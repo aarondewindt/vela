@@ -1,0 +1,16 @@
+.foodName {
+  overflow-wrap: anywhere;
+}
+
+.candidate {
+  max-width: 100%;
+  height: auto;
+  min-height: 30px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.candidateLabel {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

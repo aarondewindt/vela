@@ -22,9 +22,10 @@ export function validateVector(vector: number[], dimensions?: number) {
 
 export async function embeddingSession(
   selection: AiModelSelection,
-  expected?: EmbeddingConfiguration
+  expected?: EmbeddingConfiguration,
+  signal?: AbortSignal
 ) {
-  const resolved = await resolveEmbeddingModelWithIdentity(selection);
+  const resolved = await resolveEmbeddingModelWithIdentity(selection, signal);
   if (expected && resolved.digest !== expected.modelDigest) {
     throw new EmbeddingCollectionError(
       'PRECONDITION_FAILED',
@@ -47,7 +48,9 @@ export async function embeddingSession(
             model: resolved.model,
             values: texts,
             maxRetries: 0,
-            abortSignal: AbortSignal.timeout(120_000),
+            abortSignal: signal
+              ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
+              : AbortSignal.timeout(120_000),
             providerOptions: { ollama: { truncate: false } },
           })
         ).embeddings;
@@ -67,7 +70,7 @@ export async function embeddingSession(
       return vectors;
     },
     async verifyIdentity() {
-      const current = await resolveEmbeddingModelWithIdentity(selection);
+      const current = await resolveEmbeddingModelWithIdentity(selection, signal);
       if (current.digest !== resolved.digest) {
         throw new EmbeddingCollectionError(
           'CONFLICT',
