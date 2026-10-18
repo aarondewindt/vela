@@ -1,5 +1,6 @@
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
+    settings: { getAiModels: { useQuery: jest.fn() } },
     aiDev: {
       listEmbeddingModels: { useQuery: jest.fn() },
       generateEmbedding: { useMutation: jest.fn() },
@@ -50,6 +51,11 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: { settings: {}, resolved: {} },
+  });
   (trpc.aiDev.listEmbeddingModels.useQuery as jest.Mock).mockReturnValue(models);
   (trpc.aiDev.generateEmbedding.useMutation as jest.Mock).mockReturnValue(generate);
   (trpc.aiDev.compareEmbeddings.useMutation as jest.Mock).mockReturnValue(compare);
@@ -60,6 +66,18 @@ async function chooseModel(user: ReturnType<typeof userEvent.setup>, name = 'emb
 }
 
 describe('EmbeddingsView', () => {
+  it('uses the embedding default without an explicit model selection', async () => {
+    (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+      isFetchedAfterMount: true,
+      error: null,
+      data: { resolved: { 'aiDev.embeddings': { selection, source: 'Embeddings default' } } },
+    });
+    const user = userEvent.setup();
+    render(<EmbeddingsView />);
+    await user.type(screen.getByRole('textbox', { name: 'Text to embed' }), 'Synthetic text');
+    await user.click(screen.getByRole('button', { name: 'Generate embedding' }));
+    expect(generate.mutate).toHaveBeenCalledWith({ selection: null, text: 'Synthetic text' });
+  });
   it('requires explicit model selection and nonblank text', async () => {
     const user = userEvent.setup();
     render(<EmbeddingsView />);

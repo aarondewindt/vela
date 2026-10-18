@@ -30,6 +30,7 @@ const navbar_map = [
     links: [
       { label: 'Diary', link: '/nutrition' },
       { label: 'Food products', link: '/nutrition/products' },
+      { label: 'History', link: '/nutrition/history' },
       { label: 'Daily goals', link: '/nutrition/settings' },
     ],
   },

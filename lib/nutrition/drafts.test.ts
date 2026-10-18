@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/ai', () => ({ resolveChatModel: jest.fn() }));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     $queryRaw: jest.fn(),
@@ -15,6 +16,7 @@ jest.mock('@/lib/prisma', () => ({
     },
     nutritionDraftTurn: { updateMany: jest.fn(), update: jest.fn(), create: jest.fn() },
     user: { findUniqueOrThrow: jest.fn() },
+    userAiModelSetting: { findMany: jest.fn() },
   },
 }));
 jest.mock('./products', () => ({ nutritionProducts: { get: jest.fn() } }));
@@ -43,6 +45,7 @@ beforeEach(() => {
     mealCategory: 'LUNCH',
     provider: 'ollama',
     modelId: 'chat',
+    inheritsModel: false,
     status: 'DRAFT',
     revision: 1,
     items: [resolved()],
@@ -72,6 +75,47 @@ beforeEach(() => {
   (prisma.user.findUniqueOrThrow as jest.Mock).mockResolvedValue({ timezone: 'Europe/Amsterdam' });
   (nutritionProducts.get as jest.Mock).mockResolvedValue(productFixture);
   (createNutritionLogEntry as jest.Mock).mockResolvedValue({ id: 'logged-entry' });
+  (prisma.userAiModelSetting.findMany as jest.Mock).mockResolvedValue([]);
+});
+
+it('resolves inherited defaults for each meal turn and stores the selected model on the turn', async () => {
+  row.inheritsModel = true;
+  (prisma.userAiModelSetting.findMany as jest.Mock)
+    .mockResolvedValueOnce([{ key: 'default', value: { provider: 'ollama', modelId: 'first' } }])
+    .mockResolvedValueOnce([{ key: 'default', value: { provider: 'ollama', modelId: 'second' } }]);
+  const first = await nutritionDrafts.beginTurn('owner', {
+    id,
+    revision: 1,
+    requestId,
+    text: 'Hello',
+  });
+  expect(first.selection?.modelId).toBe('first');
+  row.generationId = null;
+  row.generationExpiresAt = null;
+  const next = await nutritionDrafts.beginTurn('owner', {
+    id,
+    revision: row.revision,
+    requestId,
+    text: 'Hello',
+  });
+  expect(next.selection?.modelId).toBe('second');
+  expect(prisma.nutritionDraftTurn.create).toHaveBeenLastCalledWith({
+    data: expect.objectContaining({ modelId: 'second', provider: 'ollama' }),
+  });
+});
+it('saves an override or clears it with a revision check and rejects switching during generation', async () => {
+  const changed = await nutritionDrafts.changeModel('owner', id, 1, {
+    provider: 'ollama',
+    modelId: 'other',
+  });
+  expect(changed.override?.modelId).toBe('other');
+  const inherited = await nutritionDrafts.changeModel('owner', id, 2, null);
+  expect(inherited.override).toBeNull();
+  row.generationId = requestId;
+  row.generationExpiresAt = new Date(Date.now() + 60_000);
+  await expect(nutritionDrafts.changeModel('owner', id, 3, null)).rejects.toMatchObject({
+    code: 'CONFLICT',
+  });
 });
 it('denies foreign/missing drafts and never exposes owner or generation tokens', async () => {
   const result = await nutritionDrafts.get('owner', id);
@@ -173,6 +217,8 @@ it('replays completed requests and rejects a reused ID with different content', 
       status: 'COMPLETED',
       requestedRevision: 1,
       error: null,
+      provider: 'ollama',
+      modelId: 'chat',
       createdAt: date,
       updatedAt: date,
     },

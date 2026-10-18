@@ -4,6 +4,7 @@ export { AiError, type AiErrorCode } from './errors';
 export { generateStructured } from './structured';
 export {
   discoverModels,
+  validateModelSelection,
   resolveChatModel,
   resolveEmbeddingModel,
   resolveEmbeddingModelWithIdentity,

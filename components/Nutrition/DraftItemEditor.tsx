@@ -15,6 +15,7 @@ import {
 import { formatNutritionAmount } from '@/lib/nutrition/format';
 import { ProductPicker } from './ProductPicker';
 import { NevoAttribution } from './NevoAttribution';
+import { productSources } from '@/lib/nutrition/attribution';
 
 export function DraftItemEditor({
   draft,
@@ -122,11 +123,7 @@ export function DraftItemEditor({
             />
           </Group>
           {preview.error && valid && <Alert color="yellow">{preview.error.message}</Alert>}
-          {product && (
-            <NevoAttribution
-              sources={[{ name: product.sourceName, version: product.sourceVersion }]}
-            />
-          )}
+          {product && <NevoAttribution sources={productSources(product)} />}
           {valid && quantity === debounced && preview.data && !preview.error && (
             <Text>
               {formatNutritionAmount(preview.data.nutrients.calories)} kcal

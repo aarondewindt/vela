@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { IconSparkles } from '@tabler/icons-react';
 import {
   Accordion,
+  ActionIcon,
+  Tooltip,
   Alert,
   Button,
   Checkbox,
@@ -18,10 +21,12 @@ import {
   Title,
 } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
+import { recipeAutofillSchema } from '@/lib/nutrition/recipe-autofill-schema';
 import { productInputSchema, type ProductInput } from '@/lib/nutrition/schema';
 import { unitLabels, verificationStatuses } from '@/lib/nutrition/types';
 import type { NutritionProduct } from '@/lib/nutrition/products';
 import { ServingEditor } from './ServingEditor';
+import { RecipeComponentsEditor } from './RecipeComponentsEditor';
 
 const emptyProduct: ProductInput = {
   name: '',
@@ -55,23 +60,69 @@ const nutrientLabels = {
 
 export function ProductEditor({
   product,
+  initialCalculationMode = 'DIRECT',
+  initialComponents,
   onClose,
   onSaved,
 }: {
   product: NutritionProduct | null;
+  initialCalculationMode?: ProductInput['calculationMode'];
+  initialComponents?: ProductInput['components'];
   onClose: () => void;
   onSaved: (product: NutritionProduct) => Promise<void>;
 }) {
   const [value, setValue] = useState<ProductInput>(() =>
-    product ? productInputSchema.parse(product) : emptyProduct
+    product
+      ? productInputSchema.parse(product)
+      : initialCalculationMode === 'CALCULATED'
+        ? {
+            ...emptyProduct,
+            calculationMode: 'CALCULATED',
+            referenceQuantity: '1',
+            referenceUnit: 'SERVING',
+            referenceLabel: 'portion',
+            calories: '0',
+            protein: '0',
+            carbohydrates: '0',
+            fat: '0',
+            components: initialComponents ?? [],
+            yieldQuantity: null,
+            yieldUnit: null,
+          }
+        : emptyProduct
   );
+  const [openSections, setOpenSections] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const create = trpc.nutrition.createProduct.useMutation();
   const update = trpc.nutrition.updateProduct.useMutation();
-  const busy = create.isPending || update.isPending;
+  const autofill = trpc.nutrition.autofillRecipe.useMutation();
+  const busy = create.isPending || update.isPending || autofill.isPending;
   const failure = create.error ?? update.error;
   const change = (patch: Partial<ProductInput>) =>
     setValue((current) => ({ ...current, ...patch }));
+  const generateDetails = async () => {
+    const parsed = recipeAutofillSchema.safeParse({
+      name: value.name,
+      aliases: value.aliases,
+      description: value.description,
+      components: value.components ?? [],
+      yieldQuantity: value.yieldQuantity ?? null,
+      yieldUnit: value.yieldUnit ?? null,
+    });
+    if (!parsed.success) {
+      setErrors(['Select ingredients with valid quantities before using autofill.']);
+      return;
+    }
+    setErrors([]);
+    try {
+      change(await autofill.mutateAsync(parsed.data));
+      setOpenSections((current) =>
+        current.includes('details') ? current : [...current, 'details']
+      );
+    } catch {
+      // Display the mutation error and preserve the form for manual editing or retry.
+    }
+  };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -113,13 +164,38 @@ export function ProductEditor({
       }}
       closeOnClickOutside={!busy}
       closeOnEscape={!busy}
-      title={product ? 'Edit food product' : 'Create food product'}
+      title={
+        value.calculationMode === 'CALCULATED'
+          ? product
+            ? 'Edit recipe'
+            : 'Create recipe'
+          : product
+            ? 'Edit food product'
+            : 'Create food product'
+      }
       closeButtonProps={{ 'aria-label': 'Close product editor' }}
       size="lg"
     >
       <form onSubmit={(event) => void save(event)}>
         <Stack gap="lg">
           <TextInput
+            rightSectionPointerEvents="all"
+            rightSection={
+              value.calculationMode === 'CALCULATED' ? (
+                <Tooltip label="Autofill name, aliases and description with AI">
+                  <ActionIcon
+                    type="button"
+                    variant="subtle"
+                    aria-label="Autofill recipe details with AI"
+                    loading={autofill.isPending}
+                    disabled={busy || !value.components?.length}
+                    onClick={() => void generateDetails()}
+                  >
+                    <IconSparkles size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              ) : undefined
+            }
             label="Product name"
             placeholder="Peanut butter"
             required
@@ -142,6 +218,26 @@ export function ProductEditor({
             onChange={(aliases) => change({ aliases })}
           />
           <Stack gap="sm">
+            <Select
+              label="Nutrition calculation"
+              allowDeselect={false}
+              value={value.calculationMode}
+              disabled={busy}
+              data={[
+                { value: 'DIRECT', label: 'Enter nutrition values' },
+                { value: 'CALCULATED', label: 'Calculate from recipe ingredients' },
+              ]}
+              onChange={(mode) => {
+                if (mode) {
+                  change({
+                    calculationMode: mode as ProductInput['calculationMode'],
+                    ...(mode === 'CALCULATED'
+                      ? { calories: '0', protein: '0', carbohydrates: '0', fat: '0', fiber: null }
+                      : {}),
+                  });
+                }
+              }}
+            />
             <Title order={4}>Nutrition reference</Title>
             <SimpleGrid cols={{ base: 1, xs: 2 }}>
               <TextInput
@@ -173,6 +269,9 @@ export function ProductEditor({
                     servingSizeQuantity: null,
                     servingSizeUnit: null,
                     servingSizeIsEstimated: false,
+                    ...(value.calculationMode === 'CALCULATED'
+                      ? { yieldQuantity: null, yieldUnit: null }
+                      : {}),
                   });
                 }}
               />
@@ -188,32 +287,46 @@ export function ProductEditor({
               />
             )}
             <Text size="sm" c="dimmed">
-              Enter the package or recipe values for {value.referenceQuantity || '…'}{' '}
+              {value.calculationMode === 'DIRECT'
+                ? 'Enter nutrition values for '
+                : 'Calculate nutrition per '}
+              {value.referenceQuantity || '…'}{' '}
               {value.referenceUnit === 'SERVING'
                 ? value.referenceLabel || 'named serving'
                 : unitLabels[value.referenceUnit]}
               .
             </Text>
-            <SimpleGrid cols={{ base: 1, xs: 2 }}>
-              {(Object.keys(nutrientLabels) as (keyof typeof nutrientLabels)[]).map((key) => (
-                <TextInput
-                  key={key}
-                  label={nutrientLabels[key]}
-                  required={key !== 'fiber'}
-                  inputMode="decimal"
-                  value={value[key] ?? ''}
-                  disabled={busy}
-                  onChange={(event) =>
-                    change({
-                      [key]:
-                        key === 'fiber'
-                          ? event.currentTarget.value || null
-                          : event.currentTarget.value,
-                    })
-                  }
-                />
-              ))}
-            </SimpleGrid>
+            {value.calculationMode === 'DIRECT' && (
+              <SimpleGrid cols={{ base: 1, xs: 2 }}>
+                {(Object.keys(nutrientLabels) as (keyof typeof nutrientLabels)[]).map((key) => (
+                  <TextInput
+                    key={key}
+                    label={nutrientLabels[key]}
+                    required={key !== 'fiber'}
+                    inputMode="decimal"
+                    value={value[key] ?? ''}
+                    disabled={busy}
+                    onChange={(event) =>
+                      change({
+                        [key]:
+                          key === 'fiber'
+                            ? event.currentTarget.value || null
+                            : event.currentTarget.value,
+                      })
+                    }
+                  />
+                ))}
+              </SimpleGrid>
+            )}
+            {(value.calculationMode === 'CALCULATED' || Boolean(value.components?.length)) && (
+              <RecipeComponentsEditor value={value} disabled={busy} onChange={change} />
+            )}
+            {value.calculationMode === 'CALCULATED' && (
+              <Text size="sm" c="dimmed">
+                Nutrition is calculated on the server when you save. Use Calculate in the catalog to
+                preview quantities.
+              </Text>
+            )}
           </Stack>
           <Stack gap="sm">
             <Group justify="space-between">
@@ -269,7 +382,7 @@ export function ProductEditor({
               />
             ))}
           </Stack>
-          <Accordion variant="separated" multiple>
+          <Accordion variant="separated" multiple value={openSections} onChange={setOpenSections}>
             <Accordion.Item value="conversions">
               <Accordion.Control>Physical conversions (optional)</Accordion.Control>
               <Accordion.Panel>
@@ -404,6 +517,11 @@ export function ProductEditor({
                   </Text>
                 ))}
               </Stack>
+            </Alert>
+          )}
+          {autofill.error && (
+            <Alert color="red" title="Could not autofill recipe">
+              {autofill.error.message}
             </Alert>
           )}
           {failure && (

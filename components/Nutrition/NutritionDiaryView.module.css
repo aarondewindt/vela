@@ -18,3 +18,9 @@
 .dateControl {
   width: min(100%, 180px);
 }
+
+@media (max-width: 36em) {
+  .entry {
+    flex-wrap: wrap;
+  }
+}

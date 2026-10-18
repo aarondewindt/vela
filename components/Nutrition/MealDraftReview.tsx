@@ -23,6 +23,7 @@ import { mealCategories, mealLabels, type MealCategory } from '@/lib/nutrition/t
 import { formatNutritionAmount } from '@/lib/nutrition/format';
 import { DraftItemEditor } from './DraftItemEditor';
 import { NevoAttribution } from './NevoAttribution';
+import { snapshotSources } from '@/lib/nutrition/attribution';
 import classes from './MealDraftReview.module.css';
 
 export function MealDraftReview({
@@ -80,7 +81,9 @@ export function MealDraftReview({
     <Stack>
       <Title order={3}>Review meal draft</Title>
       <NevoAttribution
-        sources={draft.items.flatMap((item) => (item.snapshot ? [item.snapshot.source] : []))}
+        sources={draft.items.flatMap((item) =>
+          item.snapshot ? snapshotSources(item.snapshot) : []
+        )}
       />
       <Text size="sm" c="dimmed">
         Nothing is logged until you confirm. Check the foods, date, meal and amounts.

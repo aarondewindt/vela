@@ -1,11 +1,13 @@
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
+    settings: { getAiModels: { useQuery: jest.fn() } },
     useUtils: jest.fn(),
     nutrition: {
       listDrafts: { useQuery: jest.fn() },
       draftModels: { useQuery: jest.fn() },
       getDraft: { useQuery: jest.fn() },
       createDraft: { useMutation: jest.fn() },
+      changeDraftModel: { useMutation: jest.fn() },
       interpretDraft: { useMutation: jest.fn() },
     },
   },
@@ -24,8 +26,33 @@ const value = {
   generating: false,
   turns: [],
   selection: { provider: 'ollama', modelId: 'chat' },
+  override: { provider: 'ollama', modelId: 'chat' },
 };
 const interpret = { mutateAsync: jest.fn(), reset: jest.fn(), isPending: false, error: null };
+it('creates a meal draft using settings without selecting another model', async () => {
+  const create = jest.fn().mockResolvedValue(value);
+  (trpc.nutrition.createDraft.useMutation as jest.Mock).mockReturnValue({
+    mutateAsync: create,
+    reset: jest.fn(),
+  });
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: {
+      resolved: { 'nutrition.mealDraft': { selection: value.selection, source: 'Default LLM' } },
+    },
+  });
+  interpret.mutateAsync.mockResolvedValueOnce(value);
+  const user = userEvent.setup();
+  render(<MealDraftComposer date="2026-10-18" onConfirmed={jest.fn()} />);
+  await user.click(screen.getByRole('button', { name: 'Describe a meal' }));
+  expect(screen.getByRole('combobox', { name: 'Chat model' })).toHaveValue('Use settings');
+  await user.type(screen.getByRole('textbox', { name: 'What did you eat?' }), '100 grams of rice');
+  await user.click(screen.getByRole('button', { name: 'Create meal draft' }));
+  await waitFor(() =>
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ selection: null }))
+  );
+});
 beforeAll(() => {
   Object.defineProperty(document, 'fonts', {
     configurable: true,
@@ -38,6 +65,11 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: { settings: {}, resolved: {} },
+  });
   (trpc.useUtils as jest.Mock).mockReturnValue({
     nutrition: {
       getDraft: { setData: jest.fn(), invalidate: jest.fn() },
@@ -55,6 +87,11 @@ beforeEach(() => {
     error: null,
   });
   (trpc.nutrition.draftModels.useQuery as jest.Mock).mockReturnValue({ data: [], error: null });
+  (trpc.nutrition.changeDraftModel.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+    isPending: false,
+    error: null,
+  });
   (trpc.nutrition.createDraft.useMutation as jest.Mock).mockReturnValue({
     mutateAsync: jest.fn(),
     reset: jest.fn(),

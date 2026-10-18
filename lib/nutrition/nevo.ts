@@ -1,4 +1,5 @@
 import 'server-only';
+import { lockProductGraph, validateProductDependents } from './product-graph';
 import { createHash } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
@@ -168,6 +169,7 @@ export const nutritionNevo = {
       parsed = parseNevoCsv(input.csv);
     return prisma.$transaction(
       async (db) => {
+        await lockProductGraph(db, userId);
         const [claim] = await db.$queryRaw<
           { claimed: boolean }[]
         >`SELECT pg_try_advisory_xact_lock(hashtextextended(${`nevo:${userId}`}, 0)) AS claimed`;
@@ -236,6 +238,13 @@ export const nutritionNevo = {
         if (needsIndex) {
           await enqueueProductIndex(db, userId);
         }
+        await validateProductDependents(
+          db,
+          userId,
+          planned.actions.flatMap((action) =>
+            action.kind === 'update' ? [action.current!.id] : []
+          )
+        );
         return planned.summary;
       },
       { timeout: 120_000 }

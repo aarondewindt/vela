@@ -1,9 +1,14 @@
 import { z } from 'zod';
+import { modelSelectionSchema } from '@/lib/model-settings/schema';
 
 export const maxMessageLength = 16_000;
-export const selectionSchema = z.object({
-  provider: z.literal('ollama'),
-  modelId: z.string().min(1).max(200),
+export const selectionSchema = modelSelectionSchema;
+export const createConversationSchema = z.object({
+  selection: selectionSchema.nullable().default(null),
+});
+export const changeConversationModelSchema = z.object({
+  id: z.uuid(),
+  selection: selectionSchema.nullable(),
 });
 export const conversationIdSchema = z.object({ id: z.uuid() });
 const textPartSchema = z.object({
@@ -38,11 +43,11 @@ const embeddingTextSchema = z
   .max(maxEmbeddingTextLength)
   .refine((text) => text.trim().length > 0, 'Enter text to embed.');
 export const embeddingInputSchema = z.object({
-  selection: selectionSchema,
+  selection: selectionSchema.nullable().default(null),
   text: embeddingTextSchema,
 });
 export const comparisonInputSchema = z.object({
-  selection: selectionSchema,
+  selection: selectionSchema.nullable().default(null),
   textA: embeddingTextSchema,
   textB: embeddingTextSchema,
 });

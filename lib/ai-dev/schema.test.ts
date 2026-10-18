@@ -52,12 +52,15 @@ describe('chatInputSchema', () => {
 
 describe('embedding input schemas', () => {
   const selection = { provider: 'ollama', modelId: 'qwen3-embedding:0.6b' };
-  it('preserves exact input text and requires an explicit model', () => {
+  it('preserves exact input text and accepts inherited model selection', () => {
     expect(embeddingInputSchema.parse({ selection, text: '  Hello\n' })).toEqual({
       selection,
       text: '  Hello\n',
     });
-    expect(embeddingInputSchema.safeParse({ text: 'Hello' }).success).toBe(false);
+    expect(embeddingInputSchema.parse({ text: 'Hello' })).toEqual({
+      selection: null,
+      text: 'Hello',
+    });
     expect(comparisonInputSchema.safeParse({ selection, textA: 'A', textB: 'B' }).success).toBe(
       true
     );

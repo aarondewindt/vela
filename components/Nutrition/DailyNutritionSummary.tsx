@@ -5,6 +5,7 @@ import type { nutritionDiary } from '@/lib/nutrition/diary';
 import { goalKeys } from '@/lib/nutrition/types';
 import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { NevoAttribution } from './NevoAttribution';
+import { snapshotSources } from '@/lib/nutrition/attribution';
 
 const labels = {
   calories: 'Calories',
@@ -20,7 +21,7 @@ export function DailyNutritionSummary({
 }) {
   return (
     <Stack gap="xs">
-      <NevoAttribution sources={day.entries.map((entry) => entry.snapshot.source)} />
+      <NevoAttribution sources={day.entries.flatMap((entry) => snapshotSources(entry.snapshot))} />
       <SimpleGrid cols={{ base: 2, md: 4 }}>
         {goalKeys.map((key) => {
           const progress = day.progress[key];

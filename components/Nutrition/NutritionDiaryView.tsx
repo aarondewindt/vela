@@ -27,6 +27,8 @@ import { DailyNutritionSummary } from './DailyNutritionSummary';
 import { MealSection } from './MealSection';
 import { LogEntryEditor } from './LogEntryEditor';
 import { MealDraftComposer } from './MealDraftComposer';
+import { RecipeFromMealDialog } from './RecipeFromMealDialog';
+import { CopyMealDialog } from './CopyMealDialog';
 import classes from './NutritionDiaryView.module.css';
 
 export function NutritionDiaryView({
@@ -40,6 +42,8 @@ export function NutritionDiaryView({
 }) {
   const utils = trpc.useUtils();
   const [date, setDate] = useState(initialDate);
+  const [recipeEntries, setRecipeEntries] = useState<DiaryEntry[] | null>(null);
+  const [copyMeal, setCopyMeal] = useState<MealCategory | null>(null);
   const [editor, setEditor] = useState<{ entry: DiaryEntry | null; meal: MealCategory } | null>(
     null
   );
@@ -49,7 +53,13 @@ export function NutritionDiaryView({
     { enabled: valid, retry: false, refetchOnMount: 'always' }
   );
   const current = valid && diary.isFetchedAfterMount && !diary.error ? diary.data : undefined;
-  const refresh = () => utils.nutrition.getDiary.invalidate();
+  const refresh = async () => {
+    await Promise.all([
+      utils.nutrition.getDiary.invalidate(),
+      utils.nutrition.getHistory.invalidate(),
+      utils.nutrition.productSuggestions.invalidate(),
+    ]);
+  };
   const remove = trpc.nutrition.deleteLogEntry.useMutation({ onSuccess: refresh });
   const changeDate = (value: string) => {
     setDate(value);
@@ -79,9 +89,14 @@ export function NutritionDiaryView({
               Your food and nutrition, one day at a time.
             </Text>
           </div>
-          <Button component={Link} href={`/nutrition/settings?date=${date}`} variant="default">
-            Daily goals
-          </Button>
+          <Group gap="xs">
+            <Button component={Link} href={`/nutrition/history?date=${date}`} variant="light">
+              History
+            </Button>
+            <Button component={Link} href={`/nutrition/settings?date=${date}`} variant="default">
+              Daily goals
+            </Button>
+          </Group>
         </Group>
         <Group>
           <Button
@@ -155,6 +170,10 @@ export function NutritionDiaryView({
                 entries={current.entries.filter((entry) => entry.mealCategory === meal)}
                 removing={remove.isPending}
                 onAdd={() => setEditor({ entry: null, meal })}
+                onCopy={() => setCopyMeal(meal)}
+                onCreateRecipe={() =>
+                  setRecipeEntries(current.entries.filter((entry) => entry.mealCategory === meal))
+                }
                 onEdit={(entry) => setEditor({ entry, meal })}
                 onRemove={removeEntry}
               />
@@ -176,6 +195,27 @@ export function NutritionDiaryView({
             changeDate(entry.logDate);
             await refresh();
           }}
+        />
+      )}
+      {recipeEntries && (
+        <RecipeFromMealDialog
+          entries={recipeEntries}
+          onClose={() => setRecipeEntries(null)}
+          onSaved={async () => {
+            await Promise.all([
+              utils.nutrition.listProducts.invalidate(),
+              utils.nutrition.searchProducts.invalidate(),
+              utils.nutrition.productSuggestions.invalidate(),
+            ]);
+          }}
+        />
+      )}
+      {copyMeal && (
+        <CopyMealDialog
+          date={date}
+          meal={copyMeal}
+          onClose={() => setCopyMeal(null)}
+          onSaved={refresh}
         />
       )}
     </Container>

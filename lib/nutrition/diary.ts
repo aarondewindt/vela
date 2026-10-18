@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { Prisma, type NutritionLogEntry } from '../../generated/prisma/client';
 import { nutritionProducts } from './products';
 import { nutritionGoals } from './goals';
+import { lockProductGraph } from './product-graph';
 import { diaryDate } from './dates';
 import {
   calculateSnapshotNutrition,
@@ -89,6 +90,7 @@ export async function createNutritionLogEntry(
   if (existing) {
     return replay(existing, hash);
   }
+  await lockProductGraph(db, userId);
   // Product edits/serving edits lock this same row exclusively. Capture one consistent source.
   await db.$queryRaw`SELECT id FROM products WHERE id = ${input.productId}::uuid AND "userId" = ${userId} FOR SHARE`;
   const product = await nutritionProducts.get(userId, input.productId, db);
@@ -98,7 +100,7 @@ export async function createNutritionLogEntry(
       message: 'Choose an active product to log new food.',
     });
   }
-  if (product.version !== input.productVersion) {
+  if (product.version !== input.productVersion || product.recipeRevision !== input.recipeRevision) {
     throw new TRPCError({
       code: 'CONFLICT',
       message:

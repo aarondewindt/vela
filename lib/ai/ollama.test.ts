@@ -9,6 +9,7 @@ import {
   resolveChatModel,
   resolveEmbeddingModel,
   resolveEmbeddingModelWithIdentity,
+  validateModelSelection,
 } from './ollama';
 
 const originalBaseURL = process.env.OLLAMA_BASE_URL;
@@ -214,6 +215,23 @@ describe('discoverModels', () => {
 });
 
 describe('model resolution', () => {
+  it('discovers vision-language and thinking capabilities from metadata', async () => {
+    fetchMock
+      .mockResolvedValueOnce(installedModels('vision:latest'))
+      .mockResolvedValueOnce(jsonResponse({ capabilities: ['completion', 'vision', 'thinking'] }));
+    expect(await discoverModels()).toEqual([
+      { provider: 'ollama', id: 'vision:latest', capabilities: ['chat', 'vision', 'thinking'] },
+    ]);
+  });
+  it('requires both chat and vision for vision-language settings without inference', async () => {
+    fetchMock
+      .mockResolvedValueOnce(installedModels('text:latest'))
+      .mockResolvedValueOnce(jsonResponse({ capabilities: ['completion'] }));
+    await expect(
+      validateModelSelection({ provider: 'ollama', modelId: 'text:latest' }, ['chat', 'vision'])
+    ).rejects.toMatchObject({ code: 'MODEL_NOT_SUPPORTED' });
+    expect(provider.languageModel).not.toHaveBeenCalled();
+  });
   it('resolves a chat model using the configured server', async () => {
     fetchMock
       .mockResolvedValueOnce(installedModels('chat:latest'))

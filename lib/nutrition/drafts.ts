@@ -2,9 +2,13 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
+import { requireModelSelection } from '@/lib/model-settings/service';
+import { resolveChatModel } from '@/lib/ai';
+import type { ModelSelection } from '@/lib/model-settings/schema';
 import { Prisma } from '../../generated/prisma/client';
 import { diaryDate, dateInTimezone } from './dates';
 import { nutritionProducts, type NutritionProduct } from './products';
+import { lockProductGraph } from './product-graph';
 import { createNutritionLogEntry } from './diary';
 import {
   applyDraftInterpretation,
@@ -44,6 +48,7 @@ function serialize(draft: DraftRecord) {
     status: draft.status,
     revision: draft.revision,
     selection: { provider: 'ollama' as const, modelId: draft.modelId },
+    override: draft.inheritsModel ? null : { provider: 'ollama' as const, modelId: draft.modelId },
     generating: Boolean(
       draft.generationId && draft.generationExpiresAt && draft.generationExpiresAt > new Date()
     ),
@@ -56,6 +61,8 @@ function serialize(draft: DraftRecord) {
       assistantText: turn.assistantText,
       status: turn.status,
       error: turn.error,
+      provider: turn.provider,
+      modelId: turn.modelId,
     })),
   };
 }
@@ -98,6 +105,7 @@ async function interrupt(db: Prisma.TransactionClient, draftId: string) {
   });
 }
 async function refreshedItems(db: Prisma.TransactionClient, userId: string, items: DraftItem[]) {
+  await lockProductGraph(db, userId);
   const ids = [
     ...new Set(items.flatMap((item) => (item.snapshot ? [item.snapshot.productId] : []))),
   ].sort();
@@ -118,7 +126,13 @@ async function refreshedItems(db: Prisma.TransactionClient, userId: string, item
       return item;
     }
     const product = products.get(item.snapshot.productId);
-    if (!product || product.archivedAt || product.version !== item.snapshot.productVersion) {
+    if (
+      !product ||
+      product.archivedAt ||
+      product.version !== item.snapshot.productVersion ||
+      product.recipeRevision !==
+        ('recipeRevision' in item.snapshot ? item.snapshot.recipeRevision : undefined)
+    ) {
       changed = true;
       return withDraftProduct(item, product && !product.archivedAt ? product : null);
     }
@@ -156,6 +170,12 @@ export const nutritionDrafts = {
             'Finish or discard an existing meal draft before creating another (maximum 20 open drafts).',
         });
       }
+      const selection = await requireModelSelection(
+        userId,
+        'nutrition.mealDraft',
+        input.selection,
+        db
+      );
       return serialize(
         await db.nutritionMealDraft.create({
           data: {
@@ -163,9 +183,35 @@ export const nutritionDrafts = {
             userId,
             logDate: diaryDate(input.date),
             mealCategory: input.mealCategory,
-            provider: input.selection.provider,
-            modelId: input.selection.modelId,
+            provider: selection.provider,
+            modelId: selection.modelId,
+            inheritsModel: !input.selection,
           },
+          include,
+        })
+      );
+    });
+  },
+  async changeModel(
+    userId: string,
+    id: string,
+    revision: number,
+    selection: ModelSelection | null
+  ) {
+    await nutritionDrafts.get(userId, id);
+    if (selection) {
+      await resolveChatModel(selection);
+    }
+    return prisma.$transaction(async (db) => {
+      const draft = await owned(db, userId, id);
+      mutable(draft, revision);
+      if (draft.generationId) {
+        conflict('Wait for the active interpretation to finish before changing models.');
+      }
+      return serialize(
+        await db.nutritionMealDraft.update({
+          where: { id, userId },
+          data: { inheritsModel: !selection, ...(selection ?? {}), revision: { increment: 1 } },
           include,
         })
       );
@@ -277,6 +323,17 @@ export const nutritionDrafts = {
         });
       }
       const generationId = randomUUID();
+      const selection = await requireModelSelection(
+        userId,
+        'nutrition.mealDraft',
+        draft.inheritsModel
+          ? null
+          : {
+              provider: 'ollama',
+              modelId: draft.modelId,
+            },
+        db
+      );
       const revision = draft.revision + 1;
       const saved = await db.nutritionMealDraft.update({
         where: { id: draft.id, userId },
@@ -293,6 +350,8 @@ export const nutritionDrafts = {
         assistantText: null,
         error: null,
         requestedRevision: revision,
+        provider: selection.provider,
+        modelId: selection.modelId,
       };
       if (existing) {
         await db.nutritionDraftTurn.update({ where: { id: existing.id, draftId: draft.id }, data });
@@ -308,7 +367,7 @@ export const nutritionDrafts = {
       return {
         generationId,
         revision,
-        selection: { provider: 'ollama' as const, modelId: draft.modelId },
+        selection,
         timezone: preferences.timezone,
         today: dateInTimezone(preferences.timezone),
         current: {
@@ -431,6 +490,9 @@ export const nutritionDrafts = {
             requestId: item.id,
             productId: item.snapshot!.productId,
             productVersion: item.snapshot!.productVersion,
+            ...('recipeRevision' in item.snapshot!
+              ? { recipeRevision: item.snapshot.recipeRevision }
+              : {}),
             logDate: draft.logDate.toISOString().slice(0, 10),
             mealCategory: draft.mealCategory,
             input: item.input!,

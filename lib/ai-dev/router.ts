@@ -8,7 +8,8 @@ import {
   comparisonInputSchema,
   conversationIdSchema,
   embeddingInputSchema,
-  selectionSchema,
+  createConversationSchema,
+  changeConversationModelSchema,
 } from './schema';
 
 async function call<T>(operation: () => Promise<T>): Promise<T> {
@@ -31,16 +32,23 @@ export const aiDevRouter = router({
   listEmbeddingModels: protectedProcedure.query(() => call(() => embeddingService.listModels())),
   generateEmbedding: protectedProcedure
     .input(embeddingInputSchema)
-    .mutation(({ input }) => call(() => embeddingService.generate(input))),
+    .mutation(({ ctx, input }) => call(() => embeddingService.generateForUser(ctx.userId, input))),
   compareEmbeddings: protectedProcedure
     .input(comparisonInputSchema)
-    .mutation(({ input }) => call(() => embeddingService.compare(input))),
+    .mutation(({ ctx, input }) => call(() => embeddingService.compareForUser(ctx.userId, input))),
   listConversations: protectedProcedure.query(({ ctx }) =>
     call(() => conversationService.list(ctx.userId))
   ),
   createConversation: protectedProcedure
-    .input(selectionSchema)
-    .mutation(({ ctx, input }) => call(() => conversationService.create(ctx.userId, input))),
+    .input(createConversationSchema)
+    .mutation(({ ctx, input }) =>
+      call(() => conversationService.create(ctx.userId, input.selection))
+    ),
+  changeConversationModel: protectedProcedure
+    .input(changeConversationModelSchema)
+    .mutation(({ ctx, input }) =>
+      call(() => conversationService.changeModel(ctx.userId, input.id, input.selection))
+    ),
   getConversation: protectedProcedure
     .input(conversationIdSchema)
     .query(({ ctx, input }) => call(() => conversationService.get(ctx.userId, input.id))),

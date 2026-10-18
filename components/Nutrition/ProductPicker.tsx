@@ -6,15 +6,20 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { trpc } from '@/lib/trpc/client';
 import type { NutritionProduct } from '@/lib/nutrition/products';
 import { ProductEditor } from './ProductEditor';
+import { ProductSuggestions } from './ProductSuggestions';
 
 export function ProductPicker({
   value,
   disabled,
   onChange,
+  allowCreate = true,
+  showSuggestions = true,
 }: {
   value: NutritionProduct | null;
   disabled: boolean;
   onChange: (product: NutritionProduct) => void;
+  allowCreate?: boolean;
+  showSuggestions?: boolean;
 }) {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState('');
@@ -33,6 +38,7 @@ export function ProductPicker({
     value && !current.some((entry) => entry.id === value.id) ? [value, ...current] : current;
   return (
     <Stack gap="xs">
+      {showSuggestions && <ProductSuggestions disabled={disabled} onChange={onChange} />}
       <Select
         label="Food product"
         placeholder="Search by name, alias or brand"
@@ -77,9 +83,11 @@ export function ProductPicker({
           </Button>
         </Alert>
       )}
-      <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setCreate(true)}>
-        Create a new food product
-      </Button>
+      {allowCreate && (
+        <Button variant="subtle" size="xs" disabled={disabled} onClick={() => setCreate(true)}>
+          Create a new food product
+        </Button>
+      )}
       {create && (
         <ProductEditor
           product={null}

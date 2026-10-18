@@ -4,6 +4,8 @@ import { APICallError, cosineSimilarity, embed, embedMany } from 'ai';
 import { TRPCError } from '@trpc/server';
 import { AiError, discoverModels, resolveEmbeddingModel } from '@/lib/ai';
 import type { ComparisonInput, EmbeddingInput } from './schema';
+import type { ModelSelection } from '@/lib/model-settings/schema';
+import { requireModelSelection } from '@/lib/model-settings/service';
 
 function inspectVector(vector: number[]) {
   if (!Array.isArray(vector) || !vector.length || !vector.every(Number.isFinite)) {
@@ -30,12 +32,27 @@ async function infer<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export const embeddingService = {
+  async generateForUser(userId: string, input: EmbeddingInput) {
+    return embeddingService.generate({
+      ...input,
+      selection: await requireModelSelection(userId, 'aiDev.embeddings', input.selection),
+    });
+  },
+  async compareForUser(userId: string, input: ComparisonInput) {
+    return embeddingService.compare({
+      ...input,
+      selection: await requireModelSelection(userId, 'aiDev.embeddings', input.selection),
+    });
+  },
   async listModels() {
     const models = await discoverModels();
     return models.filter((model) => model.capabilities.includes('embedding'));
   },
 
-  async generate({ selection, text }: EmbeddingInput) {
+  async generate({
+    selection,
+    text,
+  }: Omit<EmbeddingInput, 'selection'> & { selection: ModelSelection }) {
     const model = await resolveEmbeddingModel(selection);
     const { embedding } = await infer(() =>
       embed({
@@ -49,7 +66,11 @@ export const embeddingService = {
     return { selection, ...inspectVector(embedding) };
   },
 
-  async compare({ selection, textA, textB }: ComparisonInput) {
+  async compare({
+    selection,
+    textA,
+    textB,
+  }: Omit<ComparisonInput, 'selection'> & { selection: ModelSelection }) {
     const model = await resolveEmbeddingModel(selection);
     const { embeddings } = await infer(() =>
       embedMany({

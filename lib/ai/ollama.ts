@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { AiError } from './errors';
 
 export type AiModelSelection = { provider: 'ollama'; modelId: string };
-export type AiModelCapability = 'chat' | 'embedding';
+export type AiModelCapability = 'chat' | 'embedding' | 'vision' | 'thinking';
 export type AiModel = {
   provider: 'ollama';
   id: string;
@@ -133,6 +133,12 @@ async function describeModel(baseURL: string, id: string, signal?: AbortSignal):
   if (capabilities.includes('embedding')) {
     supported.push('embedding');
   }
+  if (capabilities.includes('vision')) {
+    supported.push('vision');
+  }
+  if (capabilities.includes('thinking')) {
+    supported.push('thinking');
+  }
   return { provider: 'ollama', id, capabilities: supported };
 }
 
@@ -155,7 +161,7 @@ export async function discoverModels(): Promise<AiModel[]> {
 
 async function resolveModel(
   selection: AiModelSelection,
-  capability: AiModelCapability,
+  capability: AiModelCapability | AiModelCapability[],
   signal?: AbortSignal
 ) {
   if (selection.provider !== 'ollama') {
@@ -170,10 +176,11 @@ async function resolveModel(
   }
 
   const model = await describeModel(baseURL, selection.modelId, signal);
-  if (!model.capabilities.includes(capability)) {
+  const required = Array.isArray(capability) ? capability : [capability];
+  if (!required.every((capability) => model.capabilities.includes(capability))) {
     throw new AiError(
       'MODEL_NOT_SUPPORTED',
-      `The selected Ollama model does not support ${capability}.`
+      `The selected Ollama model does not support ${required.join(' and ')}.`
     );
   }
 
@@ -182,6 +189,14 @@ async function resolveModel(
     fetch: (input, init) => fetchOllama(input, init, inferenceTimeoutMs),
   });
   return { provider, digest: installed.digest };
+}
+
+/** Validate an exact installed selection and all required capabilities without inference. */
+export async function validateModelSelection(
+  selection: AiModelSelection,
+  capabilities: AiModelCapability[]
+) {
+  await resolveModel(selection, capabilities);
 }
 
 export async function resolveChatModel(selection: AiModelSelection, signal?: AbortSignal) {

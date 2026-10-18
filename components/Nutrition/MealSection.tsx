@@ -11,6 +11,8 @@ export function MealSection({
   entries,
   removing,
   onAdd,
+  onCopy,
+  onCreateRecipe,
   onEdit,
   onRemove,
 }: {
@@ -18,6 +20,8 @@ export function MealSection({
   entries: DiaryEntry[];
   removing: boolean;
   onAdd: () => void;
+  onCopy: () => void;
+  onCreateRecipe: () => void;
   onEdit: (entry: DiaryEntry) => void;
   onRemove: (entry: DiaryEntry) => void;
 }) {
@@ -26,14 +30,33 @@ export function MealSection({
       <Stack>
         <Group justify="space-between">
           <Title order={3}>{mealLabels[meal]}</Title>
-          <Button
-            size="xs"
-            variant="light"
-            aria-label={`Add food to ${mealLabels[meal]}`}
-            onClick={onAdd}
-          >
-            Add food
-          </Button>
+          <Group gap="xs">
+            <Button
+              size="xs"
+              variant="default"
+              disabled={entries.length === 0}
+              onClick={onCreateRecipe}
+              aria-label={`Create recipe from ${mealLabels[meal]}`}
+            >
+              Create recipe
+            </Button>
+            <Button
+              size="xs"
+              variant="default"
+              onClick={onCopy}
+              aria-label={`Copy previous food to ${mealLabels[meal]}`}
+            >
+              Copy meal
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              aria-label={`Add food to ${mealLabels[meal]}`}
+              onClick={onAdd}
+            >
+              Add food
+            </Button>
+          </Group>
         </Group>
         {entries.length === 0 && (
           <Text c="dimmed" size="sm">

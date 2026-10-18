@@ -3,7 +3,13 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: jest.fn(),
-    aiConversation: { findMany: jest.fn(), create: jest.fn(), deleteMany: jest.fn() },
+    aiConversation: {
+      findMany: jest.fn(),
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
+    },
   },
 }));
 jest.mock('@/lib/ai', () => ({ resolveChatModel: jest.fn() }));
@@ -35,6 +41,7 @@ const assistant = {
   replyToId: 'u',
 };
 const tx = {
+  userAiModelSetting: { findMany: jest.fn() },
   aiConversation: { updateMany: jest.fn(), findFirst: jest.fn() },
   aiMessage: { create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
 };
@@ -57,6 +64,57 @@ beforeEach(() => {
   tx.aiConversation.findFirst.mockResolvedValue(conversation());
   tx.aiMessage.create.mockImplementation(async ({ data }) => data);
   tx.aiMessage.update.mockResolvedValue({ ...assistant, parts: [] });
+  tx.userAiModelSetting.findMany.mockResolvedValue([]);
+});
+
+describe('model inheritance and switching', () => {
+  it('uses updated defaults on subsequent turns and records a model snapshot on each response', async () => {
+    tx.aiConversation.findFirst.mockResolvedValue({ ...conversation(), inheritsModel: true });
+    tx.userAiModelSetting.findMany
+      .mockResolvedValueOnce([{ key: 'default', value: { provider: 'ollama', modelId: 'first' } }])
+      .mockResolvedValueOnce([
+        { key: 'default', value: { provider: 'ollama', modelId: 'second' } },
+      ]);
+    expect((await conversationService.beginTurn('user-a', input)).selection.modelId).toBe('first');
+    expect((await conversationService.beginTurn('user-a', input)).selection.modelId).toBe('second');
+    expect(tx.aiMessage.create).toHaveBeenLastCalledWith({
+      data: expect.objectContaining({ role: 'assistant', modelId: 'second', provider: 'ollama' }),
+    });
+  });
+  it('does not consult changed defaults for an explicit conversation override or completed replay', async () => {
+    expect((await conversationService.beginTurn('user-a', input)).selection.modelId).toBe(
+      'chat:latest'
+    );
+    tx.aiConversation.findFirst.mockResolvedValue({
+      ...conversation([userMessage, { ...assistant, status: 'COMPLETED', modelId: 'original' }]),
+      inheritsModel: true,
+    });
+    const replay = await conversationService.beginTurn('user-a', input);
+    expect(replay.selection.modelId).toBe('original');
+    expect(tx.userAiModelSetting.findMany).not.toHaveBeenCalled();
+  });
+  it('allows switching back to inheritance without a provider request, and rejects active generation', async () => {
+    (prisma.aiConversation.findFirst as jest.Mock).mockResolvedValue({ id });
+    (prisma.aiConversation.updateMany as jest.Mock)
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    await conversationService.changeModel('user-a', id, null);
+    expect(resolveChatModel).not.toHaveBeenCalled();
+    expect(prisma.aiConversation.updateMany).toHaveBeenCalledWith({
+      where: { id, userId: 'user-a', activeGenerationId: null },
+      data: { inheritsModel: true },
+    });
+    await expect(
+      conversationService.changeModel('user-a', id, { provider: 'ollama', modelId: 'other' })
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+  it('denies switching another owner conversation before contacting the provider', async () => {
+    (prisma.aiConversation.findFirst as jest.Mock).mockResolvedValue(null);
+    await expect(
+      conversationService.changeModel('foreign', id, { provider: 'ollama', modelId: 'other' })
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(resolveChatModel).not.toHaveBeenCalled();
+  });
 });
 
 describe('conversationService authorization', () => {
@@ -126,7 +184,7 @@ describe('conversationService turns', () => {
     expect(tx.aiMessage.create).not.toHaveBeenCalled();
     expect(tx.aiMessage.update).toHaveBeenCalledWith({
       where: { conversationId_id: { conversationId: id, id: 'a' } },
-      data: { parts: [], status: 'GENERATING' },
+      data: { parts: [], status: 'GENERATING', provider: 'ollama', modelId: 'chat:latest' },
     });
   });
   it('replays completed turns without creating messages', async () => {

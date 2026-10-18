@@ -10,7 +10,11 @@ jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/lib/ai', () => jest.requireActual('@/lib/ai/errors'));
 jest.mock('./service', () => ({ aiDevService: { listChatModels: jest.fn() } }));
 jest.mock('./embeddings', () => ({
-  embeddingService: { listModels: jest.fn(), generate: jest.fn(), compare: jest.fn() },
+  embeddingService: {
+    listModels: jest.fn(),
+    generateForUser: jest.fn(),
+    compareForUser: jest.fn(),
+  },
 }));
 
 jest.mock('./conversations', () => ({
@@ -39,14 +43,14 @@ describe('embedding procedures', () => {
       caller.compareEmbeddings({ selection, textA: 'First', textB: 'Second' })
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
     expect(embeddingService.listModels).not.toHaveBeenCalled();
-    expect(embeddingService.generate).not.toHaveBeenCalled();
-    expect(embeddingService.compare).not.toHaveBeenCalled();
+    expect(embeddingService.generateForUser).not.toHaveBeenCalled();
+    expect(embeddingService.compareForUser).not.toHaveBeenCalled();
   });
   it('delegates validated input and returns results', async () => {
     const caller = aiDevRouter.createCaller({ userId: 'user-a' });
     (embeddingService.listModels as jest.Mock).mockResolvedValue([]);
-    (embeddingService.generate as jest.Mock).mockResolvedValue({ dimensions: 1024 });
-    (embeddingService.compare as jest.Mock).mockResolvedValue({ similarity: 0.75 });
+    (embeddingService.generateForUser as jest.Mock).mockResolvedValue({ dimensions: 1024 });
+    (embeddingService.compareForUser as jest.Mock).mockResolvedValue({ similarity: 0.75 });
     await expect(caller.listEmbeddingModels()).resolves.toEqual([]);
     await expect(caller.generateEmbedding({ selection, text: 'Hello' })).resolves.toEqual({
       dimensions: 1024,
@@ -54,8 +58,11 @@ describe('embedding procedures', () => {
     await expect(
       caller.compareEmbeddings({ selection, textA: 'First', textB: 'Second' })
     ).resolves.toEqual({ similarity: 0.75 });
-    expect(embeddingService.generate).toHaveBeenCalledWith({ selection, text: 'Hello' });
-    expect(embeddingService.compare).toHaveBeenCalledWith({
+    expect(embeddingService.generateForUser).toHaveBeenCalledWith('user-a', {
+      selection,
+      text: 'Hello',
+    });
+    expect(embeddingService.compareForUser).toHaveBeenCalledWith('user-a', {
       selection,
       textA: 'First',
       textB: 'Second',
@@ -65,10 +72,12 @@ describe('embedding procedures', () => {
     await expect(
       aiDevRouter.createCaller({ userId: 'user-a' }).generateEmbedding({ selection, text: '  ' })
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(embeddingService.generate).not.toHaveBeenCalled();
+    expect(embeddingService.generateForUser).not.toHaveBeenCalled();
   });
   it('masks unknown provider errors', async () => {
-    (embeddingService.generate as jest.Mock).mockRejectedValue(new Error('private provider body'));
+    (embeddingService.generateForUser as jest.Mock).mockRejectedValue(
+      new Error('private provider body')
+    );
     await expect(
       aiDevRouter.createCaller({ userId: 'user-a' }).generateEmbedding({ selection, text: 'Hello' })
     ).rejects.toMatchObject({
@@ -111,7 +120,7 @@ describe('conversation authorization', () => {
     await expect(caller.getConversation({ id })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
     await expect(caller.deleteConversation({ id })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
     await expect(
-      caller.createConversation({ provider: 'ollama', modelId: 'chat:latest' })
+      caller.createConversation({ selection: { provider: 'ollama', modelId: 'chat:latest' } })
     ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
     expect(conversationService.get).not.toHaveBeenCalled();
   });

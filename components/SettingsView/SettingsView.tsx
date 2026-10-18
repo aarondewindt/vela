@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/auth';
 import { authClient } from '@/lib/auth-client';
 import { trpc } from '@/lib/trpc/client';
+import { AiModelSettings } from '@/components/ModelSettings/AiModelSettings';
 
 const timezoneOptions = Intl.supportedValuesOf('timeZone').map((timezone) => ({
   value: timezone,
@@ -110,6 +111,10 @@ export function SettingsView() {
             </Button>
           </Group>
         </Stack>
+
+        <Divider />
+
+        {user && <AiModelSettings />}
 
         <Divider />
 

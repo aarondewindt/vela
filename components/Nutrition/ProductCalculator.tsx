@@ -19,6 +19,7 @@ import { positiveDecimalSchema } from '@/lib/nutrition/schema';
 import { unitLabels, type QuantityUnit } from '@/lib/nutrition/types';
 import type { NutritionProduct } from '@/lib/nutrition/products';
 import { NevoAttribution } from './NevoAttribution';
+import { productSources } from '@/lib/nutrition/attribution';
 
 export function ProductCalculator({
   product,
@@ -66,7 +67,7 @@ export function ProductCalculator({
       closeButtonProps={{ 'aria-label': 'Close nutrition calculator' }}
     >
       <Stack>
-        <NevoAttribution sources={[{ name: product.sourceName, version: product.sourceVersion }]} />
+        <NevoAttribution sources={productSources(product)} />
         <Text size="sm" c="dimmed">
           Preview nutrition for this product using its saved values.
         </Text>

@@ -8,6 +8,10 @@ export const createLogEntrySchema = z.object({
   requestId: z.uuid(),
   productId: z.uuid(),
   productVersion: z.number().int().positive(),
+  recipeRevision: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional(),
   logDate: diaryDateSchema,
   mealCategory: z.enum(mealCategories),
   input: quantityInputSchema,
@@ -33,12 +37,13 @@ export const goalsInputSchema = z.object({
 });
 
 // Reuse catalog validation so a saved snapshot has the same unit and decimal contract.
-export const referenceSnapshotSchema = z.object({
+const directSnapshotSchema = z.object({
   schemaVersion: z.literal(1),
   calculationVersion: z.literal('direct-v1'),
   productId: z.uuid(),
   productVersion: z.number().int().positive(),
-  definition: productInputSchema,
+  definition: productInputSchema.refine((value) => value.calculationMode === 'DIRECT'),
+  nutritionIsEstimated: z.boolean().optional(),
   source: z.object({
     type: z.enum(sourceTypes),
     name: z.string().nullable(),
@@ -47,6 +52,21 @@ export const referenceSnapshotSchema = z.object({
     importedAt: z.iso.datetime().nullable(),
   }),
 });
+export const compositionNodeSchema = z.object({
+  id: z.uuid(),
+  name: z.string().max(240),
+  version: z.number().int().positive(),
+  calculationMode: z.enum(['DIRECT', 'CALCULATED']),
+  definition: productInputSchema,
+  source: directSnapshotSchema.shape.source.optional(),
+});
+export const recipeSnapshotSchema = directSnapshotSchema.extend({
+  schemaVersion: z.literal(2),
+  calculationVersion: z.literal('recipe-v1'),
+  recipeRevision: z.string().regex(/^[0-9a-f]{64}$/),
+  composition: z.array(compositionNodeSchema).min(1).max(250),
+});
+export const referenceSnapshotSchema = z.union([directSnapshotSchema, recipeSnapshotSchema]);
 export type ReferenceSnapshot = z.infer<typeof referenceSnapshotSchema>;
 export type CreateLogEntryInput = z.infer<typeof createLogEntrySchema>;
 export type UpdateLogEntryInput = z.infer<typeof updateLogEntrySchema>;

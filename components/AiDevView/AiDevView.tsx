@@ -30,7 +30,9 @@ import { useEffect, useRef, useState } from 'react';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
 import type { AppRouter } from '@/lib/trpc/root';
+import type { AiModel } from '@/lib/ai';
 import classes from './AiDevView.module.css';
+import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 
 type SavedConversation = inferRouterOutputs<AppRouter>['aiDev']['getConversation'];
 
@@ -72,15 +74,9 @@ export function AiDevView() {
   const saved =
     conversations.isFetchedAfterMount && !conversations.error ? (conversations.data ?? []) : [];
   const current = detail.isFetchedAfterMount && !detail.error ? detail.data : undefined;
-  const selection = conversationId
-    ? current?.selection
-    : modelId
-      ? { provider: 'ollama' as const, modelId }
-      : null;
-  const modelOptions = models.data?.map((model) => ({ value: model.id, label: model.id })) ?? [];
-  if (selection && !modelOptions.some((option) => option.value === selection.modelId)) {
-    modelOptions.push({ value: selection.modelId, label: selection.modelId });
-  }
+  const override = modelId ? { provider: 'ollama' as const, modelId } : null;
+  const resolution = useFeatureModel('aiDev.chat', override, !conversationId);
+  const selection = resolution.selection;
   const refresh = () => {
     void utils.aiDev.listConversations.invalidate();
     if (conversationId) {
@@ -105,7 +101,7 @@ export function AiDevView() {
             searchable
             data={saved.map((conversation) => ({
               value: conversation.id,
-              label: `${conversation.title} · ${conversation.modelId}`,
+              label: `${conversation.title} · ${conversation.inheritsModel ? 'Use settings' : conversation.modelId}`,
             }))}
             value={conversationId}
             onChange={(id) => {
@@ -123,9 +119,7 @@ export function AiDevView() {
             variant="light"
             leftSection={<IconMessagePlus size={16} />}
             onClick={() => {
-              if (current) {
-                setModelId(current.selection.modelId);
-              }
+              setModelId(null);
               setConversationId(null);
               setMutationError(null);
             }}
@@ -187,39 +181,32 @@ export function AiDevView() {
             No chat models are installed in Ollama. Install one, then refresh.
           </Alert>
         )}
-        <Group align="flex-end">
-          <Select
-            className={classes.modelPicker}
-            label="Chat model"
-            placeholder="Choose a chat model"
-            searchable
-            allowDeselect={false}
-            data={modelOptions}
-            value={selection?.modelId ?? null}
-            onChange={setModelId}
-            disabled={
-              Boolean(conversationId) ||
-              models.isPending ||
-              Boolean(models.error) ||
-              create.isPending
-            }
-          />
-          <Button
-            variant="default"
-            leftSection={<IconRefresh size={16} />}
-            loading={models.isFetching}
-            onClick={() => void models.refetch()}
-          >
-            Refresh models
-          </Button>
-        </Group>
+        {!conversationId && (
+          <Group align="flex-end">
+            <FeatureModelSelect
+              override={override}
+              onChange={(value) => setModelId(value?.modelId ?? null)}
+              models={models.data ?? []}
+              resolution={resolution}
+              disabled={create.isPending}
+            />
+            <Button
+              variant="default"
+              leftSection={<IconRefresh size={16} />}
+              loading={models.isFetching}
+              onClick={() => void models.refetch()}
+            >
+              Refresh models
+            </Button>
+          </Group>
+        )}
         {!conversationId ? (
           <Paper withBorder p="xl" radius="md">
             <Center className={classes.empty}>
               <Stack align="center" gap="sm">
                 <Title order={4}>Start a conversation</Title>
                 <Text size="sm" c="dimmed">
-                  Choose a model to start a saved conversation.
+                  Your settings choose the model. You can override it for this conversation.
                 </Text>
                 <Button
                   disabled={!selection || Boolean(models.error)}
@@ -227,7 +214,7 @@ export function AiDevView() {
                   onClick={() => {
                     if (selection) {
                       setMutationError(null);
-                      create.mutate(selection);
+                      create.mutate({ selection: override });
                     }
                   }}
                 >
@@ -249,7 +236,12 @@ export function AiDevView() {
             <Text>Loading conversation…</Text>
           </Group>
         ) : (
-          <ChatPanel key={current.id} conversation={current} onSaved={refresh} />
+          <ChatPanel
+            key={current.id}
+            conversation={current}
+            onSaved={refresh}
+            models={models.data ?? []}
+          />
         )}
       </Stack>
     </Container>
@@ -259,10 +251,20 @@ export function AiDevView() {
 function ChatPanel({
   conversation,
   onSaved,
+  models,
 }: {
   conversation: SavedConversation;
   onSaved: () => void;
+  models: AiModel[];
 }) {
+  const utils = trpc.useUtils();
+  const resolution = useFeatureModel('aiDev.chat', conversation.override);
+  const changeModel = trpc.aiDev.changeConversationModel.useMutation({
+    onSuccess: async () => {
+      await utils.aiDev.getConversation.invalidate({ id: conversation.id });
+      onSaved();
+    },
+  });
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
@@ -314,7 +316,14 @@ function ChatPanel({
     }
   }, [messages, status]);
   const submit = () => {
-    if (!input.trim() || busy || error || generatingElsewhere) {
+    if (
+      !input.trim() ||
+      busy ||
+      error ||
+      generatingElsewhere ||
+      changeModel.isPending ||
+      !resolution.selection
+    ) {
       return;
     }
     followResponse.current = true;
@@ -323,6 +332,14 @@ function ChatPanel({
   };
   return (
     <Stack gap="md">
+      <FeatureModelSelect
+        override={conversation.override}
+        models={models}
+        resolution={resolution}
+        disabled={busy || generatingElsewhere || changeModel.isPending}
+        onChange={(selection) => changeModel.mutate({ id: conversation.id, selection })}
+      />
+      {changeModel.error && <Alert color="red">{changeModel.error.message}</Alert>}
       {generatingElsewhere && (
         <Alert color="blue">
           A response is being generated for this conversation. Saved history will refresh when it
@@ -359,6 +376,12 @@ function ChatPanel({
                 <Text size="sm" fw={600} mb={4}>
                   {message.role === 'user' ? 'You' : 'Assistant'}
                 </Text>
+                {message.role === 'assistant' &&
+                  (message.metadata as { modelId?: string } | undefined)?.modelId && (
+                    <Text size="xs" c="dimmed">
+                      {(message.metadata as { modelId: string }).modelId}
+                    </Text>
+                  )}
                 {message.parts.map((part, index) =>
                   part.type === 'text' ? (
                     <Text key={`${message.id}-${index}`} className={classes.messageText}>
@@ -389,7 +412,7 @@ function ChatPanel({
             <Button
               variant="light"
               size="compact-sm"
-              disabled={generatingElsewhere}
+              disabled={generatingElsewhere || changeModel.isPending || !resolution.selection}
               onClick={() => {
                 void regenerate();
               }}
@@ -421,7 +444,13 @@ function ChatPanel({
                 submit();
               }
             }}
-            disabled={busy || Boolean(error) || generatingElsewhere}
+            disabled={
+              busy ||
+              Boolean(error) ||
+              generatingElsewhere ||
+              changeModel.isPending ||
+              !resolution.selection
+            }
           />
           <Group justify="space-between">
             <Text size="xs" c="dimmed">
@@ -439,7 +468,13 @@ function ChatPanel({
               <Button
                 type="submit"
                 leftSection={<IconSend size={16} />}
-                disabled={!input.trim() || Boolean(error) || generatingElsewhere}
+                disabled={
+                  !input.trim() ||
+                  Boolean(error) ||
+                  generatingElsewhere ||
+                  changeModel.isPending ||
+                  !resolution.selection
+                }
               >
                 Send
               </Button>

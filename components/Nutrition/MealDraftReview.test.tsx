@@ -24,6 +24,7 @@ const fixture: MealDraft = {
   status: 'DRAFT',
   revision: 4,
   selection: { provider: 'ollama', modelId: 'chat' },
+  override: { provider: 'ollama', modelId: 'chat' },
   generating: false,
   questions: [],
   confirmedEntryIds: [],

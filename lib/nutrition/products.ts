@@ -16,78 +16,26 @@ import { searchHybridProductIds } from './product-search';
 import { enqueueProductIndex } from './product-index-queue';
 import { productEmbeddingText } from './product-embedding-text';
 import { hybridProductSearchSchema, type HybridProductSearchInput } from './product-search-schema';
-import type { NutritionDefinition, QuantityInput } from './types';
+import type { QuantityInput } from './types';
+import {
+  productInclude as includeServings,
+  type ProductRecord,
+  loadProductGraph,
+  resolvedProduct,
+  lockProductGraph,
+  validateProductDependents,
+  validateComponentInputs,
+} from './product-graph';
 
-const includeServings = {
-  servings: { orderBy: [{ isDefault: 'desc' }, { normalizedName: 'asc' }, { id: 'asc' }] },
-} satisfies Prisma.ProductInclude;
-type ProductRecord = Prisma.ProductGetPayload<{ include: typeof includeServings }>;
-
-function definition(product: ProductRecord): NutritionDefinition {
-  if (
-    product.calculationMode !== 'DIRECT' ||
-    product.calories === null ||
-    product.protein === null ||
-    product.carbohydrates === null ||
-    product.fat === null
-  ) {
-    throw new TRPCError({
-      code: 'PRECONDITION_FAILED',
-      message: 'This product needs a supported direct nutrition definition.',
-    });
-  }
-  return {
-    calculationMode: 'DIRECT',
-    referenceQuantity: product.referenceQuantity.toFixed(),
-    referenceUnit: product.referenceUnit,
-    referenceLabel: product.referenceLabel,
-    calories: product.calories.toFixed(),
-    protein: product.protein.toFixed(),
-    carbohydrates: product.carbohydrates.toFixed(),
-    fat: product.fat.toFixed(),
-    fiber: product.fiber?.toFixed() ?? null,
-    servingSizeQuantity: product.servingSizeQuantity?.toFixed() ?? null,
-    servingSizeUnit:
-      product.servingSizeUnit === 'G' || product.servingSizeUnit === 'ML'
-        ? product.servingSizeUnit
-        : null,
-    servingSizeIsEstimated: product.servingSizeIsEstimated,
-    densityGramsPerMl: product.densityGramsPerMl?.toFixed() ?? null,
-    densityIsEstimated: product.densityIsEstimated,
-    servings: product.servings.map((serving) => ({
-      id: serving.id,
-      name: serving.name,
-      aliases: serving.aliases,
-      quantity: serving.quantity.toFixed(),
-      canonicalUnit: serving.canonicalUnit,
-      isDefault: serving.isDefault,
-      isEstimated: serving.isEstimated,
-    })),
-  };
+async function serializeMany(
+  db: Prisma.TransactionClient,
+  userId: string,
+  products: ProductRecord[]
+) {
+  const graph = await loadProductGraph(db, userId, products);
+  return products.map((product) => resolvedProduct(product, graph));
 }
-
-function serialize(product: ProductRecord) {
-  return {
-    ...definition(product),
-    id: product.id,
-    name: product.name,
-    brand: product.brand,
-    description: product.description,
-    aliases: product.aliases,
-    sourceType: product.sourceType,
-    sourceName: product.sourceName,
-    sourceRecordId: product.sourceRecordId,
-    sourceVersion: product.sourceVersion,
-    importedAt: product.importedAt,
-    verificationStatus: product.verificationStatus,
-    userModifiedAt: product.userModifiedAt,
-    archivedAt: product.archivedAt,
-    version: product.version,
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt,
-  };
-}
-export type NutritionProduct = ReturnType<typeof serialize>;
+export type NutritionProduct = ReturnType<typeof resolvedProduct>;
 
 function prepare(rawInput: ProductInput) {
   const input = productInputSchema.parse(rawInput);
@@ -95,11 +43,17 @@ function prepare(rawInput: ProductInput) {
     // Check every configured conversion through the same calculation path as previews/logging.
     calculateNutrition(input, { quantity: serving.quantity, unit: serving.canonicalUnit });
   }
-  const { servings, ...fields } = input;
+  const { servings, components = [], ...fields } = input;
   return {
     servings,
+    components,
     data: {
       ...fields,
+      yieldQuantity: fields.yieldQuantity ?? null,
+      yieldUnit: fields.yieldUnit ?? null,
+      ...(fields.calculationMode === 'CALCULATED'
+        ? { calories: null, protein: null, carbohydrates: null, fat: null, fiber: null }
+        : {}),
       brand: fields.brand || null,
       description: fields.description || null,
       referenceLabel: fields.referenceUnit === 'SERVING' ? fields.referenceLabel : null,
@@ -137,39 +91,61 @@ export const nutritionProducts = {
   async search(userId: string, rawInput: HybridProductSearchInput, signal?: AbortSignal) {
     const input = hybridProductSearchSchema.parse(rawInput);
     const found = await searchHybridProductIds(userId, input, signal);
-    const products = await prisma.product.findMany({
-      where: { userId, id: { in: found.matches.map((match) => match.id) }, archivedAt: null },
-      include: includeServings,
-    });
-    const byId = new Map(products.map((product) => [product.id, product]));
-    return {
-      ...found,
-      matches: found.matches.flatMap((match) => {
-        const product = byId.get(match.id);
-        return product ? [{ ...match, product: serialize(product) }] : [];
-      }),
-    };
+    return prisma.$transaction(
+      async (db) => {
+        const products = await db.product.findMany({
+          where: { userId, id: { in: found.matches.map((match) => match.id) }, archivedAt: null },
+          include: includeServings,
+        });
+        const graph = await loadProductGraph(db, userId, products);
+        const byId = new Map(products.map((product) => [product.id, product]));
+        return {
+          ...found,
+          matches: found.matches.flatMap((match) => {
+            const product = byId.get(match.id);
+            return product ? [{ ...match, product: resolvedProduct(product, graph) }] : [];
+          }),
+        };
+      },
+      { isolationLevel: 'RepeatableRead' }
+    );
   },
   async list(userId: string, rawInput: ProductSearchInput) {
     const input = productSearchSchema.parse(rawInput);
     const found = await searchProductIds(userId, input);
-    const products = await prisma.product.findMany({
-      where: { userId, id: { in: found.ids }, archivedAt: input.archived ? { not: null } : null },
-      include: includeServings,
-    });
-    const byId = new Map(products.map((product) => [product.id, product]));
-    return {
-      products: found.ids.flatMap((id) => (byId.has(id) ? [serialize(byId.get(id)!)] : [])),
-      total: found.total,
-    };
+    return prisma.$transaction(
+      async (db) => {
+        const products = await db.product.findMany({
+          where: {
+            userId,
+            id: { in: found.ids },
+            archivedAt: input.archived ? { not: null } : null,
+          },
+          include: includeServings,
+        });
+        const graph = await loadProductGraph(db, userId, products);
+        const byId = new Map(products.map((product) => [product.id, product]));
+        return {
+          products: found.ids.flatMap((id) =>
+            byId.has(id) ? [resolvedProduct(byId.get(id)!, graph)] : []
+          ),
+          total: found.total,
+        };
+      },
+      { isolationLevel: 'RepeatableRead' }
+    );
   },
 
-  async get(userId: string, id: string, db: Prisma.TransactionClient = prisma) {
-    return serialize(await owned(db, userId, id));
+  async get(userId: string, id: string, db?: Prisma.TransactionClient): Promise<NutritionProduct> {
+    const read = async (transaction: Prisma.TransactionClient) => {
+      const product = await owned(transaction, userId, id);
+      return (await serializeMany(transaction, userId, [product]))[0];
+    };
+    return db ? read(db) : prisma.$transaction(read, { isolationLevel: 'RepeatableRead' });
   },
 
   async create(userId: string, rawInput: ProductInput) {
-    const { data, servings } = prepare(rawInput);
+    const { data, servings, components } = prepare(rawInput);
     if (servings.some((serving) => serving.id)) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
@@ -177,6 +153,8 @@ export const nutritionProducts = {
       });
     }
     return prisma.$transaction(async (db) => {
+      await lockProductGraph(db, userId);
+      await validateComponentInputs(db, userId, components);
       const product = await db.product.create({
         data: {
           ...data,
@@ -186,16 +164,32 @@ export const nutritionProducts = {
         },
         include: includeServings,
       });
+      if (components.length) {
+        await db.productComponent.createMany({
+          data: components.map((component, sortOrder) => ({
+            ...component,
+            userId,
+            parentProductId: product.id,
+            sortOrder,
+          })),
+        });
+      }
       await enqueueProductIndex(db, userId);
-      return serialize(product);
+      return (
+        await serializeMany(db, userId, [
+          components.length ? await owned(db, userId, product.id) : product,
+        ])
+      )[0];
     });
   },
 
   async update(userId: string, id: string, version: number, rawInput: ProductInput) {
-    const { data, servings } = prepare(rawInput);
+    const { data, servings, components } = prepare(rawInput);
     return prisma.$transaction(async (db) => {
+      await lockProductGraph(db, userId);
       const current = await owned(db, userId, id, true);
       requireVersion(current, version);
+      await validateComponentInputs(db, userId, components, id);
       const searchChanged = productEmbeddingText(current) !== productEmbeddingText(data);
       if (current.archivedAt) {
         throw new TRPCError({
@@ -240,6 +234,17 @@ export const nutritionProducts = {
           await db.productServing.create({ data: { ...servingData(serving), productId: id } });
         }
       }
+      await db.productComponent.deleteMany({ where: { parentProductId: id, userId } });
+      if (components.length) {
+        await db.productComponent.createMany({
+          data: components.map((component, sortOrder) => ({
+            ...component,
+            userId,
+            parentProductId: id,
+            sortOrder,
+          })),
+        });
+      }
       const product = await db.product.update({
         where: { id, userId },
         data: {
@@ -259,12 +264,14 @@ export const nutritionProducts = {
       if (searchChanged) {
         await enqueueProductIndex(db, userId);
       }
-      return serialize(product);
+      await validateProductDependents(db, userId, [id]);
+      return (await serializeMany(db, userId, [product]))[0];
     });
   },
 
   async setArchived(userId: string, id: string, version: number, archived: boolean) {
     return prisma.$transaction(async (db) => {
+      await lockProductGraph(db, userId);
       const current = await owned(db, userId, id, true);
       requireVersion(current, version);
       if (
@@ -272,14 +279,13 @@ export const nutritionProducts = {
         (await db.productComponent.count({
           where: {
             childProductId: id,
-            parentProduct: { archivedAt: null, calculationMode: 'CALCULATED' },
+            parentProduct: { archivedAt: null },
           },
         }))
       ) {
         throw new TRPCError({
           code: 'CONFLICT',
-          message:
-            'This product is used by an active calculated product. Update that product first.',
+          message: 'This product is used by an active recipe. Update that product first.',
         });
       }
       const product = await db.product.update({
@@ -291,12 +297,16 @@ export const nutritionProducts = {
         await db.productEmbedding.deleteMany({ where: { productId: id } });
       }
       await enqueueProductIndex(db, userId);
-      return serialize(product);
+      return (await serializeMany(db, userId, [product]))[0];
     });
   },
 
   async calculate(userId: string, id: string, input: QuantityInput) {
-    const product = await owned(prisma, userId, id);
-    return { ...calculateNutrition(definition(product), input), productVersion: product.version };
+    const product = await nutritionProducts.get(userId, id);
+    return {
+      ...calculateNutrition(product, input),
+      productVersion: product.version,
+      recipeRevision: product.recipeRevision,
+    };
   },
 };

@@ -5,6 +5,7 @@ jest.mock('superjson', () => ({
   deserialize: (value: unknown) => value,
 }));
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
+jest.mock('./recipe-autofill', () => ({ autofillRecipe: jest.fn() }));
 jest.mock('./products', () => ({
   nutritionProducts: {
     list: jest.fn(),
@@ -26,6 +27,9 @@ jest.mock('./diary', () => ({
   },
 }));
 jest.mock('./goals', () => ({ nutritionGoals: { get: jest.fn(), save: jest.fn() } }));
+jest.mock('./history', () => ({ nutritionHistory: { get: jest.fn() } }));
+jest.mock('./product-suggestions', () => ({ nutritionSuggestions: { get: jest.fn() } }));
+jest.mock('./meal-copy', () => ({ copyNutritionMeal: jest.fn() }));
 jest.mock('./nevo', () => ({ nutritionNevo: { preview: jest.fn(), apply: jest.fn() } }));
 jest.mock('./drafts', () => ({
   nutritionDrafts: {
@@ -48,6 +52,7 @@ jest.mock('./product-index', () => ({
     rebuild: jest.fn(),
   },
 }));
+import { autofillRecipe } from './recipe-autofill';
 import { nutritionRouter } from './router';
 import { nutritionProducts } from './products';
 import { NutritionCalculationError } from './calculations';
@@ -58,6 +63,9 @@ import { nutritionDrafts } from './drafts';
 import { nutritionDraftGeneration } from './draft-generation';
 import { nutritionNevo } from './nevo';
 import { NevoImportError } from './nevo-csv';
+import { nutritionHistory } from './history';
+import { nutritionSuggestions } from './product-suggestions';
+import { copyNutritionMeal } from './meal-copy';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const input = {
@@ -83,6 +91,31 @@ const input = {
   servings: [],
 };
 beforeEach(() => jest.resetAllMocks());
+it('protects history, recent/frequent foods and meal copying with session ownership', async () => {
+  const anonymous = nutritionRouter.createCaller({ userId: null });
+  const copy = {
+    requestId: id,
+    sourceDate: '2026-10-17',
+    targetDate: '2026-10-18',
+    sourceMeal: 'LUNCH' as const,
+    targetMeal: 'DINNER' as const,
+    entries: [{ id, version: 1 }],
+  };
+  for (const operation of [
+    () => anonymous.getHistory({ endDate: '2026-10-18', days: 7 }),
+    () => anonymous.productSuggestions(),
+    () => anonymous.copyMeal(copy),
+  ]) {
+    await expect(operation()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  }
+  const caller = nutritionRouter.createCaller({ userId: 'owner' });
+  await caller.getHistory({ endDate: '2026-10-18', days: 30 });
+  await caller.productSuggestions();
+  await caller.copyMeal(copy);
+  expect(nutritionHistory.get).toHaveBeenCalledWith('owner', { endDate: '2026-10-18', days: 30 });
+  expect(nutritionSuggestions.get).toHaveBeenCalledWith('owner');
+  expect(copyNutritionMeal).toHaveBeenCalledWith('owner', copy);
+});
 it('authenticates dataset uploads, takes ownership from the session and returns safe CSV errors', async () => {
   const anonymous = nutritionRouter.createCaller({ userId: null });
   await expect(anonymous.previewNevoImport({ csv: 'CSV' })).rejects.toMatchObject({
@@ -254,4 +287,21 @@ it('rejects malformed calendar dates and zero goals before persistence', async (
   ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   expect(nutritionGoals.save).not.toHaveBeenCalled();
   expect(nutritionDiary.create).not.toHaveBeenCalled();
+});
+
+it('authenticates and scopes recipe autofill without creating a product', async () => {
+  const request = {
+    name: '',
+    aliases: [],
+    description: null,
+    components: [{ childProductId: id, quantity: '1', unit: 'G' as const }],
+    yieldQuantity: null,
+    yieldUnit: null,
+  };
+  await expect(
+    nutritionRouter.createCaller({ userId: null }).autofillRecipe(request)
+  ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  await nutritionRouter.createCaller({ userId: 'owner' }).autofillRecipe(request);
+  expect(autofillRecipe).toHaveBeenCalledWith('owner', request, undefined);
+  expect(nutritionProducts.create).not.toHaveBeenCalled();
 });

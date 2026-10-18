@@ -9,6 +9,14 @@ jest.mock('@/lib/trpc/client', () => ({
   },
 }));
 jest.mock('./ProductSearchSettings', () => ({ ProductSearchSettings: () => null }));
+jest.mock('./ProductEditor', () => ({
+  ProductEditor: ({ initialCalculationMode }: { initialCalculationMode?: string }) => (
+    <div
+      role="dialog"
+      aria-label={initialCalculationMode === 'CALCULATED' ? 'Recipe editor' : 'Product editor'}
+    />
+  ),
+}));
 
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -87,4 +95,10 @@ it('keeps the saved choice while archived products use text search', async () =>
     expect.anything(),
     expect.objectContaining({ enabled: true })
   );
+});
+
+it('exposes recipe creation directly from the catalog', async () => {
+  render(<ProductsView />);
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Create recipe' }));
+  expect(screen.getByRole('dialog', { name: 'Recipe editor' })).toBeInTheDocument();
 });

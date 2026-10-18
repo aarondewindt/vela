@@ -30,6 +30,7 @@ import { ProductCalculator } from './ProductCalculator';
 import { ProductSearchSettings } from './ProductSearchSettings';
 import { NevoImporter } from './NevoImporter';
 import { NevoAttribution } from './NevoAttribution';
+import { productSources } from '@/lib/nutrition/attribution';
 import classes from './ProductsView.module.css';
 
 const pageSize = 20;
@@ -46,7 +47,10 @@ export function ProductsView() {
   }, []);
   const hybrid = fuzzySearch && Boolean(query.trim()) && !archived;
   const [page, setPage] = useState(1);
-  const [editor, setEditor] = useState<{ product: NutritionProduct | null } | null>(null);
+  const [editor, setEditor] = useState<{
+    product: NutritionProduct | null;
+    initialCalculationMode?: 'DIRECT' | 'CALCULATED';
+  } | null>(null);
   const [calculator, setCalculator] = useState<NutritionProduct | null>(null);
   const [importing, setImporting] = useState(false);
   const products = trpc.nutrition.listProducts.useQuery(
@@ -123,7 +127,7 @@ export function ProductsView() {
           <div>
             <Title order={2}>Food products</Title>
             <Text c="dimmed" mt={4}>
-              Your reusable foods, nutrition values and serving sizes.
+              Your reusable foods and recipes. Recipes can contain foods and other recipes.
             </Text>
           </div>
           <Group gap="sm">
@@ -131,6 +135,12 @@ export function ProductsView() {
               Upload NEVO dataset
             </Button>
             <Button onClick={() => setEditor({ product: null })}>Create product</Button>
+            <Button
+              variant="light"
+              onClick={() => setEditor({ product: null, initialCalculationMode: 'CALCULATED' })}
+            >
+              Create recipe
+            </Button>
           </Group>
         </Group>
         <ProductSearchSettings />
@@ -206,12 +216,7 @@ export function ProductsView() {
               {hybrid ? ' shown' : ''}
               {activeQuery.isFetching ? ' · Updating…' : ''}
             </Text>
-            <NevoAttribution
-              sources={current.products.map((product) => ({
-                name: product.sourceName,
-                version: product.sourceVersion,
-              }))}
-            />
+            <NevoAttribution sources={current.products.flatMap(productSources)} />
             {current.products.length === 0 && (
               <Paper withBorder p="xl" radius="md">
                 <Stack align="center">
@@ -258,6 +263,11 @@ export function ProductsView() {
                           <Text className={classes.productName} fw={600}>
                             {product.name}
                           </Text>
+                          {product.calculationMode === 'CALCULATED' && (
+                            <Badge size="xs" variant="light" color="teal">
+                              Recipe · {product.components.length} ingredients
+                            </Badge>
+                          )}
                           {hybrid && matchKind.get(product.id) === 'semantic' && (
                             <Badge size="xs" variant="light">
                               Related food
@@ -304,6 +314,11 @@ export function ProductsView() {
                       <Text className={classes.productName} fw={600} size="lg">
                         {product.name}
                       </Text>
+                      {product.calculationMode === 'CALCULATED' && (
+                        <Badge size="xs" variant="light" color="teal">
+                          Recipe · {product.components.length} ingredients
+                        </Badge>
+                      )}
                       {hybrid && matchKind.get(product.id) === 'semantic' && (
                         <Badge size="xs" variant="light">
                           Related food
@@ -382,7 +397,12 @@ export function ProductsView() {
         )}
       </Stack>
       {editor && (
-        <ProductEditor product={editor.product} onClose={() => setEditor(null)} onSaved={refresh} />
+        <ProductEditor
+          product={editor.product}
+          initialCalculationMode={editor.initialCalculationMode}
+          onClose={() => setEditor(null)}
+          onSaved={refresh}
+        />
       )}
       {calculator && <ProductCalculator product={calculator} onClose={() => setCalculator(null)} />}
       {importing && (

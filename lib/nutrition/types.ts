@@ -44,7 +44,8 @@ export type ServingDefinition = {
 };
 
 export type NutritionDefinition = Nutrients & {
-  calculationMode: 'DIRECT';
+  calculationMode: 'DIRECT' | 'CALCULATED';
+  nutritionIsEstimated?: boolean;
   referenceQuantity: string;
   referenceUnit: ReferenceUnit;
   referenceLabel: string | null;
@@ -57,3 +58,5 @@ export type NutritionDefinition = Nutrients & {
 };
 
 export type QuantityInput = { quantity: string; unit: QuantityUnit; servingId?: string };
+
+export type ProductComponentInput = QuantityInput & { childProductId: string };

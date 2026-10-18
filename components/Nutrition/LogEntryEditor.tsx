@@ -29,6 +29,7 @@ import {
 } from '@/lib/nutrition/quantity-options';
 import { ProductPicker } from './ProductPicker';
 import { NevoAttribution } from './NevoAttribution';
+import { productSources, snapshotSources } from '@/lib/nutrition/attribution';
 
 export function LogEntryEditor({
   entry,
@@ -77,7 +78,8 @@ export function LogEntryEditor({
     !entry &&
     product &&
     productPreview.data &&
-    productPreview.data.productVersion !== product.version;
+    (productPreview.data.productVersion !== product.version ||
+      productPreview.data.recipeRevision !== product.recipeRevision);
   const create = trpc.nutrition.createLogEntry.useMutation({ retry: false });
   const update = trpc.nutrition.updateLogEntry.useMutation({ retry: false });
   const busy = create.isPending || update.isPending;
@@ -116,6 +118,7 @@ export function LogEntryEditor({
           requestId,
           productId: product.id,
           productVersion: product.version,
+          ...(product.recipeRevision ? { recipeRevision: product.recipeRevision } : {}),
           logDate,
           mealCategory: meal,
           input: parsed.data,
@@ -202,11 +205,7 @@ export function LogEntryEditor({
             <>
               <NevoAttribution
                 sources={
-                  entry
-                    ? [entry.snapshot.source]
-                    : product
-                      ? [{ name: product.sourceName, version: product.sourceVersion }]
-                      : []
+                  entry ? snapshotSources(entry.snapshot) : product ? productSources(product) : []
                 }
               />
               <SimpleGrid cols={{ base: 1, xs: 2 }}>

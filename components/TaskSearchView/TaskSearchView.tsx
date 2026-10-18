@@ -9,13 +9,12 @@ import {
   Loader,
   NumberInput,
   Paper,
-  Select,
   Stack,
   Text,
   Textarea,
   Title,
 } from '@mantine/core';
-import { modals } from '@mantine/modals';
+import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 import classes from './TaskSearchView.module.css';
 
@@ -27,12 +26,6 @@ export function TaskSearchView() {
     refetchInterval: (query) => (query.state.data?.busy ? 2000 : false),
   });
   const current = status.isFetchedAfterMount && !status.error ? status.data : undefined;
-  const models = trpc.taskSearch.models.useQuery(undefined, {
-    enabled: Boolean(current?.isMaintainer),
-    retry: false,
-  });
-  const [modelId, setModelId] = useState<string | null>(null);
-  const [instruction, setInstruction] = useState('Find tasks relevant to the search query.');
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState<number>(10);
   const [notice, setNotice] = useState<string | null>(null);
@@ -47,19 +40,8 @@ export function TaskSearchView() {
     },
     onSettled: refresh,
   });
-  const rebuild = trpc.taskSearch.rebuild.useMutation({
-    retry: false,
-    onSuccess: async (result) => {
-      setNotice(
-        `Rebuilt the shared collection: ${result.indexed} tasks, ${result.configuration.dimensions} dimensions.`
-      );
-      search.reset();
-      await refresh();
-    },
-    onSettled: refresh,
-  });
-  const busy = index.isPending || rebuild.isPending || Boolean(current?.busy);
-  const failure = index.error ?? rebuild.error;
+  const busy = index.isPending || Boolean(current?.busy);
+  const failure = index.error;
 
   return (
     <Container size="lg" py="xl">
@@ -121,7 +103,6 @@ export function TaskSearchView() {
                     onClick={() => {
                       setNotice(null);
                       index.reset();
-                      rebuild.reset();
                       index.mutate();
                     }}
                   >
@@ -143,88 +124,9 @@ export function TaskSearchView() {
                 {current.lastError && !failure && <Alert color="yellow">{current.lastError}</Alert>}
               </Stack>
             </Paper>
-            {current.isMaintainer && (
-              <Paper withBorder p="md" radius="md">
-                <Stack>
-                  <Title order={3}>Shared collection settings</Title>
-                  <Text size="sm" c="dimmed">
-                    Maintainer controls. Rebuilding replaces embeddings for all users’ tasks with
-                    one model and configuration.
-                  </Text>
-                  {models.isPending && <Text role="status">Loading embedding models…</Text>}
-                  {models.error && <Alert color="red">{models.error.message}</Alert>}
-                  {models.isSuccess && models.data.length === 0 && (
-                    <Alert color="yellow">No embedding models are installed in Ollama.</Alert>
-                  )}
-                  <Group align="flex-end">
-                    <Select
-                      className={classes.modelPicker}
-                      label="Embedding model"
-                      placeholder="Choose a model for the rebuild"
-                      searchable
-                      allowDeselect={false}
-                      value={modelId}
-                      onChange={setModelId}
-                      data={
-                        models.data?.map((model) => ({ value: model.id, label: model.id })) ?? []
-                      }
-                      disabled={busy || models.isPending || Boolean(models.error)}
-                    />
-                    <Button
-                      variant="default"
-                      loading={models.isFetching}
-                      disabled={busy}
-                      onClick={() => void models.refetch()}
-                    >
-                      Refresh models
-                    </Button>
-                  </Group>
-                  <Textarea
-                    label="Query instruction"
-                    description="Prepended to search queries. Leave empty to send raw queries. Changing it requires a full rebuild."
-                    value={instruction}
-                    onChange={(event) => setInstruction(event.currentTarget.value)}
-                    maxLength={1000}
-                    disabled={busy}
-                    minRows={2}
-                  />
-                  <Group>
-                    <Button
-                      color="orange"
-                      disabled={!modelId || busy || Boolean(models.error)}
-                      loading={rebuild.isPending}
-                      onClick={() => {
-                        if (!modelId) {
-                          return;
-                        }
-                        modals.openConfirmModal({
-                          title: 'Rebuild shared task collection?',
-                          children: (
-                            <Text>
-                              This rebuilds embeddings for every user’s tasks using {modelId}. The
-                              previous index stays active until the replacement is complete.
-                            </Text>
-                          ),
-                          labels: { confirm: 'Rebuild collection', cancel: 'Cancel' },
-                          confirmProps: { color: 'orange' },
-                          onConfirm: () => {
-                            setNotice(null);
-                            index.reset();
-                            rebuild.reset();
-                            rebuild.mutate({
-                              selection: { provider: 'ollama', modelId },
-                              queryInstruction: instruction.trim(),
-                            });
-                          },
-                        });
-                      }}
-                    >
-                      Rebuild shared task index
-                    </Button>
-                  </Group>
-                </Stack>
-              </Paper>
-            )}
+            <Button component={Link} href="/settings#ai-models" variant="subtle">
+              Manage search models in Settings
+            </Button>
           </>
         )}
         {notice && (

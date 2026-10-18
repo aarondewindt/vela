@@ -38,11 +38,13 @@ model User {
   availabilityWindows       AvailabilityWindow[]
   plannerGenerationSettings PlannerGenerationSettings?
   aiConversations           AiConversation[]
+  aiModelSettings           UserAiModelSetting[]
   products                  Product[]
   nutritionLogEntries       NutritionLogEntry[]
   nutritionGoals            NutritionGoals?
   nutritionIndexJob         NutritionProductIndexJob?
   nutritionDrafts           NutritionMealDraft[]
+  nutritionMealCopies       NutritionMealCopy[]
 
   @@unique([email])
   @@map("user")
@@ -51,6 +53,16 @@ model User {
 enum AiMessageRole {
   user
   assistant
+}
+
+model UserAiModelSetting {
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key    String @db.VarChar(64)
+  value  Json @db.JsonB
+
+  @@id([userId, key])
+  @@map("user_ai_model_settings")
 }
 
 enum AiMessageStatus {
@@ -67,6 +79,7 @@ model AiConversation {
   title                String      @default("New conversation") @db.VarChar(240)
   provider             String      @db.VarChar(64)
   modelId              String      @db.VarChar(200)
+  inheritsModel        Boolean     @default(true)
   activeGenerationId   String?     @db.Uuid
   generationStartedAt  DateTime?
   createdAt            DateTime    @default(now())
@@ -86,6 +99,8 @@ model AiMessage {
   position       Int
   status         AiMessageStatus @default(COMPLETED)
   replyToId      String?         @db.VarChar(128)
+  provider       String?         @db.VarChar(64)
+  modelId        String?         @db.VarChar(200)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -573,6 +588,7 @@ model NutritionMealDraft {
   mealCategory        NutritionMealCategory
   provider            String                @db.VarChar(40)
   modelId             String                @db.VarChar(200)
+  inheritsModel       Boolean               @default(true)
   status              NutritionDraftStatus  @default(DRAFT)
   revision            Int                   @default(1)
   items               Json                  @default("[]") @db.JsonB
@@ -598,6 +614,8 @@ model NutritionDraftTurn {
   status            NutritionDraftTurnStatus @default(GENERATING)
   requestedRevision Int
   error             String?                  @db.VarChar(500)
+  provider          String?                  @db.VarChar(64)
+  modelId           String?                  @db.VarChar(200)
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
@@ -635,8 +653,22 @@ model NutritionLogEntry {
 
   @@unique([userId, requestId])
   @@index([userId, logDate, mealCategory])
+  @@index([userId, productId, logDate])
   @@index([productId])
   @@map("nutrition_log_entries")
+}
+
+model NutritionMealCopy {
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String   @db.Uuid
+  requestHash String   @db.Char(64)
+  entryIds    String[] @db.Uuid
+  targetDate  DateTime @db.Date
+  createdAt   DateTime @default(now())
+
+  @@id([userId, requestId])
+  @@map("nutrition_meal_copies")
 }
 
 model NutritionGoals {

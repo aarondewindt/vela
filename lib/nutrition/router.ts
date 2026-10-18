@@ -1,3 +1,5 @@
+import { autofillRecipe } from './recipe-autofill';
+import { recipeAutofillSchema } from './recipe-autofill-schema';
 import { TRPCError } from '@trpc/server';
 import { ZodError } from 'zod';
 import { AiError } from '@/lib/ai/errors';
@@ -10,6 +12,10 @@ import { NutritionCalculationError } from './calculations';
 import { nutritionProducts } from './products';
 import { nutritionDiary } from './diary';
 import { nutritionGoals } from './goals';
+import { nutritionHistory } from './history';
+import { nutritionSuggestions } from './product-suggestions';
+import { copyNutritionMeal } from './meal-copy';
+import { historyInputSchema, copyMealSchema } from './reuse-schema';
 import { nutritionNevo } from './nevo';
 import { NevoImportError } from './nevo-csv';
 import { nevoApplySchema, nevoUploadSchema } from './nevo-schema';
@@ -17,6 +23,7 @@ import { nutritionDrafts } from './drafts';
 import { nutritionDraftGeneration } from './draft-generation';
 import {
   createDraftSchema,
+  changeDraftModelSchema,
   draftIdSchema,
   draftRevisionSchema,
   editDraftSchema,
@@ -81,6 +88,18 @@ async function call<T>(operation: () => Promise<T>) {
 }
 
 export const nutritionRouter = router({
+  autofillRecipe: protectedProcedure
+    .input(recipeAutofillSchema)
+    .mutation(({ ctx, input, signal }) => call(() => autofillRecipe(ctx.userId, input, signal))),
+  getHistory: protectedProcedure
+    .input(historyInputSchema)
+    .query(({ ctx, input }) => call(() => nutritionHistory.get(ctx.userId, input))),
+  productSuggestions: protectedProcedure.query(({ ctx }) =>
+    call(() => nutritionSuggestions.get(ctx.userId))
+  ),
+  copyMeal: protectedProcedure
+    .input(copyMealSchema)
+    .mutation(({ ctx, input }) => call(() => copyNutritionMeal(ctx.userId, input))),
   previewNevoImport: protectedProcedure
     .input(nevoUploadSchema)
     .mutation(({ ctx, input }) => call(() => nutritionNevo.preview(ctx.userId, input))),
@@ -95,6 +114,11 @@ export const nutritionRouter = router({
   createDraft: protectedProcedure
     .input(createDraftSchema)
     .mutation(({ ctx, input }) => call(() => nutritionDrafts.create(ctx.userId, input))),
+  changeDraftModel: protectedProcedure
+    .input(changeDraftModelSchema)
+    .mutation(({ ctx, input }) =>
+      call(() => nutritionDrafts.changeModel(ctx.userId, input.id, input.revision, input.selection))
+    ),
   editDraft: protectedProcedure
     .input(editDraftSchema)
     .mutation(({ ctx, input }) => call(() => nutritionDrafts.edit(ctx.userId, input))),

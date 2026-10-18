@@ -3,12 +3,14 @@ jest.mock('ai', () => ({ DefaultChatTransport: jest.fn() }));
 jest.mock('@mantine/modals', () => ({ modals: { openConfirmModal: jest.fn() } }));
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
+    settings: { getAiModels: { useQuery: jest.fn() } },
     useUtils: jest.fn(),
     aiDev: {
       listChatModels: { useQuery: jest.fn() },
       listConversations: { useQuery: jest.fn() },
       getConversation: { useQuery: jest.fn() },
       createConversation: { useMutation: jest.fn() },
+      changeConversationModel: { useMutation: jest.fn() },
       deleteConversation: { useMutation: jest.fn() },
     },
   },
@@ -28,6 +30,7 @@ const saved = {
   id,
   title: 'Saved title',
   selection: { provider: 'ollama', modelId: 'first:latest' },
+  override: { provider: 'ollama', modelId: 'first:latest' },
   updatedAt: new Date('2026-10-17T12:00:00Z'),
   generating: false,
   messages: [],
@@ -71,6 +74,11 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: { settings: {}, resolved: {} },
+  });
   (useChat as jest.Mock).mockReturnValue(chat);
   (trpc.useUtils as jest.Mock).mockReturnValue({
     aiDev: { listConversations: { invalidate }, getConversation: { invalidate } },
@@ -84,6 +92,11 @@ beforeEach(() => {
     data: [{ id, title: 'Saved title', modelId: 'first:latest' }],
   });
   (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({ ...query, data: saved });
+  (trpc.aiDev.changeConversationModel.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+    isPending: false,
+    error: null,
+  });
   (trpc.aiDev.createConversation.useMutation as jest.Mock).mockReturnValue({
     mutate: create,
     isPending: false,
@@ -99,6 +112,36 @@ async function openSaved(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('AiDevView saved conversations', () => {
+  it('starts with the configured default and sends an inherited selection', async () => {
+    (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+      isFetchedAfterMount: true,
+      error: null,
+      data: { resolved: { 'aiDev.chat': { selection: saved.selection, source: 'Default LLM' } } },
+    });
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    expect(screen.getByRole('combobox', { name: 'Chat model' })).toHaveValue('Use settings');
+    expect(screen.getByText('Using first:latest · Default LLM')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start conversation' }));
+    expect(create).toHaveBeenCalledWith({ selection: null });
+  });
+  it('lets a saved conversation return to settings and locks the picker during generation', async () => {
+    const mutate = jest.fn();
+    (trpc.aiDev.changeConversationModel.useMutation as jest.Mock).mockReturnValue({ mutate });
+    const user = userEvent.setup();
+    const view = render(<AiDevView />);
+    await openSaved(user);
+    await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    await user.click(screen.getByRole('option', { name: 'Use settings' }));
+    expect(mutate).toHaveBeenCalledWith({ id, selection: null });
+    (useChat as jest.Mock).mockReturnValue({ ...chat, status: 'streaming' });
+    view.rerender(
+      <>
+        <AiDevView />
+      </>
+    );
+    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeDisabled();
+  });
   it('creates a saved conversation with the chosen model before chatting', async () => {
     const user = userEvent.setup();
     render(<AiDevView />);
@@ -106,9 +149,11 @@ describe('AiDevView saved conversations', () => {
     await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
     await user.click(await screen.findByRole('option', { name: 'first:latest' }));
     await user.click(screen.getByRole('button', { name: 'Start conversation' }));
-    expect(create).toHaveBeenCalledWith({ provider: 'ollama', modelId: 'first:latest' });
+    expect(create).toHaveBeenCalledWith({
+      selection: { provider: 'ollama', modelId: 'first:latest' },
+    });
   });
-  it('opens saved history and locks its persisted model selection', async () => {
+  it('opens saved history and allows changing its persisted model selection', async () => {
     const messages = [{ id: 'u', role: 'user', parts: [{ type: 'text', text: 'Saved message' }] }];
     (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
       ...query,
@@ -119,7 +164,7 @@ describe('AiDevView saved conversations', () => {
     render(<AiDevView />);
     await openSaved(user);
     expect(screen.getByText('Saved message')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeDisabled();
+    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeEnabled();
     expect(useChat).toHaveBeenCalledWith(expect.objectContaining({ id, messages }));
   });
   it('sends only the latest user message for a saved conversation', async () => {
@@ -154,7 +199,7 @@ describe('AiDevView saved conversations', () => {
     await openSaved(user);
     await user.click(screen.getByRole('button', { name: 'New conversation' }));
     expect(stop).toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Start conversation' })).toBeDisabled();
     expect(screen.queryByRole('textbox', { name: 'Message' })).not.toBeInTheDocument();
   });
   it('offers retry for a restored incomplete response', async () => {

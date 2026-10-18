@@ -17,6 +17,7 @@ import { trpc } from '@/lib/trpc/client';
 import type { MealDraft } from '@/lib/nutrition/drafts';
 import { mealLabels } from '@/lib/nutrition/types';
 import { MealDraftReview } from './MealDraftReview';
+import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 
 export function MealDraftComposer({
   date,
@@ -42,7 +43,7 @@ export function MealDraftComposer({
     refetchOnMount: 'always',
   });
   const models = trpc.nutrition.draftModels.useQuery(undefined, {
-    enabled: opened && !draftId,
+    enabled: opened,
     retry: false,
   });
   const interpret = trpc.nutrition.interpretDraft.useMutation({ retry: false, gcTime: 0 });
@@ -58,6 +59,17 @@ export function MealDraftComposer({
   );
   const current =
     opened && draftId && draft.isFetchedAfterMount && !draft.error ? draft.data : undefined;
+  const override = draftId
+    ? (current?.override ?? null)
+    : modelId
+      ? { provider: 'ollama' as const, modelId }
+      : null;
+  const resolution = useFeatureModel('nutrition.mealDraft', override, opened);
+  const changeModel = trpc.nutrition.changeDraftModel.useMutation({
+    onSuccess: async (value) => {
+      await saved(value);
+    },
+  });
   const create = trpc.nutrition.createDraft.useMutation({ retry: false });
   const setLocation = (id: string | null) => {
     const url = new URL(window.location.href);
@@ -78,7 +90,7 @@ export function MealDraftComposer({
     await utils.nutrition.listDrafts.invalidate();
   };
   const send = async (message: string, retryRequestId?: string) => {
-    if (!message.trim() || interpret.isPending || create.isPending) {
+    if (!message.trim() || interpret.isPending || create.isPending || changeModel.isPending) {
       return;
     }
     setSendError(null);
@@ -90,8 +102,8 @@ export function MealDraftComposer({
           setSendError('Reload the saved draft before sending another message.');
           return;
         }
-        if (!modelId) {
-          setSendError('Choose an installed chat model.');
+        if (!resolution.selection) {
+          setSendError('Choose a default in Settings, or select a model here.');
           return;
         }
         creationId.current ??= crypto.randomUUID();
@@ -99,7 +111,7 @@ export function MealDraftComposer({
           id: creationId.current,
           date,
           mealCategory: 'SNACKS',
-          selection: { provider: 'ollama', modelId },
+          selection: override,
         });
         await saved(active);
         if (requestViewRevision === viewRevision.current) {
@@ -148,6 +160,7 @@ export function MealDraftComposer({
                 viewRevision.current += 1;
                 setNotice(null);
                 setDraftId(null);
+                setModelId(null);
                 setText('');
                 creationId.current = null;
                 create.reset();
@@ -218,13 +231,6 @@ export function MealDraftComposer({
                 Describe foods and amounts. Missing foods, ambiguous matches and unknown conversions
                 remain yours to resolve.
               </Text>
-              <Select
-                label="Chat model"
-                placeholder={models.isLoading ? 'Loading models…' : 'Choose an installed model'}
-                value={modelId}
-                onChange={setModelId}
-                data={(models.data ?? []).map((model) => ({ value: model.id, label: model.id }))}
-              />
               {models.error && (
                 <Alert color="red">
                   <Text>{models.error.message}</Text>
@@ -235,6 +241,28 @@ export function MealDraftComposer({
               )}
             </>
           )}
+          {(!current || current.status === 'DRAFT') && (
+            <FeatureModelSelect
+              override={override}
+              models={models.data ?? []}
+              resolution={resolution}
+              disabled={
+                interpret.isPending ||
+                create.isPending ||
+                changeModel.isPending ||
+                Boolean(current?.generating) ||
+                Boolean(draftId && !current)
+              }
+              onChange={(selection) => {
+                if (current) {
+                  changeModel.mutate({ id: current.id, revision: current.revision, selection });
+                } else {
+                  setModelId(selection?.modelId ?? null);
+                }
+              }}
+            />
+          )}
+          {changeModel.error && <Alert color="red">{changeModel.error.message}</Alert>}
           {current && (
             <>
               <MealDraftReview
@@ -249,9 +277,6 @@ export function MealDraftComposer({
                 onNotice={setNotice}
               />
               {notice && <Alert color="yellow">{notice}</Alert>}
-              <Text size="xs" c="dimmed">
-                Interpretation model: {current.selection.modelId}
-              </Text>
               {current.turns.map((turn) => (
                 <Paper key={turn.id} withBorder p="sm" radius="sm">
                   <Stack gap="xs">
@@ -261,6 +286,11 @@ export function MealDraftComposer({
                     <Text size="sm" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                       {turn.userText}
                     </Text>
+                    {turn.modelId && (
+                      <Text size="xs" c="dimmed">
+                        Model: {turn.modelId}
+                      </Text>
+                    )}
                     {turn.assistantText && (
                       <>
                         <Text size="sm" fw={600}>
@@ -284,7 +314,12 @@ export function MealDraftComposer({
                         <Button
                           size="xs"
                           variant="light"
-                          disabled={interpret.isPending || current.generating}
+                          disabled={
+                            interpret.isPending ||
+                            current.generating ||
+                            changeModel.isPending ||
+                            !resolution.selection
+                          }
                           onClick={() => void send(turn.userText, turn.id)}
                         >
                           Retry this message
@@ -324,7 +359,8 @@ export function MealDraftComposer({
                     disabled={
                       !text.trim() ||
                       Boolean(current?.generating) ||
-                      (!draftId && !modelId) ||
+                      !resolution.selection ||
+                      changeModel.isPending ||
                       Boolean(draftId && !current)
                     }
                   >

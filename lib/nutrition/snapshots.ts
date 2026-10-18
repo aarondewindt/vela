@@ -6,11 +6,31 @@ import { unitLabels, type QuantityInput } from './types';
 
 export function captureNutritionSnapshot(product: NutritionProduct) {
   return referenceSnapshotSchema.parse({
-    schemaVersion: 1,
-    calculationVersion: 'direct-v1',
+    schemaVersion: product.calculationMode === 'CALCULATED' ? 2 : 1,
+    calculationVersion: product.calculationMode === 'CALCULATED' ? 'recipe-v1' : 'direct-v1',
     productId: product.id,
     productVersion: product.version,
-    definition: product,
+    definition: { ...product, calculationMode: 'DIRECT', components: [] },
+    nutritionIsEstimated: product.nutritionIsEstimated ?? false,
+    ...(product.calculationMode === 'CALCULATED'
+      ? {
+          recipeRevision: product.recipeRevision,
+          composition: product.composition?.map((node) => ({
+            id: node.id,
+            name: node.name,
+            version: node.version,
+            calculationMode: node.calculationMode,
+            source: node.source,
+            definition: {
+              ...node,
+              verificationStatus: node.verificationStatus ?? 'UNVERIFIED',
+              aliases: [],
+              brand: null,
+              description: null,
+            },
+          })),
+        }
+      : {}),
     source: {
       type: product.sourceType,
       name: product.sourceName,
@@ -34,7 +54,10 @@ export function readNutritionSnapshot(value: unknown) {
 
 export function calculateSnapshotNutrition(value: unknown, input: QuantityInput) {
   const snapshot = readNutritionSnapshot(value);
-  const calculation = calculateNutrition(snapshot.definition, input);
+  const calculation = calculateNutrition(
+    { ...snapshot.definition, nutritionIsEstimated: snapshot.nutritionIsEstimated },
+    input
+  );
   const unitLabel = input.servingId
     ? snapshot.definition.servings.find((serving) => serving.id === input.servingId)!.name
     : input.unit === 'SERVING'

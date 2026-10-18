@@ -13,7 +13,6 @@ jest.mock('@/lib/trpc/client', () => ({
 }));
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { modals } from '@mantine/modals';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { TaskSearchView } from './TaskSearchView';
@@ -68,22 +67,17 @@ it('shows freshness and limits ordinary users to owner indexing', async () => {
   await user.click(screen.getByRole('button', { name: 'Index my tasks' }));
   expect(index.mutate).toHaveBeenCalledWith();
 });
-it('requires confirmation for a maintainer to rebuild the shared collection', async () => {
+it('links maintainers to the centralized model settings', () => {
   (trpc.taskSearch.status.useQuery as jest.Mock).mockReturnValue({
     ...query,
     data: { ...data, isMaintainer: true },
   });
-  const user = userEvent.setup();
   render(<TaskSearchView />);
-  await user.click(screen.getByRole('combobox', { name: 'Embedding model' }));
-  await user.click(await screen.findByRole('option', { name: 'embed:1' }));
-  await user.click(screen.getByRole('button', { name: 'Rebuild shared task index' }));
-  expect(rebuild.mutate).not.toHaveBeenCalled();
-  (modals.openConfirmModal as jest.Mock).mock.calls[0][0].onConfirm();
-  expect(rebuild.mutate).toHaveBeenCalledWith({
-    selection: { provider: 'ollama', modelId: 'embed:1' },
-    queryInstruction: 'Find tasks relevant to the search query.',
-  });
+  expect(screen.getByRole('link', { name: 'Manage search models in Settings' })).toHaveAttribute(
+    'href',
+    '/settings#ai-models'
+  );
+  expect(screen.queryByRole('combobox', { name: 'Embedding model' })).not.toBeInTheDocument();
 });
 it('sends a bounded query without client-selected models or owners', async () => {
   const user = userEvent.setup();

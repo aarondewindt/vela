@@ -27,13 +27,29 @@ export const servingSchema = z.object({
   isEstimated: z.boolean(),
 });
 
+export const componentInputSchema = z
+  .object({
+    childProductId: z.uuid(),
+    quantity: positiveDecimalSchema,
+    unit: z.enum(quantityUnits),
+    servingId: z.uuid().optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (input.servingId && input.unit !== 'SERVING') {
+      ctx.addIssue({ code: 'custom', path: ['unit'], message: 'Use the selected serving unit.' });
+    }
+  });
+
 export const productInputSchema = z
   .object({
     name: z.string().trim().min(1).max(240),
     brand: optionalText(240),
     description: optionalText(4000),
     aliases: aliasesSchema(240),
-    calculationMode: z.literal('DIRECT'),
+    calculationMode: z.enum(['DIRECT', 'CALCULATED']),
+    components: z.array(componentInputSchema).max(40).optional(),
+    yieldQuantity: positiveDecimalSchema.nullable().optional(),
+    yieldUnit: z.enum(referenceUnits).nullable().optional(),
     referenceQuantity: positiveDecimalSchema,
     referenceUnit: z.enum(referenceUnits),
     referenceLabel: optionalText(80),
@@ -53,6 +69,17 @@ export const productInputSchema = z
   .superRefine((product, ctx) => {
     const error = (path: (string | number)[], message: string) =>
       ctx.addIssue({ code: 'custom', path, message });
+    if ((product.yieldQuantity == null) !== (product.yieldUnit == null)) {
+      error(['yieldQuantity'], 'Enter both the prepared yield and its unit.');
+    }
+    if (product.calculationMode === 'CALCULATED') {
+      if (!product.components?.length) {
+        error(['components'], 'Add at least one ingredient.');
+      }
+      if (!product.yieldQuantity || !product.yieldUnit) {
+        error(['yieldQuantity'], 'Enter the complete prepared recipe yield.');
+      }
+    }
     if (normalizeProductText(product.name).length > 240) {
       error(['name'], 'The normalized product name must be at most 240 characters.');
     }

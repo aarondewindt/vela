@@ -12,6 +12,22 @@ When Ollama runs on the host PC, `localhost` inside the container points to the 
 
 Configuration is validated only when an AI function is called, so missing configuration or an offline provider does not prevent the normal application from starting. The provider address is never exposed through a `NEXT_PUBLIC_` variable.
 
+## User model settings
+
+**Settings → AI & models** (`/settings#ai-models`) stores account-wide model preferences in PostgreSQL through protected `settings` procedures. Settings follow the user across devices; TanStack Query owns their client cache. `lib/model-settings/schema.ts` defines the finite feature/profile registry, boundary schemas and pure resolution. `service.ts` owns persistence and resolution for application consumers; `lib/ai/` remains independent of Prisma and receives explicit selections.
+
+The account has **Default LLM**, **Fast**, **Balanced / Medium**, **Reasoning**, **Vision language** and **Embeddings** choices. Fast/Balanced/Reasoning inherit Default LLM when unset. Vision language requires reported chat and vision capabilities; Embeddings requires an embedding model and never falls back to a text LLM. Profiles select models, not inference parameters: structured meal interpretation still disables thinking. Model capabilities come from provider metadata, not inferred names or sizes.
+
+Feature settings cover Nutrition meal interpretation, AI Dev chat and the embeddings playground. Each can inherit its assigned profile, explicitly select a compatible profile, or override with a specific model. Resolution is **conversation/draft override → feature choice → profile → Default LLM** where compatible. Unset values inherit; an unavailable configured model remains authoritative and produces an explicit error rather than falling through to a different model. Nothing picks the first installed model automatically.
+
+New conversations and meal drafts start on **Use settings**. An inherited selection is resolved once when each turn starts, using the latest saved preferences. Updated defaults affect the next generation; they do not change an active generation or historical attribution. Model pickers can save an override between messages or clear it back to Use settings. Owner checks, conversation leases and draft revisions prevent changing models during generation. Each assistant message/draft turn stores its actual provider and model. Retrying an incomplete response uses the current selection and replaces its previous incomplete attempt; a completed-request replay returns the existing response without requiring defaults or invoking a model again.
+
+Migration `20261018192243_user_ai_model_settings` adds `UserAiModelSetting`, inheritance flags and per-response/turn model metadata. It keeps pre-existing conversations/drafts as explicit overrides and backfills their historical attribution from their previously fixed selection. New records inherit by default. Users can opt existing records into inheritance with Use settings.
+
+Shared task/food index model and query-instruction controls also live in Settings. Published collections retain their own authoritative configuration and maintainer permissions. The account Embeddings default may prefill setup or be explicitly chosen for a rebuild; changing it performs no rebuild and never changes the model used to query existing vectors. Search pages retain status/indexing actions and link to Settings for model maintenance.
+
+Validation on 2026-10-18: all 400 Jest tests (58 suites), TypeScript, scoped Oxlint/format, repository Stylelint, Prisma validation/empty schema diff and production build passed. Twenty-one isolated PostgreSQL/service checks covered account isolation, inherited and explicit selections, per-turn snapshots, switching during generation, completed replay without defaults, meal drafts and unchanged shared index configurations. Browser checks used a temporary synthetic account: saved default selection, automatic meal-model inheritance and interpretation, inherited chat/streamed response, model switching with preserved earlier attribution, and inherited embedding generation (1,024 dimensions). Settings and embeddings layouts fit 390px without horizontal overflow; browser runtime errors were empty. Both test accounts and their data were removed and the isolated browser signed out/closed. Repository-wide lint continues to report existing errors in untouched planner/auth/UI files.
+
 ## Server API
 
 ```ts
@@ -31,7 +47,7 @@ const embeddingModel = await resolveEmbeddingModel({
 // Pass embeddingModel to the AI SDK from the consuming application service.
 ```
 
-Discovery uses `GET /api/tags` and `POST /api/show`, with at most four concurrent inspections. It reads model metadata without generating text or loading model weights. Ollama's `completion` capability maps to `chat`, and `embedding` maps to `embedding`. Unknown capabilities are not guessed from model names; models with neither supported capability remain discoverable with an empty capability list. Servers that omit capability metadata return an explicit error.
+Discovery uses `GET /api/tags` and `POST /api/show`, with at most four concurrent inspections. It reads model metadata without generating text or loading model weights. Ollama's `completion` capability maps to `chat`, and `embedding` maps to `embedding`; `vision` and `thinking` metadata are also preserved. Unknown capabilities are not guessed from model names; models with neither supported capability remain discoverable with an empty capability list. Servers that omit capability metadata return an explicit error.
 
 Both resolvers check the exact installed model ID (including its tag) and requested capability before constructing an AI SDK model. They inspect only the selected model. Discovery and resolution read fresh metadata without Next.js fetch caching. A future provider can be added behind the same entry point without importing AI Dev code; no provider registry or agent framework is needed yet.
 
@@ -43,7 +59,7 @@ API adapters must authenticate callers, validate input and map errors to their t
 
 Open `/ai-dev` from the application navigation and sign in with a normal Vela account. The page checks the server-side Better Auth session before rendering the chat view. There is no separate administrator role. `aiDev.listChatModels` is a protected tRPC query over the shared discovery service and returns only chat-capable models.
 
-Select a model and click **Start conversation** to create a saved conversation. Use **Saved conversations** to reopen one after leaving or reloading the page. Provider and model selection are fixed for each conversation; **New conversation** opens a draft where another model can be chosen. **Delete** confirms removal of the conversation and its messages. Titles are derived deterministically from the first user message, without an AI naming request.
+Click **Start conversation** to create a saved conversation using the effective model from Settings, or choose an explicit override. Use **Saved conversations** to reopen one after leaving or reloading the page. The model picker remains available between messages; **Use settings** restores inheritance, and **New conversation** starts with inheritance again. **Delete** confirms removal of the conversation and its messages. Titles are derived deterministically from the first user message, without an AI naming request.
 
 Enter sends; Shift+Enter adds a line. AI SDK UI `useChat` owns the active stream, while tRPC/TanStack Query loads and refreshes saved history. Fresh authorized reads are required before cached conversation data is displayed after mounting. Text renders without Markdown, attachments, reasoning displays or tools. The user can stop generation, retry an incomplete response, or continue a restored conversation.
 
@@ -53,7 +69,7 @@ Generation is capped at 2,048 output tokens and 120 seconds, with automatic infe
 
 ## Conversation persistence
 
-`AiConversation` stores its owner, title, provider/model selection and generation lease. `AiMessage` stores structured JSONB message parts, role, position, response status and the user message it answers. Composite keys enforce unique message IDs, positions and replies within a conversation. The additive migration is `20261017183136_ai_dev_conversations`; run the normal Prisma migration workflow and regenerate the client when setting up another database.
+`AiConversation` stores its owner, title, inheritance/override selection and generation lease. `AiMessage` stores structured JSONB message parts, role, position, response status, the actual generation provider/model and the user message it answers. Composite keys enforce unique message IDs, positions and replies within a conversation. The additive migration is `20261017183136_ai_dev_conversations`; run the normal Prisma migration workflow and regenerate the client when setting up another database.
 
 All conversation operations use the authenticated user ID. List, read, delete, generation setup and finalization are owner-scoped. Missing and foreign conversations both return not found. Deletion cascades to messages, and completion callbacks cannot recreate deleted conversations.
 
@@ -63,13 +79,13 @@ Only one generation can run per conversation. Concurrent attempts receive a conf
 
 SDK stream completion/cancellation persists structured response parts and a `COMPLETED`, `INTERRUPTED` or `FAILED` status. Partial text is saved when cancellation/disconnection reaches the server. A process crash can lose partial text that has not reached finalization; the saved user message and placeholder remain recoverable after lease expiry. There are no per-token database writes. Saved text-part state is normalized for restoration, and empty or failed assistant content is omitted from inference history. A storage failure is surfaced as an error rather than treating the response as durably saved.
 
-The implementation uses `@ai-sdk/react@4.0.146`, matching `ai@7.0.142`. Persistent embedding storage is separate future work.
+The implementation uses `@ai-sdk/react@4.0.146`, matching `ai@7.0.142`. Persistent embedding collections are documented below.
 
 Phase 3 was verified on 2026-10-17 with 117 Jest tests, typecheck, changed-file lint/format checks and a production build. Thirteen live PostgreSQL checks covered cross-user denial, concurrent requests, retry deduplication, authoritative history, lease recovery, stale callbacks and cascading deletion; temporary fixtures and the verification route were removed. Browser checks with the authorized test account confirmed streamed persistence, restoration after reload, continued context, interrupted-response retry and confirmed deletion. Retrying an interrupted three-turn conversation preserved its six rows and assistant ID; a subsequent completed-response replay returned the saved ID and a complete SDK UI stream without adding rows. Repository-wide lint still reports errors in untouched planner/UI/auth files.
 
 ## Embeddings playground
 
-Open **AI Dev → Embeddings** at `/ai-dev/embeddings`. Like chat, the page checks the server-side Better Auth session. Select an installed embedding-capable model explicitly; there is no default application model. The navigation groups Chat and Embeddings under AI Dev.
+Open **AI Dev → Embeddings** at `/ai-dev/embeddings`. Like chat, the page checks the server-side Better Auth session. The model picker starts on **Use settings**, resolving the feature override or account Embeddings default. An explicit temporary selection overrides it for this playground visit. The navigation groups Chat and Embeddings under AI Dev.
 
 `aiDev.listEmbeddingModels` is a protected tRPC query using shared discovery. The protected `aiDev.generateEmbedding` and `aiDev.compareEmbeddings` mutations validate inputs and delegate to `lib/ai-dev/embeddings.ts`. That service resolves the selected model through `lib/ai/` and calls AI SDK `embed` or `embedMany`. Comparison embeds both texts with the same resolved model and computes cosine similarity over the complete vectors on the server. Only dimensions and the first 16 values of each vector are returned, alongside the provider/model selection and comparison score.
 
@@ -105,7 +121,7 @@ Dimension count belongs to each collection's configuration; 1,024 is not an appl
 
 ## Embedding configuration ownership
 
-Persistent embeddings use **one embedding configuration per collection/vector table**, with independent configurations for different collections. Vela does not require one global embedding model. For example, ingredient matching and document search can each select a model and settings suited to their own collection. The shared resolver takes an explicit model selection on every call and imposes no global embedding default.
+Persistent embeddings use **one embedding configuration per collection/vector table**, with independent configurations for different collections. Vela does not require one global embedding model. For example, ingredient matching and document search can each select a model and settings suited to their own collection. The shared provider resolver takes an explicit model selection on every call. Account-level embedding defaults apply to the playground and setup/rebuild forms; existing indexes always use their published collection configuration.
 
 Store configuration once at the collection level. Every vector in that collection must use it; rows do not choose their own model. A collection has only one active configuration. The current `EmbeddingCollectionConfig` model stores a named collection key, validated JSON configuration, publication revision, indexing lease and safe failure status. Configuration records are independent per collection; they are not a global application setting.
 
@@ -115,7 +131,7 @@ Indexing and query services must both resolve the collection's active configurat
 
 Changing any vector-affecting setting requires a full reindex of the collection/table. Treat the active configuration as immutable while its vectors are in use. Rebuild every vector from source data, validate the complete replacement, and activate the new configuration and vector set together. Never expose a partially converted collection or compare vectors across configurations. The reindex implementation must either make the collection unavailable during an in-place rebuild or build a separate replacement table/collection before switching. Mixed-model rows within a table, partial model migrations and query-time handling of multiple models in one collection are outside the intended design.
 
-The AI Dev embeddings playground may select models freely because it has no persistent collection. It does not establish a global application default.
+The AI Dev embeddings playground may select models freely because it has no persistent collection. It inherits account preferences without changing any collection configuration.
 
 ## Persistent collections and task search experiment
 
@@ -154,4 +170,4 @@ Both temporary verification routes were removed afterward. The checks explicitly
 
 Nutrition Phase 4 consumes this helper for proposed draft operations. Its prompts, matching and persistence are feature-owned, with no infrastructure dependency on Nutrition. Protected procedures save user messages before inference and publish a whole validated operation batch only while its owner/revision/lease still matches. Model calls and semantic matching happen outside database transactions. Confirmation is deterministic application behavior and requires explicit user review. See [Nutrition](NUTRITION.md) for draft limits, retry/recovery and transactional confirmation.
 
-Synthetic live checks on 2026-10-18 verified structured generation and conversational correction with installed `qwen3:8b`. Initial `llama3.1:8b` results could satisfy the schema while omitting foods/category; schema validity is not semantic accuracy. The UI requires reviewing and resolving the draft. No global/default chat model or automatic model fallback is introduced. Product indexing uses its own dedicated collection/configuration and durable worker, while task indexing stays manual.
+Synthetic live checks on 2026-10-18 verified structured generation and conversational correction with installed `qwen3:8b`. Initial `llama3.1:8b` results could satisfy the schema while omitting foods/category; schema validity is not semantic accuracy. The UI requires reviewing and resolving the draft. Account defaults are now resolved by the application settings service described above; there is no automatic model fallback. Product indexing uses its own dedicated collection/configuration and durable worker, while task indexing stays manual.

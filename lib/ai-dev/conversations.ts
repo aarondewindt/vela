@@ -6,6 +6,7 @@ import type { UIMessage } from 'ai';
 import { prisma } from '@/lib/prisma';
 import { resolveChatModel, type AiModelSelection } from '@/lib/ai';
 import { selectionSchema, storedPartsSchema, type ChatInput } from './schema';
+import { effectiveModel, requireModelSelection } from '@/lib/model-settings/service';
 
 const generationLeaseMs = 180_000;
 export type ResponseStatus = 'COMPLETED' | 'INTERRUPTED' | 'FAILED';
@@ -20,8 +21,19 @@ function partsForStorage(value: unknown) {
     );
 }
 
-function asMessage(row: { id: string; role: 'user' | 'assistant'; parts: unknown }): UIMessage {
-  return { id: row.id, role: row.role, parts: partsForStorage(row.parts) };
+function asMessage(row: {
+  id: string;
+  role: 'user' | 'assistant';
+  parts: unknown;
+  provider?: string | null;
+  modelId?: string | null;
+}): UIMessage {
+  return {
+    id: row.id,
+    role: row.role,
+    parts: partsForStorage(row.parts),
+    ...(row.modelId ? { metadata: { provider: row.provider, modelId: row.modelId } } : {}),
+  };
 }
 
 function notFound(): never {
@@ -33,16 +45,56 @@ export const conversationService = {
     return prisma.aiConversation.findMany({
       where: { userId },
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, title: true, provider: true, modelId: true, updatedAt: true },
+      select: {
+        id: true,
+        title: true,
+        provider: true,
+        modelId: true,
+        inheritsModel: true,
+        updatedAt: true,
+      },
     });
   },
 
-  async create(userId: string, selection: AiModelSelection) {
+  async create(userId: string, override: AiModelSelection | null = null) {
+    const selection = await requireModelSelection(userId, 'aiDev.chat', override);
     await resolveChatModel(selection);
     return prisma.aiConversation.create({
-      data: { userId, provider: selection.provider, modelId: selection.modelId },
+      data: {
+        userId,
+        provider: selection.provider,
+        modelId: selection.modelId,
+        inheritsModel: !override,
+      },
       select: { id: true },
     });
+  },
+
+  async changeModel(userId: string, id: string, override: AiModelSelection | null) {
+    const existing = await prisma.aiConversation.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!existing) {
+      return notFound();
+    }
+    if (override) {
+      await resolveChatModel(override);
+    }
+    const changed = await prisma.aiConversation.updateMany({
+      where: { id, userId, activeGenerationId: null },
+      data: {
+        inheritsModel: !override,
+        ...(override ? { provider: override.provider, modelId: override.modelId } : {}),
+      },
+    });
+    if (!changed.count) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message: 'Wait for the active response to finish, then reload before changing models.',
+      });
+    }
+    return { updated: true };
   },
 
   async get(userId: string, id: string) {
@@ -72,10 +124,23 @@ export const conversationService = {
       return {
         id: conversation.id,
         title: conversation.title,
-        selection: selectionSchema.parse({
-          provider: conversation.provider,
-          modelId: conversation.modelId,
-        }),
+        override: conversation.inheritsModel
+          ? null
+          : selectionSchema.parse({
+              provider: conversation.provider,
+              modelId: conversation.modelId,
+            }),
+        ...(await effectiveModel(
+          userId,
+          'aiDev.chat',
+          conversation.inheritsModel
+            ? null
+            : selectionSchema.parse({
+                provider: conversation.provider,
+                modelId: conversation.modelId,
+              }),
+          tx
+        )),
         updatedAt: conversation.updatedAt,
         generating: conversation.activeGenerationId !== null,
         messages: conversation.messages.map(asMessage),
@@ -135,10 +200,6 @@ export const conversationService = {
       if (!conversation) {
         return notFound();
       }
-      const selection = selectionSchema.parse({
-        provider: conversation.provider,
-        modelId: conversation.modelId,
-      });
       const existing = conversation.messages.find((message) => message.id === input.message.id);
       if (
         existing &&
@@ -159,7 +220,10 @@ export const conversationService = {
           data: { activeGenerationId: null, generationStartedAt: null },
         });
         return {
-          selection,
+          selection: {
+            provider: 'ollama' as const,
+            modelId: previousReply.modelId ?? conversation.modelId,
+          },
           history: [] as UIMessage[],
           response: asMessage(previousReply),
           generationId: null,
@@ -176,6 +240,17 @@ export const conversationService = {
           message: 'Only the latest interrupted response can be retried. Reload the conversation.',
         });
       }
+      const selection = await requireModelSelection(
+        userId,
+        'aiDev.chat',
+        conversation.inheritsModel
+          ? null
+          : {
+              provider: 'ollama',
+              modelId: conversation.modelId,
+            },
+        tx
+      );
       const history = conversation.messages
         .filter((message) => message.role === 'user' || message.status !== 'FAILED')
         .filter((message) => !previousReply || message.id !== previousReply.id)
@@ -210,7 +285,12 @@ export const conversationService = {
       const assistant = previousReply
         ? await tx.aiMessage.update({
             where: { conversationId_id: { conversationId, id: previousReply.id } },
-            data: { parts: [], status: 'GENERATING' },
+            data: {
+              parts: [],
+              status: 'GENERATING',
+              provider: selection.provider,
+              modelId: selection.modelId,
+            },
           })
         : await tx.aiMessage.create({
             data: {
@@ -221,6 +301,8 @@ export const conversationService = {
               position: position + 1,
               replyToId: input.message.id,
               status: 'GENERATING',
+              provider: selection.provider,
+              modelId: selection.modelId,
             },
           });
       if (conversation.messages.length === 0) {

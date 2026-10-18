@@ -56,7 +56,10 @@ export const createDraftSchema = z.object({
   id: z.uuid(),
   date: diaryDateSchema,
   mealCategory: z.enum(mealCategories),
-  selection: modelSelectionSchema,
+  selection: modelSelectionSchema.nullable().default(null),
+});
+export const changeDraftModelSchema = draftRevisionSchema.extend({
+  selection: modelSelectionSchema.nullable(),
 });
 export const draftTurnSchema = draftRevisionSchema.extend({
   requestId: z.uuid(),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -9,7 +9,6 @@ import {
   Group,
   Loader,
   Paper,
-  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -20,6 +19,7 @@ import { IconRefresh } from '@tabler/icons-react';
 import { maxEmbeddingTextLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
 import classes from './EmbeddingsView.module.css';
+import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 
 export function EmbeddingsView() {
   const models = trpc.aiDev.listEmbeddingModels.useQuery(undefined, { retry: false });
@@ -30,9 +30,20 @@ export function EmbeddingsView() {
   const [textA, setTextA] = useState('');
   const [textB, setTextB] = useState('');
   const busy = generate.isPending || compare.isPending;
-  const selection = modelId ? { provider: 'ollama' as const, modelId } : null;
+  const override = modelId ? { provider: 'ollama' as const, modelId } : null;
+  const resolution = useFeatureModel('aiDev.embeddings', override);
+  const selection = resolution.selection;
+  const resolvedId = selection?.modelId ?? null;
+  const previousModel = useRef(resolvedId);
+  useEffect(() => {
+    if (previousModel.current !== resolvedId && !busy) {
+      previousModel.current = resolvedId;
+      generate.reset();
+      compare.reset();
+    }
+  }, [resolvedId, busy, generate.reset, compare.reset]);
   const ready = Boolean(
-    selection && !models.error && models.data?.some((model) => model.id === modelId)
+    selection && !models.error && models.data?.some((model) => model.id === selection.modelId)
   );
 
   return (
@@ -62,20 +73,15 @@ export function EmbeddingsView() {
           </Alert>
         )}
         <Group align="flex-end">
-          <Select
-            className={classes.modelPicker}
+          <FeatureModelSelect
             label="Embedding model"
-            placeholder="Choose an embedding model"
-            searchable
-            allowDeselect={false}
-            data={models.data?.map((model) => ({ value: model.id, label: model.id })) ?? []}
-            value={modelId}
+            override={override}
+            models={models.data ?? []}
+            resolution={resolution}
+            disabled={busy || models.isPending || Boolean(models.error)}
             onChange={(value) => {
-              setModelId(value);
-              generate.reset();
-              compare.reset();
+              setModelId(value?.modelId ?? null);
             }}
-            disabled={models.isPending || Boolean(models.error) || busy}
           />
           <Button
             variant="default"
@@ -92,7 +98,7 @@ export function EmbeddingsView() {
             onSubmit={(event) => {
               event.preventDefault();
               if (ready && selection && text.trim() && !busy) {
-                generate.mutate({ selection, text });
+                generate.mutate({ selection: override, text });
               }
             }}
           >
@@ -141,7 +147,7 @@ export function EmbeddingsView() {
             onSubmit={(event) => {
               event.preventDefault();
               if (ready && selection && textA.trim() && textB.trim() && !busy) {
-                compare.mutate({ selection, textA, textB });
+                compare.mutate({ selection: override, textA, textB });
               }
             }}
           >

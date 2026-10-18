@@ -75,7 +75,12 @@ const record = {
 };
 const db = {
   $queryRaw: jest.fn(),
-  product: { findFirst: jest.fn(), update: jest.fn(), create: jest.fn() },
+  product: {
+    findFirst: jest.fn(),
+    findMany: prisma.product.findMany,
+    update: jest.fn(),
+    create: jest.fn(),
+  },
   productEmbedding: { deleteMany: jest.fn() },
   productServing: {
     updateMany: jest.fn(),
@@ -83,11 +88,12 @@ const db = {
     deleteMany: jest.fn(),
     create: jest.fn(),
   },
-  productComponent: { count: jest.fn() },
+  productComponent: { count: jest.fn(), deleteMany: jest.fn(), createMany: jest.fn() },
 };
 beforeEach(() => {
   jest.clearAllMocks();
   db.product.findFirst.mockResolvedValue(record);
+  (db.product.findMany as jest.Mock).mockResolvedValue([]);
   db.product.update.mockResolvedValue(record);
   db.productComponent.count.mockResolvedValue(0);
   (prisma.$transaction as jest.Mock).mockImplementation((fn) => fn(db));
@@ -156,6 +162,25 @@ it('creates only manually sourced products and rejects reused serving IDs', asyn
       ],
     })
   ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});
+
+it('rejects self references and missing or foreign ingredients before mutating product definitions', async () => {
+  await expect(
+    nutritionProducts.update('owner', id, 1, {
+      ...input,
+      components: [{ childProductId: id, quantity: '1', unit: 'G' }],
+    })
+  ).rejects.toThrow('cannot contain itself');
+  await expect(
+    nutritionProducts.create('owner', {
+      ...input,
+      components: [
+        { childProductId: '00000000-0000-4000-8000-000000000099', quantity: '1', unit: 'G' },
+      ],
+    })
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  expect(db.product.create).not.toHaveBeenCalled();
+  expect(db.product.update).not.toHaveBeenCalled();
 });
 
 it('invalidates only embedded text changes and enqueues them in the product transaction', async () => {
