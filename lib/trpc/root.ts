@@ -1,3 +1,5 @@
+import { homeAssistantRouter } from '@/lib/integrations/home-assistant/router';
+import { healthRouter } from '@/lib/health/router';
 import { plannerRouter } from '@/lib/planner/router';
 import { settingsRouter } from '@/lib/settings/router';
 import { devToolsRouter } from '@/lib/dev-tools/router';
@@ -13,6 +15,8 @@ export const appRouter = router({
   aiDev: aiDevRouter,
   taskSearch: taskSearchRouter,
   nutrition: nutritionRouter,
+  homeAssistant: homeAssistantRouter,
+  health: healthRouter,
 });
 
 export type AppRouter = typeof appRouter;

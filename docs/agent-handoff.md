@@ -80,3 +80,44 @@ Keep the ignored Ollama and maintainer settings aligned between `vela.env` and `
 - Twelve live PostgreSQL checks: owner indexing/search, unchanged reuse, stale exclusion, semantic/metadata update handling, non-maintainer denial, concurrent claim fencing, rollback on forced publication failure, digest mismatch and cascade cleanup.
 - Browser: authenticated maintainer controls and confirmation; 32-task rebuild; actual 1,024 → 2,560 dimension model switch with no mixed stored dimensions; synthetic dental task ranks first for a meaning-based query; desktop/mobile layout without horizontal overflow. Initial model restored and fixtures/session cleaned up.
 - Previous phases additionally verified chat cross-owner denial, persistence, interruption/retry deduplication, stale lease recovery and deletion. pgvector SQL checks cover 1,024, 2,560 and 4,096 dimensions.
+
+## Experimental daily-use deployment checkpoint (2026-10-19)
+
+Repository implementation and validation are complete; external activation remains.
+See `docs/DAILY_USE_DEPLOYMENT.md` for exact startup, account, tunnel and recovery
+instructions. `yarn public:build` / `yarn public:start` run a public Next production
+build inside the same dev container/database; keep `yarn dev` private because its
+internal debugging endpoints are outside Vela auth. Desktop LAN origin observed
+at 192.168.0.106; target public port is 3001. Existing Pi tunnel should point
+straight there, with HTTP Host Header vela.aarondewindt.space, no Access or Caddy.
+No remote gateway or Cloudflare changes were made.
+
+Outer Compose mappings require a dev-container rebuild (3001 published; 3000 and
+5050 desktop-loopback only); the currently running outer container retains its
+old mappings. Do not publish 3000. Both Docker/containerd storage mounts are
+already persistent desktop volumes. A pre-change database dump is in ignored
+`.local/backups`; restore into a fresh temporary database succeeded and the
+temporary database was removed. No live DB was reset or migrated. The public
+process was left running on container port 3001 after successful HTTP checks;
+a rebuild will stop it and requires `yarn public:start` again.
+
+Validation: production build and TypeScript passed, 63 Jest suites / 422 tests
+passed, Compose configs validated, focused deployment lint/format passed. Global
+lint still has pre-existing planner/UI failures. Live HTTP checks verified secure
+login cookies, private-data and upload rejection without auth, disabled debugging
+paths, food logging and two-user isolation; temporary test users were removed.
+Pi-to-desktop connectivity, actual firewall policy, Cloudflare route/cache/HTTPS
+settings and an external browser check remain operator steps. Existing unrelated
+nutrition/model-settings/UI edits were preserved; deployment changes are uncommitted.
+
+
+## Health and Home Assistant — 2026-10-19
+
+User authorized implementing the reusable per-user Home Assistant connector and Health app for weight, body fat, lean mass, sleep and Nutrition-based calorie balance with a configurable signed daily goal.
+
+- Implemented `/health` and `/settings/home-assistant`, navigation, protected `health`/`homeAssistant` tRPC routers, owner-scoped services, encrypted tokens bound to owner IDs, operator origin allowlist, sensor discovery/mapping, normalization and manual readings/deletion. Health history combines Nutrition snapshot aggregation with daily latest health records; missing intake/burn stays unknown. Balance is intake minus total burn; current goal applies to all displayed dates.
+- Generic server-only REST/WebSocket read transport is in `lib/integrations/home-assistant/client.ts`. `yarn home-assistant:sync` runs the supervised worker: selected entity subscriptions, compact state reconstruction, independent lease heartbeats, revision/owner fencing, retries, seven-day bounded history recovery, per-minute reconciliation and graceful shutdown. No actual account connection was opened and no real worker was left running.
+- Migration `20261019090000_health_home_assistant` applied locally after `yarn db:backup`; generated Prisma Client updated and schema/database diff empty. New tables only. Backups are private under ignored `.local/backups/`.
+- Setup remains account/operator work: configure `HOME_ASSISTANT_ALLOWED_ORIGINS` and stable `INTEGRATION_ENCRYPTION_KEY` in the app/worker runtime, save each user's HA URL/token, map actual sensors, and supervise the worker. No secrets were created or changed in local environment files. See [Health](HEALTH.md) for upstream setup, recovery limits, timestamp semantics, timezone assumptions and key backup.
+- Validation: full existing+new Jest run passed (451 tests, 72 suites); a subsequent first-save conflict test passed in the four-test connection-service suite. TypeScript, changed-code Oxlint/format, Stylelint, Prisma validation/schema diff and production build passed. Initial sandboxed production build stalled; it was stopped and rerun successfully outside the sandbox with `NODE_ENV=production`. A temporary HA REST/WebSocket simulator plus real PostgreSQL verified worker imports, unit conversion, daily-total deduplication, Nutrition balance/goal comparison, manual retries and cross-user isolation; synthetic users/data removed. Browser automation was unavailable; the Health goal UI was verified with React Testing Library.
+- Repository-wide `yarn lint` still fails on pre-existing errors in untouched planner/auth/UI files. Pre-existing deployment/auth edits and a concurrently modified `docs/NOTES.md` were preserved.

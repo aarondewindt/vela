@@ -41,6 +41,9 @@ model User {
   aiModelSettings           UserAiModelSetting[]
   products                  Product[]
   nutritionLogEntries       NutritionLogEntry[]
+  homeAssistantConnection   HomeAssistantConnection?
+  healthMetrics             HealthMetric[]
+  healthGoal                HealthGoal?
   nutritionGoals            NutritionGoals?
   nutritionIndexJob         NutritionProductIndexJob?
   nutritionDrafts           NutritionMealDraft[]
@@ -611,6 +614,7 @@ model NutritionDraftTurn {
   draft             NutritionMealDraft       @relation(fields: [draftId], references: [id], onDelete: Cascade)
   userText          String
   assistantText     String?
+  diagnostics       Json?                    @db.JsonB
   status            NutritionDraftTurnStatus @default(GENERATING)
   requestedRevision Int
   error             String?                  @db.VarChar(500)
@@ -918,4 +922,70 @@ model AutomationRun {
   @@index([userId, startedAt])
   @@index([status])
   @@map("automation_runs")
+}
+
+model HomeAssistantConnection {
+  userId         String                @id
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseUrl        String                @db.VarChar(500)
+  encryptedToken String
+  enabled        Boolean               @default(true)
+  revision       Int                   @default(1)
+  status         String                @default("Waiting for worker") @db.VarChar(240)
+  lastSyncedAt   DateTime?
+  leaseId        String?               @db.Uuid
+  leaseExpiresAt DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  mappings       HealthEntityMapping[]
+
+  @@map("home_assistant_connections")
+}
+
+model HealthEntityMapping {
+  userId     String
+  connection HomeAssistantConnection @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  metric     HealthMetricKind
+  entityId   String                  @db.VarChar(240)
+
+  @@id([userId, metric])
+  @@unique([userId, entityId])
+  @@map("health_entity_mappings")
+}
+
+enum HealthMetricKind {
+  WEIGHT
+  BODY_FAT
+  LEAN_MASS
+  SLEEP
+  TOTAL_CALORIES
+}
+
+model HealthMetric {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metric         HealthMetricKind
+  value          Decimal          @db.Decimal(20, 6)
+  date           DateTime         @db.Date
+  observedAt     DateTime
+  receivedAt     DateTime         @default(now())
+  source         String           @db.VarChar(32)
+  entityId       String?          @db.VarChar(240)
+  sourceKey      String           @db.VarChar(500)
+  timestampBasis String           @db.VarChar(32)
+
+  @@unique([userId, sourceKey])
+  @@index([userId, date, metric, observedAt])
+  @@map("health_metrics")
+}
+
+model HealthGoal {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calorieBalance Int?
+  version        Int      @default(1)
+  updatedAt      DateTime @updatedAt
+
+  @@map("health_goals")
 }

@@ -1,5 +1,9 @@
 # Vela Project Plan
 
+> Current deployment: the experimental daily-use setup runs Vela and PostgreSQL on the Ubuntu desktop, using the Pi only for its existing gateway/infrastructure services. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md). Older deployment suggestions below are planning history, not the active topology.
+
+> Health body/sleep tracking, calorie balance and per-user Home Assistant import are implemented; see [Health](HEALTH.md) for setup and current limits. Broader exercise/health capabilities below remain planned.
+
 _Last updated: 2026-06-18_
 
 ## 1. Project Vision

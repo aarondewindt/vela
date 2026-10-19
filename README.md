@@ -1,3 +1,7 @@
+# Vela
+
+Experimental personal planning and nutrition tracking. See [daily-use deployment](docs/DAILY_USE_DEPLOYMENT.md) for the desktop/Pi Cloudflare Tunnel setup, public startup commands, account setup, backups and recovery.
+
 # Mantine Next.js template
 
 This is a template for [Next.js](https://nextjs.org/) app router + [Mantine](https://mantine.dev/).

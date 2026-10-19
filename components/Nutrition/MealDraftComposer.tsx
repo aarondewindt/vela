@@ -17,6 +17,7 @@ import { trpc } from '@/lib/trpc/client';
 import type { MealDraft } from '@/lib/nutrition/drafts';
 import { mealLabels } from '@/lib/nutrition/types';
 import { MealDraftReview } from './MealDraftReview';
+import { MealTurnDiagnostics } from './MealTurnDiagnostics';
 import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 
 export function MealDraftComposer({
@@ -309,6 +310,7 @@ export function MealDraftComposer({
                         {turn.error}
                       </Text>
                     )}
+                    <MealTurnDiagnostics turn={turn} />
                     {turn.status === 'FAILED' && current.status === 'DRAFT' && (
                       <Group>
                         <Button

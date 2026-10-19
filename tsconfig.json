@@ -35,7 +35,9 @@
     ".storybook/preview.tsx",
     "next-env.d.ts",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    ".next-public/types/**/*.ts",
+    ".next-public/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

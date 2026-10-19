@@ -215,6 +215,7 @@ it('replays completed requests and rejects a reused ID with different content', 
       userText: 'Original',
       assistantText: 'Done',
       status: 'COMPLETED',
+      diagnostics: null,
       requestedRevision: 1,
       error: null,
       provider: 'ollama',
@@ -290,4 +291,32 @@ it('logs through the shared transaction and replays confirmation without inserti
   expect(row.status).toBe('CONFIRMED');
   await nutritionDrafts.confirm('owner', { id, revision: 1, acknowledgeQuestions: false });
   expect(createNutritionLogEntry).toHaveBeenCalledTimes(1);
+});
+
+it('saves failure diagnostics only while the owner still holds the generation lease', async () => {
+  const diagnostics = {
+    provider: 'ollama',
+    modelId: 'chat',
+    startedAt: date.toISOString(),
+    durationMs: 120,
+    maxOutputTokens: 4096,
+    timeoutMs: 120000,
+    rawResponse: '{bad json',
+  };
+  await nutritionDrafts.failTurn('owner', id, requestId, 'lease', diagnostics);
+  expect(prisma.nutritionMealDraft.updateMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: { id, userId: 'owner', generationId: 'lease', status: 'DRAFT' },
+    })
+  );
+  expect(prisma.nutritionDraftTurn.updateMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: { id: requestId, draftId: id, status: 'GENERATING' },
+      data: expect.objectContaining({ diagnostics }),
+    })
+  );
+  (prisma.nutritionDraftTurn.updateMany as jest.Mock).mockClear();
+  (prisma.nutritionMealDraft.updateMany as jest.Mock).mockResolvedValue({ count: 0 });
+  await nutritionDrafts.failTurn('owner', id, requestId, 'stale-lease', diagnostics);
+  expect(prisma.nutritionDraftTurn.updateMany).not.toHaveBeenCalled();
 });

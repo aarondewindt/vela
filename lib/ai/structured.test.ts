@@ -48,3 +48,54 @@ it('masks malformed output and provider response bodies', async () => {
   (generateText as jest.Mock).mockRejectedValue(new Error('private response body'));
   await expect(generateStructured(input)).rejects.toThrow('Your saved work is preserved');
 });
+
+it('captures bounded raw output, finish reason and validation causes without request metadata', async () => {
+  const cause = new Error('quantity must be a string');
+  const failure = Object.assign(new Error('Response did not match schema', { cause }), {
+    text: 'x'.repeat(25_000),
+    finishReason: 'length',
+    request: { headers: { authorization: 'secret' } },
+    response: { headers: { 'set-cookie': 'secret' } },
+  });
+  (generateText as jest.Mock).mockRejectedValue(failure);
+  const onDiagnostics = jest.fn();
+  await expect(generateStructured({ ...input, onDiagnostics })).rejects.toThrow('saved work');
+  expect(onDiagnostics).toHaveBeenCalledWith(
+    expect.objectContaining({
+      modelId: 'chat',
+      finishReason: 'length',
+      durationMs: expect.any(Number),
+      errors: [
+        { name: 'Error', message: 'Response did not match schema' },
+        { name: 'Error', message: 'quantity must be a string' },
+      ],
+    })
+  );
+  const details = onDiagnostics.mock.calls[0][0];
+  expect(details.rawResponse).toHaveLength(20_033);
+  expect(JSON.stringify(details)).not.toContain('secret');
+});
+it('captures successful output and preserves model resolution errors', async () => {
+  const onDiagnostics = jest.fn();
+  (generateText as jest.Mock).mockResolvedValue({
+    output: { value: 'ok' },
+    text: '{"value":"ok"}',
+    finishReason: 'stop',
+  });
+  await generateStructured({ ...input, onDiagnostics });
+  expect(onDiagnostics).toHaveBeenLastCalledWith(
+    expect.objectContaining({ rawResponse: '{"value":"ok"}', finishReason: 'stop' })
+  );
+  const { AiError } = await import('./errors');
+  (resolveChatModel as jest.Mock).mockRejectedValue(
+    new AiError('MODEL_NOT_FOUND', 'Select an installed model.')
+  );
+  await expect(generateStructured({ ...input, onDiagnostics })).rejects.toMatchObject({
+    code: 'MODEL_NOT_FOUND',
+  });
+  expect(onDiagnostics).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      errors: [{ name: 'AiError', message: 'Select an installed model.' }],
+    })
+  );
+});

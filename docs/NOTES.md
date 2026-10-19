@@ -12,6 +12,9 @@ yarn prisma studio
 ## Models
 laya ai
 
+## Food data sets
+https://world.openfoodfacts.org/data
+
 ## Task sizes
 
 The task `size` field is an integer with these user-facing labels:

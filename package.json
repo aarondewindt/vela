@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
     "analyze": "ANALYZE=true next build",
     "start": "next start",
+    "home-assistant:sync": "tsx --conditions=react-server scripts/home-assistant-worker.ts",
     "nutrition:index": "tsx --conditions=react-server scripts/nutrition-index-worker.ts",
     "typecheck": "tsc --noEmit",
     "lint": "npm run oxlint && npm run stylelint",
@@ -19,7 +20,10 @@
     "format:write": "oxfmt -c oxfmt.config.mjs --write \"**/*.{ts,tsx,css}\"",
     "test": "npx next typegen && npm run format:test && npm run lint && npm run typecheck && npm run jest",
     "storybook": "storybook dev -p 6006",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "public:build": "node scripts/public-server.mjs build",
+    "public:start": "node scripts/public-server.mjs start",
+    "db:backup": "node scripts/database-backup.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.146",

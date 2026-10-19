@@ -1,73 +1,46 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
-import { createAuthMiddleware, APIError } from "better-auth/api";
+import { createAuthMiddleware, APIError } from 'better-auth/api';
 import { prisma } from '@/lib/prisma';
+import { getAuthConfig } from '@/lib/auth-config';
 
-const defaultTrustedOrigins = [
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://192.168.0.106:3000',
-];
-
-const testEmailDomain = "@test-email.aarondewindt.space";
-
-const trustedOriginsFromEnv = [
-  process.env.BETTER_AUTH_TRUSTED_ORIGINS,
-  process.env.BETTER_AUTH_TRUSTED_ORIGIN,
-]
-  .filter(Boolean)
-  .flatMap((value) => value!.split(','))
-  .map((value) => value.trim())
-  .filter(Boolean);
-
-const trustedOrigins = Array.from(new Set([
-  ...trustedOriginsFromEnv,
-  ...defaultTrustedOrigins,
-]));
+const config = getAuthConfig(process.env);
 
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, {
-    provider: 'postgresql',
-  }),
-
+  database: prismaAdapter(prisma, { provider: 'postgresql' }),
   emailAndPassword: {
     enabled: true,
-    minPasswordLength: 8,
+    disableSignUp: config.signupDisabled,
+    minPasswordLength: config.publicMode ? 12 : 8,
     maxPasswordLength: 128,
   },
   appName: 'Vela',
-  baseURL: process.env.BETTER_AUTH_URL || 'http://localhost:3000',
+  baseURL: config.baseURL,
   basePath: '/api/auth',
-  secret: process.env.BETTER_AUTH_SECRET || 'your-secret-key',
-  trustedOrigins,
+  secret: config.secret,
+  trustedOrigins: config.trustedOrigins,
+  advanced: {
+    // The canonical origin is explicit; never derive redirects from forwarded headers.
+    trustedProxyHeaders: false,
+    useSecureCookies: config.baseURL.startsWith('https://'),
+    defaultCookieAttributes: { httpOnly: true, sameSite: 'lax' },
+    ...(config.publicMode ? { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } } : {}),
+  },
+  // Enable brute-force protection in development too. One process needs no shared store.
+  rateLimit: { enabled: true, storage: 'memory' },
   session: {
-    expiresIn: 60 * 60 * 24 * 30, // 30 days
-    updateAge: 60 * 60 * 24, // Update every 24 hours
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // 5 minutes
-    },
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24,
+    cookieCache: { enabled: true, maxAge: 5 * 60 },
   },
-  user: {
-    additionalFields: {
-      // Add any extra fields you want to track
-    },
-  },
-
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/sign-up/email") {
-        return;
-      }
-      if (!ctx.body?.email.endsWith(testEmailDomain)) {
-        throw new APIError("BAD_REQUEST", {
-          message: `Email must end with ${testEmailDomain}`,
-        });
+      if (ctx.path === '/sign-up/email' && !config.canSignUp(ctx.body?.email)) {
+        throw new APIError('FORBIDDEN', { message: 'Registration is not enabled for this email.' });
       }
     }),
   },
-
 });
 
 export type Session = typeof auth.$Infer.Session;
-export type User = Session["user"];
+export type User = Session['user'];

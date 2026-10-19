@@ -1,6 +1,14 @@
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import { devToolsService } from './service';
+
+const devProcedure = protectedProcedure.use(({ next }) => {
+  if (process.env.VELA_PUBLIC_MODE === 'true') {
+    throw new TRPCError({ code: 'NOT_FOUND' });
+  }
+  return next();
+});
 
 const generationInput = z
   .object({
@@ -47,11 +55,11 @@ const clearInput = z
   );
 
 export const devToolsRouter = router({
-  listTestTasks: protectedProcedure.query(({ ctx }) => devToolsService.listTestTasks(ctx.userId)),
-  generateTestTasks: protectedProcedure
+  listTestTasks: devProcedure.query(({ ctx }) => devToolsService.listTestTasks(ctx.userId)),
+  generateTestTasks: devProcedure
     .input(generationInput)
     .mutation(({ ctx, input }) => devToolsService.generateTestTasks(ctx.userId, input)),
-  clearTestTasks: protectedProcedure
+  clearTestTasks: devProcedure
     .input(clearInput)
     .mutation(({ ctx, input }) => devToolsService.clearTestTasks(ctx.userId, input)),
 });

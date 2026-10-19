@@ -9,5 +9,6 @@ services:
       - ..:/workspaces/vela:cached
     command: sleep infinity
     ports:
-      - "3000:3000"
-      - "5050:5050"
+      - "127.0.0.1:3000:3000"
+      - "3001:3001"
+      - "127.0.0.1:5050:5050"

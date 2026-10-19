@@ -14,6 +14,7 @@ import {
 } from '@/lib/nutrition/quantity-options';
 import { formatNutritionAmount } from '@/lib/nutrition/format';
 import { ProductPicker } from './ProductPicker';
+import { ProductEditor } from './ProductEditor';
 import { NevoAttribution } from './NevoAttribution';
 import { productSources } from '@/lib/nutrition/attribution';
 
@@ -28,6 +29,8 @@ export function DraftItemEditor({
   onClose: () => void;
   onSaved: (draft: MealDraft) => Promise<void>;
 }) {
+  const utils = trpc.useUtils();
+  const [editingProduct, setEditingProduct] = useState(false);
   const source = trpc.nutrition.getProduct.useQuery(
     { id: item.snapshot?.productId ?? '' },
     {
@@ -57,95 +60,127 @@ export function DraftItemEditor({
   const save = trpc.nutrition.editDraft.useMutation({ retry: false });
   const [error, setError] = useState<string | null>(null);
   return (
-    <Modal opened onClose={onClose} title={`Edit ${item.query}`} size="lg">
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (save.isPending) {
-            return;
-          }
-          if (quantity && !positiveDecimalSchema.safeParse(quantity).success) {
-            setError('Enter a positive decimal quantity.');
-            return;
-          }
-          try {
-            const saved = await save.mutateAsync({
-              id: draft.id,
-              revision: draft.revision,
-              change: {
-                type: 'item',
-                itemId: item.id,
-                productId: product?.id ?? null,
-                quantity: quantity || null,
-                unit,
-              },
-            });
-            await onSaved(saved);
-            onClose();
-          } catch {
-            /* Mutation error stays visible; preserve unsaved input. */
-          }
-        }}
-      >
-        <Stack>
-          <ProductPicker
-            value={product}
-            disabled={save.isPending}
-            onChange={(next) => {
-              setSelected(next);
-              if (!unit || unit.startsWith('serving:')) {
-                setUnit(next.referenceUnit);
-              }
-            }}
-          />
-          {source.error && !selected && (
-            <Alert color="yellow">
-              The selected food is unavailable. Choose an active product.
-            </Alert>
-          )}
-          <Group grow align="flex-start">
-            <TextInput
-              label="Quantity"
-              inputMode="decimal"
-              value={quantity}
-              maxLength={21}
-              placeholder="Enter the amount you ate"
-              onChange={(event) => setQuantity(event.currentTarget.value)}
+    <>
+      <Modal opened onClose={onClose} title={`Edit ${item.query}`} size="lg">
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (save.isPending) {
+              return;
+            }
+            if (quantity && !positiveDecimalSchema.safeParse(quantity).success) {
+              setError('Enter a positive decimal quantity.');
+              return;
+            }
+            try {
+              const saved = await save.mutateAsync({
+                id: draft.id,
+                revision: draft.revision,
+                change: {
+                  type: 'item',
+                  itemId: item.id,
+                  productId: product?.id ?? null,
+                  quantity: quantity || null,
+                  unit,
+                },
+              });
+              await onSaved(saved);
+              onClose();
+            } catch {
+              /* Mutation error stays visible; preserve unsaved input. */
+            }
+          }}
+        >
+          <Stack>
+            <ProductPicker
+              value={product}
+              disabled={save.isPending}
+              onChange={(next) => {
+                setSelected(next);
+                if (!unit || unit.startsWith('serving:')) {
+                  setUnit(next.referenceUnit);
+                }
+              }}
             />
-            <Select
-              label="Unit"
-              placeholder="Choose a unit"
-              value={unit}
-              onChange={setUnit}
-              data={product ? quantityOptions(product) : []}
-              disabled={!product}
-            />
-          </Group>
-          {preview.error && valid && <Alert color="yellow">{preview.error.message}</Alert>}
-          {product && <NevoAttribution sources={productSources(product)} />}
-          {valid && quantity === debounced && preview.data && !preview.error && (
-            <Text>
-              {formatNutritionAmount(preview.data.nutrients.calories)} kcal
-              {preview.data.estimated ? ' · Estimated conversion' : ''}
-            </Text>
-          )}
-          {error && <Alert color="red">{error}</Alert>}
-          {save.error && <Alert color="red">{save.error.message}</Alert>}
-          <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={save.isPending}
-              disabled={Boolean(item.snapshot) && !selected && source.isFetching}
-            >
-              Save draft food
-            </Button>
-          </Group>
-        </Stack>
-      </form>
-    </Modal>
+            <Group>
+              <Button
+                variant="light"
+                size="xs"
+                disabled={!product || save.isPending}
+                onClick={() => setEditingProduct(true)}
+              >
+                Edit selected product
+              </Button>
+            </Group>
+            {source.error && !selected && (
+              <Alert color="yellow">
+                The selected food is unavailable. Choose an active product.
+              </Alert>
+            )}
+            <Group grow align="flex-start">
+              <TextInput
+                label="Quantity"
+                inputMode="decimal"
+                value={quantity}
+                maxLength={21}
+                placeholder="Enter the amount you ate"
+                onChange={(event) => setQuantity(event.currentTarget.value)}
+              />
+              <Select
+                label="Unit"
+                placeholder="Choose a unit"
+                value={unit}
+                onChange={setUnit}
+                data={product ? quantityOptions(product) : []}
+                disabled={!product}
+              />
+            </Group>
+            {preview.error && valid && <Alert color="yellow">{preview.error.message}</Alert>}
+            {product && <NevoAttribution sources={productSources(product)} />}
+            {valid && quantity === debounced && preview.data && !preview.error && (
+              <Text>
+                {formatNutritionAmount(preview.data.nutrients.calories)} kcal
+                {preview.data.estimated ? ' · Estimated conversion' : ''}
+              </Text>
+            )}
+            {error && <Alert color="red">{error}</Alert>}
+            {save.error && <Alert color="red">{save.error.message}</Alert>}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                loading={save.isPending}
+                disabled={Boolean(item.snapshot) && !selected && source.isFetching}
+              >
+                Save draft food
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+      {editingProduct && product && (
+        <ProductEditor
+          product={product}
+          onClose={() => setEditingProduct(false)}
+          onSaved={async (saved) => {
+            setSelected(saved);
+            utils.nutrition.getProduct.setData({ id: saved.id }, saved);
+            if (unit && !quantityOptions(saved).some((option) => option.value === unit)) {
+              setUnit(saved.referenceUnit);
+            }
+            await Promise.all([
+              utils.nutrition.getProduct.invalidate(),
+              utils.nutrition.listProducts.invalidate(),
+              utils.nutrition.searchProducts.invalidate(),
+              utils.nutrition.productSuggestions.invalidate(),
+              utils.nutrition.calculateProduct.invalidate(),
+            ]);
+          }}
+        />
+      )}
+    </>
   );
 }

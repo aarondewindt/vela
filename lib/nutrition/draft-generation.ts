@@ -3,6 +3,7 @@ import { discoverModels, generateStructured } from '@/lib/ai';
 import { nutritionDrafts } from './drafts';
 import { draftInterpretationSchema, draftTurnSchema, type DraftTurnInput } from './draft-schema';
 import { shiftDiaryDate } from './dates';
+import { diagnosticErrors, type GenerationDiagnostics } from '@/lib/ai/diagnostics';
 
 export const nutritionDraftGeneration = {
   async models() {
@@ -18,16 +19,21 @@ export const nutritionDraftGeneration = {
     const deadline = signal
       ? AbortSignal.any([signal, AbortSignal.timeout(150_000)])
       : AbortSignal.timeout(150_000);
+    let diagnostics: GenerationDiagnostics | undefined;
     try {
       const result = await generateStructured({
         selection: turn.selection!,
         schema: draftInterpretationSchema,
         signal: deadline,
+        onDiagnostics: (details) => {
+          diagnostics = details;
+        },
         system: `You interpret meal descriptions as proposed operations on a saved draft. Return JSON matching the schema. Generate the operations first; the brief reply must describe those operations accurately.
 Never log food, create products, invent nutrition or calculate nutrients. Food matching and conversions happen in the application.
 Use addItem only for new food; corrections use the exact existing itemId from the supplied current draft.
 Use removeItem, setQuantity, changeProduct, changeMealCategory and changeDate as appropriate. Never invent item IDs.
-Quantities are decimal STRINGS, never numbers. Use null when an amount or unit is missing or uncertain; "some" is not an exact amount.
+Known quantities are decimal STRINGS, never numbers. Missing or uncertain quantities and units must use the JSON literal null WITHOUT quotes, never the string "null". "Some" is not an exact amount.
+Example: "For lunch I had two slices of bread with some hummus" requires {"operations":[{"type":"changeMealCategory","mealCategory":"LUNCH"},{"type":"addItem","productQuery":"bread","quantity":"2","unit":"slice"},{"type":"addItem","productQuery":"hummus","quantity":null,"unit":null}],"questions":["How much hummus did you have?"],"reply":"Added bread and hummus for lunch; the hummus amount needs clarification."}.
 Keep household units (slice, piece, tablespoon, portion) as text. Never invent weights or universal conversions.
 For a known count such as "two bananas", use quantity "2" and unit "piece". Do not infer an unstated quantity for peanut butter.
 When changing only quantity, retain the item's existing unit. Do not remove or replace unrelated foods.
@@ -68,10 +74,19 @@ Reply briefly with what changed and any missing information. Questions contain o
         turn.revision!,
         result,
         turn.current!,
-        deadline
+        deadline,
+        diagnostics
       );
     } catch (error) {
-      await nutritionDrafts.failTurn(userId, input.id, input.requestId, generationId);
+      await nutritionDrafts.failTurn(
+        userId,
+        input.id,
+        input.requestId,
+        generationId,
+        diagnostics
+          ? { ...diagnostics, errors: diagnostics.errors ?? diagnosticErrors(error) }
+          : undefined
+      );
       throw error;
     }
   },

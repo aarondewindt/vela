@@ -48,7 +48,8 @@ it('supplies authoritative date/timezone and current stable item state to shared
     2,
     result,
     expect.any(Object),
-    expect.any(AbortSignal)
+    expect.any(AbortSignal),
+    undefined
   );
 });
 it('replays completed messages without another model call', async () => {
@@ -66,7 +67,62 @@ it('preserves the draft and records a recoverable failure on invalid/model outpu
     'owner',
     input.id,
     input.requestId,
-    'lease'
+    'lease',
+    undefined
   );
   expect(nutritionDrafts.finishTurn).not.toHaveBeenCalled();
+});
+it('persists generation diagnostics on failure without replacing the original error', async () => {
+  const diagnostics = {
+    provider: 'ollama',
+    modelId: 'chat',
+    startedAt: '2026-10-19T12:00:00Z',
+    durationMs: 100,
+    maxOutputTokens: 4096,
+    timeoutMs: 120000,
+    rawResponse: '{bad json',
+    errors: [{ name: 'Error', message: 'Invalid JSON' }],
+  };
+  (generateStructured as jest.Mock).mockImplementation(async ({ onDiagnostics }) => {
+    onDiagnostics(diagnostics);
+    throw new Error('Structured response failed');
+  });
+  await expect(nutritionDraftGeneration.interpret('owner', input)).rejects.toThrow(
+    'Structured response failed'
+  );
+  expect(nutritionDrafts.failTurn).toHaveBeenCalledWith(
+    'owner',
+    input.id,
+    input.requestId,
+    'lease',
+    diagnostics
+  );
+});
+it('passes diagnostics through on a successful interpretation and explicitly distinguishes JSON null', async () => {
+  const diagnostics = {
+    provider: 'ollama',
+    modelId: 'chat',
+    startedAt: '2026-10-19T12:00:00Z',
+    durationMs: 100,
+    maxOutputTokens: 4096,
+    timeoutMs: 120000,
+    rawResponse: '{"operations":[],"questions":[],"reply":"Done"}',
+  };
+  (generateStructured as jest.Mock).mockImplementation(async ({ onDiagnostics, system }) => {
+    expect(system).toContain('JSON literal null WITHOUT quotes');
+    expect(system).toContain('"quantity":null,"unit":null');
+    onDiagnostics(diagnostics);
+    return { operations: [], questions: [], reply: 'Done' };
+  });
+  await nutritionDraftGeneration.interpret('owner', input);
+  expect(nutritionDrafts.finishTurn).toHaveBeenCalledWith(
+    'owner',
+    input,
+    'lease',
+    2,
+    expect.any(Object),
+    expect.any(Object),
+    expect.any(AbortSignal),
+    diagnostics
+  );
 });

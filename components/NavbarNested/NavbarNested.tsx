@@ -9,6 +9,7 @@ import {
   GearIcon,
   ChatCircleIcon,
   ForkKnifeIcon,
+  HeartbeatIcon,
 } from '@phosphor-icons/react';
 
 const navbar_map = [
@@ -34,6 +35,8 @@ const navbar_map = [
       { label: 'Daily goals', link: '/nutrition/settings' },
     ],
   },
+  { label: 'Health', icon: HeartbeatIcon, link: '/health' },
+  { label: 'Home Assistant', icon: GearIcon, link: '/settings/home-assistant' },
   { label: 'Settings', icon: GearIcon, link: '/settings' },
   {
     label: 'AI Dev',

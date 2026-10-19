@@ -29,6 +29,7 @@ import {
   type EditDraftInput,
 } from './draft-schema';
 import type { z } from 'zod';
+import type { GenerationDiagnostics } from '@/lib/ai/diagnostics';
 
 const include = {
   turns: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 40 },
@@ -61,6 +62,7 @@ function serialize(draft: DraftRecord) {
       assistantText: turn.assistantText,
       status: turn.status,
       error: turn.error,
+      diagnostics: turn.diagnostics,
       provider: turn.provider,
       modelId: turn.modelId,
     })),
@@ -347,6 +349,7 @@ export const nutritionDrafts = {
       });
       const data = {
         status: 'GENERATING' as const,
+        diagnostics: Prisma.DbNull,
         assistantText: null,
         error: null,
         requestedRevision: revision,
@@ -390,7 +393,8 @@ export const nutritionDrafts = {
     revision: number,
     result: DraftInterpretation,
     current: { items: DraftItem[]; date: string; mealCategory: DraftRecord['mealCategory'] },
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    diagnostics?: GenerationDiagnostics
   ) {
     signal?.throwIfAborted();
     const next = await applyDraftInterpretation(current, result, (item) =>
@@ -420,12 +424,18 @@ export const nutritionDrafts = {
       });
       await db.nutritionDraftTurn.update({
         where: { id: input.requestId, draftId: draft.id },
-        data: { status: 'COMPLETED', assistantText: next.reply, error: null },
+        data: { status: 'COMPLETED', assistantText: next.reply, error: null, diagnostics },
       });
     });
     return nutritionDrafts.get(userId, input.id);
   },
-  async failTurn(userId: string, id: string, requestId: string, generationId: string) {
+  async failTurn(
+    userId: string,
+    id: string,
+    requestId: string,
+    generationId: string,
+    diagnostics?: GenerationDiagnostics
+  ) {
     await prisma.$transaction(async (db) => {
       const updated = await db.nutritionMealDraft.updateMany({
         where: { id, userId, generationId, status: 'DRAFT' },
@@ -436,6 +446,7 @@ export const nutritionDrafts = {
           where: { id: requestId, draftId: id, status: 'GENERATING' },
           data: {
             status: 'FAILED',
+            diagnostics,
             error:
               'Interpretation failed or was interrupted. Your draft was preserved; retry or edit it manually.',
           },
