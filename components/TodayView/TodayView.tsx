@@ -6,7 +6,6 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   ColorSwatch,
   Group,
   HoverCard,
@@ -36,7 +35,6 @@ import {
   IconPlus,
   IconPlayerSkipForward,
   IconRotateClockwise,
-  IconSparkles,
   IconTargetArrow,
   IconTrash,
 } from '@tabler/icons-react';
@@ -48,7 +46,6 @@ import {
   useCreateManualCategoryBlockMutation,
   useRemoveCategorySlotMutation,
   useDayDataQuery,
-  useGenerateDraftMutation,
   useGeneratorSettingsQuery,
   useRemoveBlockFromDayMutation,
   useTasksQuery,
@@ -182,7 +179,6 @@ export function TodayView() {
   const dayQuery = useDayDataQuery(selectedDate);
   const tasksQuery = useTasksQuery();
   const themesQuery = useThemesQuery();
-  const generateDraft = useGenerateDraftMutation();
   const generatorSettingsQuery = useGeneratorSettingsQuery();
   const saveGeneratorSettings = useSaveGeneratorSettingsMutation();
   const acceptDraft = useAcceptDraftMutation();
@@ -363,7 +359,6 @@ export function TodayView() {
     dayQuery.error ??
     tasksQuery.error ??
     generatorSettingsQuery.error ??
-    generateDraft.error ??
     saveGeneratorSettings.error ??
     acceptDraft.error ??
     clearDayPlan.error ??
@@ -844,16 +839,10 @@ export function TodayView() {
               >
                 Add task
               </Button>
-              <Button
-                size="xs"
-                leftSection={<IconSparkles size={14} />}
-                loading={generateDraft.isPending}
-                disabled={!hasAvailability}
-                onClick={() => setGeneratorOpen(true)}
-              >
-                Generate draft
+              <PlanningProposals date={selectedDate} label="Generate plan" />
+              <Button size="xs" variant="default" onClick={() => setGeneratorOpen(true)}>
+                Planning settings
               </Button>
-              <PlanningProposals date={selectedDate} />
               {plan?.status === 'DRAFT' && (
                 <Button
                   size="xs"
@@ -1210,13 +1199,13 @@ export function TodayView() {
       <Modal
         opened={generatorOpen}
         onClose={() => setGeneratorOpen(false)}
-        title="Generate day plan"
+        title="Planning settings"
         centered
         size="sm"
       >
         <Stack>
           <NumberInput
-            label="Maximum work session"
+            label="Work session target"
             suffix=" min"
             min={15}
             max={240}
@@ -1265,16 +1254,6 @@ export function TodayView() {
             value={generatorDraft.maxLeisureBlockMinutes}
             onChange={(value) => updateGeneratorDraft('maxLeisureBlockMinutes', value)}
           />
-          <Checkbox
-            label="Fill open time in the current day plan"
-            checked={generatorDraft.fillExistingPlan}
-            onChange={(event) =>
-              setGeneratorDraft((current) => ({
-                ...current,
-                fillExistingPlan: event.currentTarget.checked,
-              }))
-            }
-          />
           <Group justify="space-between">
             <Button
               variant="default"
@@ -1286,19 +1265,7 @@ export function TodayView() {
             </Button>
             <Group gap="xs">
               <Button variant="subtle" onClick={() => setGeneratorOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                loading={generateDraft.isPending}
-                disabled={!hasAvailability || generatorSettingsQuery.isPending || generatorDraftError}
-                onClick={() =>
-                  generateDraft.mutate(
-                    { date: selectedDate, options: generatorDraft },
-                    { onSuccess: () => setGeneratorOpen(false) }
-                  )
-                }
-              >
-                Generate
+                Close
               </Button>
             </Group>
           </Group>

@@ -1,12 +1,14 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { ProposalWorkspace } from './PlanningProposals';
+import type { GenerationReport } from '@/lib/planner/proposals/schema';
 
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
     planningProposals: {
+      generate: { useMutation: jest.fn() },
       context: { useQuery: jest.fn() },
       list: { useQuery: jest.fn() },
       get: { useQuery: jest.fn() },
@@ -19,6 +21,7 @@ jest.mock('@/lib/trpc/client', () => ({
 import { trpc } from '@/lib/trpc/client';
 
 const create = jest.fn();
+const generate = jest.fn();
 const accept = jest.fn();
 const discard = jest.fn();
 const reset = jest.fn();
@@ -28,6 +31,7 @@ let invalidReason: string | null;
 let status: string;
 const date = '2030-01-07';
 const preview = {
+  generation: undefined as GenerationReport | undefined,
   changes: [
     {
       type: 'add',
@@ -50,6 +54,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   invalidReason = null;
   status = 'PENDING';
+  preview.generation = undefined;
   const invalidate = jest.fn().mockResolvedValue(undefined);
   (trpc.useUtils as jest.Mock).mockReturnValue({
     planningProposals: { invalidate, list: { invalidate } },
@@ -76,6 +81,10 @@ beforeEach(() => {
     mutate: create,
     reset,
   });
+  (trpc.planningProposals.generate.useMutation as jest.Mock).mockReturnValue({
+    mutate: generate,
+    reset,
+  });
   (trpc.planningProposals.accept.useMutation as jest.Mock).mockReturnValue({
     mutate: accept,
     reset,
@@ -86,11 +95,105 @@ beforeEach(() => {
   });
   Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: () => id });
 });
+
+function generationFixture(): GenerationReport {
+  return {
+    requestHash: 'a'.repeat(64),
+    mode: 'deterministic',
+    model: null,
+    guidance: '',
+    summary: 'Planned 30 task minutes across 1 task. 0 task minutes remain unscheduled.',
+    reviewBy: `${date}T09:00:00.000Z`,
+    warnings: [],
+    outcomes: [],
+  };
+}
+
+it('shows the apply deadline and blocks an expired preview with an explicit regeneration action', async () => {
+  const now = jest.spyOn(Date, 'now').mockReturnValue(Date.parse(`${date}T09:01:00Z`));
+  try {
+    preview.generation = generationFixture();
+    render(<ProposalWorkspace date={date} />);
+    await selectProposal();
+    expect(screen.getByText(/Apply before/)).toHaveTextContent('Europe/Amsterdam');
+    expect(screen.getByText(/preview’s start time has passed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply changes' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Generate fresh preview' }));
+    expect(generate).toHaveBeenCalledWith({
+      date,
+      requestId: id,
+      mode: 'deterministic',
+      guidance: '',
+    });
+    expect(accept).not.toHaveBeenCalled();
+  } finally {
+    now.mockRestore();
+  }
+});
+
+it('keeps model intent separate from the actual placement report', async () => {
+  preview.generation = {
+    ...generationFixture(),
+    reviewBy: undefined,
+    selectionSummary: 'Selection intent only',
+    model: { provider: 'ollama', modelId: 'fixture' },
+    mode: 'ai',
+  };
+  render(<ProposalWorkspace date={date} />);
+  await selectProposal();
+  expect(screen.getByText(preview.generation.summary)).toBeVisible();
+  expect(screen.getByText('Selection intent only')).not.toBeVisible();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: 'AI assessment before scheduling' }));
+  await waitFor(() => expect(screen.getByText('Selection intent only')).toBeVisible());
+});
+
+it('makes the fill goal and actual availability windows visible in the preview', async () => {
+  preview.generation = {
+    ...generationFixture(),
+    reviewBy: undefined,
+    planningGoal: 'fill',
+    workBudgetMinutes: null,
+    availableWindows: [{ startsAt: `${date}T08:00:00Z`, endsAt: `${date}T08:45:00Z` }],
+    additionalCandidateCount: 20,
+  };
+  render(<ProposalWorkspace date={date} />);
+  await selectProposal();
+  expect(screen.getByText('Planning goal: Fill eligible available time')).toBeVisible();
+  expect(screen.getByText('Availability windows (Europe/Amsterdam)')).toBeVisible();
+  expect(screen.getByText(/20 additional eligible candidates considered/)).toBeVisible();
+});
 async function selectProposal() {
   const user = userEvent.setup();
   await user.click(screen.getByRole('combobox', { name: 'Saved proposals' }));
   await user.click(screen.getByRole('option', { name: /PENDING/ }));
 }
+it('generates a reviewable plan with guidance and an explicit deterministic option', async () => {
+  render(<ProposalWorkspace date={date} />);
+  const user = userEvent.setup();
+  fireEvent.change(screen.getByLabelText('Planning guidance'), {
+    target: { value: 'Keep today light' },
+  });
+  await user.click(screen.getByRole('button', { name: 'Generate plan preview' }));
+  expect(generate).toHaveBeenCalledWith({
+    date,
+    requestId: id,
+    mode: 'ai',
+    guidance: 'Keep today light',
+  });
+  expect(accept).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('combobox', { name: 'Planning method' }));
+  await user.click(screen.getByRole('option', { name: 'Deterministic · urgency order' }));
+  await user.click(screen.getByRole('button', { name: 'Generate plan preview' }));
+  expect(generate).toHaveBeenLastCalledWith({
+    date,
+    requestId: id,
+    mode: 'deterministic',
+    guidance: '',
+  });
+  expect(screen.getByLabelText('Planning guidance')).toBeDisabled();
+});
 it('creates a preview without applying changes', async () => {
   render(<ProposalWorkspace date={date} />);
   const user = userEvent.setup();

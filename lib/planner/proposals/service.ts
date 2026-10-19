@@ -44,6 +44,11 @@ function previewOf(result: ReturnType<typeof validateProposal>) {
     })),
     warnings: result.warnings,
     remaining: result.remaining,
+    reservations: result.reservations.map((r) => ({
+      ...r,
+      startsAt: r.startsAt.toISOString(),
+      endsAt: r.endsAt.toISOString(),
+    })),
   };
 }
 
@@ -183,7 +188,7 @@ export const proposalService = {
           timezone: s.timezone,
           baseHash: s.hash,
           document: json(input.document),
-          preview: json(previewOf(result)),
+          preview: json({ ...previewOf(result), generation: input.document.generation }),
         },
       });
       return { id: proposal.id };
@@ -357,6 +362,17 @@ export const proposalService = {
           },
         }));
       const occurrenceIds = new Map<string, string>();
+      for (const reservation of result.reservations) {
+        await tx.dailyPlanCategorySlot.create({
+          data: {
+            planId: plan.id,
+            category: 'LEISURE',
+            source: 'PLANNER',
+            startsAt: reservation.startsAt,
+            endsAt: reservation.endsAt,
+          },
+        });
+      }
       const addedBlockIds: string[] = [];
       const changedBlockIds: string[] = [];
       const released = new Set<string>();
@@ -396,7 +412,9 @@ export const proposalService = {
                 userId,
                 taskId: after.taskId,
                 occurrenceDate: row.planDate,
-                origin: 'MANUAL',
+                origin: s.tasks.find((t) => t.id === after.taskId)?.isRecurring
+                  ? 'RECURRENCE'
+                  : 'MANUAL',
                 status: 'SCHEDULED',
               },
             });

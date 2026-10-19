@@ -2,8 +2,139 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Scheduler #31 baseline and #33 validated planning proposals implemented; AI generation remains in #7/#34/#36
+**Status:** Scheduler #31, #33 and #34 implemented; richer retrieval and protected-work replanning remain in #7/#36
 **Last updated:** 2026-10-19
+
+## Task reviews (#32) — 2026-10-19
+
+- Implemented saved task reviews in `lib/task-reviews/` and the task inspector:
+  explained summary, priority/size/total effort, definition-clarity focus scale,
+  due risk, next steps and blockers. Facts, inferences and missing information
+  are displayed separately. Centralized `planner.taskReview` inherits Balanced/default.
+- Reviews now also suggest Theme, Category, Brief and Tags, with explicit clearing/
+  inheritance and replacement-tag semantics. New generation restricts theme references
+  to active owner-scoped choices; acceptance revalidates theme ownership/activity.
+  Source v2 includes available theme versions and prompt v2 requires all assessments;
+  saved v1 reviews remain readable and require regeneration before acceptance.
+- Review snapshots capture task/theme/dependency versions, notes, occurrences,
+  blocks, check-ins and the owner's current local date. Source/prompt changes
+  invalidate acceptance. Selective one-time acceptance applies only selected
+  properties in a short locked transaction; inference cannot mutate task properties.
+  Day planning can reuse bounded fresh review summaries as advisory context.
+- Migration `20261019230000_task_reviews` applied after `yarn db:backup`; generated
+  Prisma Client updated. See [task reviews](TASK_REVIEWS.md) for source bounds,
+  assessment semantics and table-lock concurrency limits.
+- Full Jest, TypeScript, scoped lint/format and Prisma validation passed. Seventeen
+  synthetic PostgreSQL/Ollama checks with `qwen3:8b` passed; test users/data removed.
+  The four-field extension passed 53 focused tests and a further synthetic
+  PostgreSQL/Ollama generation/acceptance check; its temporary user/data were removed.
+  Existing users' planning records were not changed. No production build or browser
+  automation was run. Earlier uncommitted scheduler work was preserved; all issue
+  #32 changes remain uncommitted.
+
+## Scheduler sparse-day correction
+
+- User reported the October 20 plan containing only five blocks. A read-only,
+  owner-scoped inspection matched the shared task names and confirmed the actual
+  standard windows: 08:00–08:45, 12:00–13:00 and 17:15–24:00 (510 minutes).
+  The accepted AI proposal had no guidance, scheduled 165 task minutes and left
+  twenty eligible candidates unattempted. Existing private planning data was not changed.
+- `generation/intent.ts` now makes unguided planning try the AI shortlist first,
+  then remaining eligible candidates in urgency order, without an unrequested model
+  work cap. Guided focus/light-day selection and caps remain preserved. Actual
+  placement still uses the same availability, remaining effort, reservations, rest,
+  preservation and application validator. The UI reports the goal, budget, additional
+  candidates and actual windows. No availability setting is changed.
+- A read-only simulation around the five accepted blocks fits 330 additional task
+  minutes. No proposal was saved or applied for the existing user. Regeneration can
+  fill remaining open time without moving the already accepted blocks.
+- Unguided schema output uses an empty omission list. One repeated-reference
+  correction is allowed within a shared 120-second inference deadline, followed by
+  strict reference validation; this addresses a duplicate exposed by live fill testing.
+- Focused tests cover broad fill despite a small model shortlist/cap, explicit light
+  and zero-work requests, standard weekday capacity, visible availability and bounded
+  correction. All 601 tests (86 suites), TypeScript, scoped lint/format, an isolated
+  production build and desktop/390px browser checks pass. Twenty-seven synthetic
+  PostgreSQL/Ollama checks pass with `qwen3:8b`, including default fill and explicit
+  light-day guidance. Fixture users/data were removed; public builds/server and the
+  existing user’s planning records were not changed.
+
+## Scheduler preview, fragmentation and explanation correction
+
+- User authorized fixing the expired preview, tiny partial blocks and misleading
+  day-part explanations shown in their pasted late-evening plan.
+- Generation now leaves ten minutes after placement calculation (rounded up) for review.
+  Reports save an optional earliest-start `reviewBy`; pending previews display it,
+  update expiry from a local clock, disable Apply after expiry, and offer regeneration
+  with the saved method/guidance. The server still rejects past starts with an explicit
+  fresh-preview error. No accepted plan or saved preview is shifted automatically.
+- Intact placement across all compatible windows precedes partial packing. Generated
+  partial task blocks and their remaining work are at least ten minutes; short gaps
+  stay unused. Whole short tasks and manual edits retain existing validation.
+- `generation/report.ts` computes the displayed summary and per-task explanations from
+  actual blocks/minutes/times. Raw AI selection summary/reasons are saved in additive
+  optional fields and displayed under a collapsed pre-scheduling assessment. The prompt
+  includes the future review cutoff/clipped availability and forbids placement claims.
+  Existing proposal JSON remains readable; no migration is required.
+- Focused validation: 108 tests passed, covering the pasted evening pattern, ten-minute
+  review with subsequent expiry rejection, intact later slots, tiny remainders, short
+  whole tasks, factual reporting and UI expiry/regeneration. Existing 23 synthetic
+  PostgreSQL/Ollama checks passed with `qwen3:8b`; desktop/390px browser preview/apply
+  passed without runtime errors, and temporary fixture users/data were removed.
+  All 591 tests (85 suites), TypeScript, scoped lint/format and an isolated production
+  build passed. Public builds/server and existing private planning data were untouched.
+
+## Scheduler reference-handling correction
+
+- User reported "unknown, repeated or missing task references" during real AI generation.
+  The initial implementation required copying full task/occurrence UUID keys and exhaustively
+  accounting for every candidate, so a useful subset selection could fail because some
+  other candidates were unmentioned.
+- `lib/planner/generation/selection.ts` now provides short request-local C1/C2 aliases,
+  an output schema enum restricted to the current pool, exact server-side identity mapping,
+  and explicit unscheduled outcomes/warnings for unmentioned candidates. Unknown,
+  duplicate and contradictory references still fail. No task selection is inferred for
+  unmentioned work. Dependency context uses the same aliases instead of competing UUIDs.
+- Validation: all 580 Jest tests (84 suites), including 58 focused generation tests,
+  TypeScript and scoped Oxlint/format passed.
+  A live `qwen3:8b` run on 32 synthetic tasks selected two and left some other candidates
+  unmentioned, successfully reproducing the old rejection case and verifying the fix.
+  No existing user's tasks/plans were read for that live check or changed.
+
+## Completed task: AI day planning (#34)
+
+- User authorized #34 on 2026-10-19. `lib/planner/generation/` and protected
+  `planningProposals.generate` now provide AI selection/order with optional guidance,
+  application-owned placement, explanations/omissions/remaining work/deadline risks,
+  and an explicit deterministic alternative. [AI day planning](AI_DAY_PLANNING.md)
+  records usage, limits and validation. Today generates proposals instead of legacy drafts;
+  planning settings remain separate, and previously saved legacy drafts can be accepted.
+- Model feature `planner.dayPlan` inherits centralized Balanced / Default LLM settings.
+  Due/important candidates bypass semantic top-k exclusion. Guidance uses owner-scoped
+  fresh-vector semantic search with explicit pending/unavailable warnings and current-data
+  fallback; no private index was rebuilt or processed. Context is bounded to 60 candidates
+  including every due/important occurrence; excess mandatory candidates require explicit
+  deterministic planning. Overall candidate bound is 1,000. Reports identify all remaining
+  eligible work, unsupported recurrence/blockers and defaulted estimates.
+- Existing proposal JSONB stores actual model attribution and generation reports; no migration.
+  Validated new LEISURE reservations are previewed and inserted inside existing atomic
+  acceptance. Supported selected-day recurring candidates stay virtual until acceptance;
+  RECURRENCE origin and task/date uniqueness prevent duplicate occurrence creation. No
+  backfill or closed-occurrence resurrection. Existing blocks/reservations stay unchanged
+  during generation; explicit movement/replanning remains #36.
+- Saved generation request replay precedes model/current-input resolution. Changed request
+  inputs conflict. No-change reports return `id: null` without persistence. Model/schema
+  failures leave the plan unchanged. Application placement validates task-boundary finishes,
+  rest after busy meetings, category/session continuity, DST and current work budgets.
+- Validation: 23 synthetic PostgreSQL/Ollama checks passed with actual `qwen3:8b`, including
+  light-day guidance, preview isolation, deferred recurrence, atomic leisure reservations,
+  owner isolation, stale rejection and duplicate acceptance. Real desktop/390px browser
+  checks passed for unavailable-model errors, deterministic generation, preview/apply and
+  overflow, without runtime errors. Fixture users/data were removed. All 570 Jest tests
+  (83 suites), TypeScript, scoped Oxlint/format, repository Stylelint and isolated
+  production Turbopack build pass. The same seven pre-existing TodayView curly-brace
+  lint failures remain (verified against HEAD); that unrelated code was preserved.
+  No public build/server or GitHub issue mutation was performed.
 
 ## Scheduler replacement checkpoint (#18 / #31 / #33)
 
@@ -13,7 +144,8 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   minutes beyond the session target only to finish the current task.
 - #33 is delivered through `lib/planner/proposals/`, protected `planningProposals` procedures,
   `PlanningProposals` and Today → Plan changes. [Planning proposals](PLANNING_PROPOSALS.md)
-  documents API, persistence, limitations and setup. #34 AI generation is not implemented.
+  documents API, persistence, limitations and setup. The #34 checkpoint above supersedes
+  the original generation deferral.
 - Proposal creation persists typed JSONB operations/preview without changing the plan. Acceptance
   checks owner/current-input fingerprint and revalidates under short table locks covering legacy
   writers, then atomically writes changes and a replayable receipt. Locks currently serialize
@@ -24,15 +156,15 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   cancel old blocks and retain history/task linkage. Remaining budgets, session/rest limits,
   earliest starts, ownership and availability/category constraints are validated.
 - Additive migration `20261019190000_planning_proposals` is applied locally and client regenerated.
-  Private backup completed first. Existing tables/data were not rewritten. Existing Generate
-  draft/Accept draft controls retain their old behavior; #34 should generate proposals instead.
+  Private backup completed first. Existing tables/data were not rewritten. Legacy APIs retain their old behavior; Today now uses #34 proposal generation.
 - Validation: 539 Jest tests (81 suites), TypeScript, scoped Oxlint/format and production build
   pass. Thirty-three synthetic PostgreSQL/service checks cover owner isolation, creation/discard,
   replay, concurrent acceptance, competing proposals, legacy concurrent writes and real rollback
   after an injected receipt-save failure. Desktop/390px browser preview/apply checks pass with
   no runtime errors; temporary fixture accounts/data are removed and browser sessions signed out.
 - Legacy gaps remain outside the proposal path: clear deletes completed blocks and completion of
-  one segment closes its occurrence. Recurrence materialization/retrieval remains with #7/#34.
+  one segment closes its occurrence. The #34 path above defers new recurring occurrences
+  until acceptance; broader retrieval remains #7.
   The new path protects historical blocks and never implicitly completes work.
 - Native issue dependency corrections: #34 uses #33; #38 depends on #37. #7 includes semantic
   retrieval/index freshness/fallback requirements. #18 owns the overall work breakdown.

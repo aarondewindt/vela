@@ -1,6 +1,7 @@
 import type { Snapshot } from './snapshot';
 import type { Addition, ProposalDocument } from './schema';
 import { wallInstant } from './time';
+import { occursOn } from './recurrence';
 
 export type ProposalBlock = {
   id: string;
@@ -79,11 +80,11 @@ export function eligible(s: Snapshot, taskId: string, occurrenceId: string | nul
       fail('Occurrence not found, closed, or not yet eligible.');
     }
   } else if (
-    task.isRecurring ||
+    (task.isRecurring && !occursOn(task, s.date)) ||
     s.occurrences.some(
       (o) =>
         o.taskId === taskId &&
-        (['PENDING', 'SCHEDULED'].includes(o.status) ||
+        ((!task.isRecurring && ['PENDING', 'SCHEDULED'].includes(o.status)) ||
           o.occurrenceDate.toISOString().slice(0, 10) === s.date)
     )
   ) {
@@ -140,10 +141,18 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   const cutoff = new Date(Math.max(dayStart.getTime(), Math.ceil(now.getTime() / 60_000) * 60_000));
   const windows = availability(s);
   const busy = s.events.filter((e) => e.isBusy);
-  const slots = s.plan?.categorySlots ?? [];
+  const originalSlots = s.plan?.categorySlots ?? [];
+  const reservations = (document.reservations ?? []).map((slot) => ({
+    ...slot,
+    startsAt: new Date(slot.startsAt),
+    endsAt: new Date(slot.endsAt),
+  }));
+  const slots = [...originalSlots, ...reservations];
   const taskKey = (b: ProposalBlock) => {
     const task = s.tasks.find((t) => t.id === b.taskId);
-    return task?.isRecurring ? `occurrence:${b.occurrenceId}` : `task:${b.taskId}`;
+    return task?.isRecurring
+      ? `occurrence:${b.occurrenceId ?? `${b.taskId}:${s.date}`}`
+      : `task:${b.taskId}`;
   };
   const add = (input: Addition, id: string): ProposalBlock => {
     const task = input.kind === 'TASK' ? eligible(s, input.taskId, input.occurrenceId) : null;
@@ -213,11 +222,42 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   const isOccupied = (b: ProposalBlock) =>
     occupied(b) &&
     (!b.calendarEventId || s.events.find((e) => e.id === b.calendarEventId)?.isBusy !== false);
+  for (const [index, slot] of reservations.entries()) {
+    if (slot.startsAt < cutoff) {
+      fail(
+        'This proposal’s start time has passed. Generate a fresh preview to keep all changes within future availability.'
+      );
+    }
+    if (
+      slot.endsAt <= slot.startsAt ||
+      slot.endsAt > dayEnd ||
+      !windows.some((w) => slot.startsAt >= w.startsAt && slot.endsAt <= w.endsAt) ||
+      originalSlots.some((other) => overlap(slot, other)) ||
+      reservations.slice(index + 1).some((other) => overlap(slot, other)) ||
+      busy.some((event) => overlap(slot, event)) ||
+      final.some(
+        (block) =>
+          isOccupied(block) &&
+          overlap(slot, block) &&
+          ((block.category !== 'LEISURE' && block.category !== 'REST') ||
+            block.startsAt < slot.startsAt ||
+            block.endsAt > slot.endsAt)
+      )
+    ) {
+      fail(
+        'New leisure reservations must fit future availability without conflicting with reservations or occupied time.'
+      );
+    }
+  }
   for (const block of final.filter((b) => changed.has(b.id))) {
+    if (block.startsAt < cutoff) {
+      fail(
+        'This proposal’s start time has passed. Generate a fresh preview to keep all changes within future availability.'
+      );
+    }
     if (
       !Number.isInteger(block.durationMinutes) ||
       block.durationMinutes <= 0 ||
-      block.startsAt < cutoff ||
       block.endsAt > dayEnd ||
       !windows.some((w) => block.startsAt >= w.startsAt && block.endsAt <= w.endsAt)
     ) {
@@ -397,6 +437,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     warnings.push('An existing category reservation extends outside availability. It is retained.');
   }
   return {
+    reservations,
     changes,
     final,
     warnings,

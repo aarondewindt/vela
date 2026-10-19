@@ -29,7 +29,7 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
     tx.task.findMany({
       where: { userId },
       orderBy: { id: 'asc' },
-      include: { theme: { select: { userId: true, category: true } } },
+      include: { theme: { select: { userId: true, category: true, name: true } } },
     }),
     tx.taskOccurrence.findMany({ where: { userId }, orderBy: { id: 'asc' } }),
     tx.taskDependency.findMany({

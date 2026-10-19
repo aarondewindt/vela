@@ -23,6 +23,7 @@ import {
   TextProperty,
 } from '../DataView/properties';
 import { formatDate, formatDateTime } from './format';
+import { TaskReview } from './TaskReview';
 import { TaskContentEditor } from './TaskContentEditor';
 
 type Props = {
@@ -132,7 +133,12 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
             </Menu>
           </>
         }
-        content={<TaskContentEditor taskId={task.id} />}
+        content={
+          <>
+            <TaskContentEditor taskId={task.id} />
+            <TaskReview key={task.id} taskId={task.id} themes={themes} />
+          </>
+        }
       >
         <TitleField value={task.title} onSave={(title) => save({ title })} />
 

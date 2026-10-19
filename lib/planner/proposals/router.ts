@@ -1,8 +1,13 @@
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import { createProposalSchema, dateSchema, editSchema, proposalIdSchema } from './schema';
 import { proposalService } from './service';
+import { generateDaySchema } from '../generation/schema';
+import { generateDayPlan } from '../generation/service';
 
 export const proposalRouter = router({
+  generate: protectedProcedure
+    .input(generateDaySchema)
+    .mutation(({ ctx, input }) => generateDayPlan(ctx.userId, input)),
   context: protectedProcedure
     .input(dateSchema)
     .query(({ ctx, input }) => proposalService.context(ctx.userId, input.date)),

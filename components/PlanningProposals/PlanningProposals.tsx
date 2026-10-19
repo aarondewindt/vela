@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Accordion,
   Alert,
   Badge,
   Button,
@@ -16,6 +17,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
+import type { GenerationReport } from '@/lib/planner/proposals/schema';
 
 type EditType = 'add' | 'move' | 'resize' | 'remove' | 'replace';
 const actions = [
@@ -26,30 +28,60 @@ const actions = [
   { value: 'replace', label: 'Replace a block' },
 ];
 
-export function PlanningProposals({ date }: { date: string }) {
+export function PlanningProposals({
+  date,
+  label = 'Plan changes',
+}: {
+  date: string;
+  label?: string;
+}) {
   const [opened, setOpened] = useState(false);
   return (
     <>
       <Button size="xs" variant="default" onClick={() => setOpened(true)}>
-        Plan changes
+        {label}
       </Button>
       <Modal
         opened={opened}
         onClose={() => setOpened(false)}
-        title={`Plan changes · ${date}`}
+        title={`${label} · ${date}`}
         size="lg"
       >
-        {opened && <ProposalWorkspace key={date} date={date} />}
+        {opened && (
+          <ProposalWorkspace
+            key={date}
+            date={date}
+            manualInitiallyOpen={label === 'Plan changes'}
+          />
+        )}
       </Modal>
     </>
   );
 }
 
-export function ProposalWorkspace({ date }: { date: string }) {
+export function ProposalWorkspace({
+  date,
+  manualInitiallyOpen = true,
+}: {
+  date: string;
+  manualInitiallyOpen?: boolean;
+}) {
   const utils = trpc.useUtils();
   const context = trpc.planningProposals.context.useQuery({ date }, { refetchOnMount: 'always' });
   const list = trpc.planningProposals.list.useQuery({ date }, { refetchOnMount: 'always' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'ai' | 'deterministic'>('ai');
+  const [guidance, setGuidance] = useState('');
+  const [generationRequestId, setGenerationRequestId] = useState<string | null>(null);
+  const [emptyReport, setEmptyReport] = useState<GenerationReport | null>(null);
+  const generate = trpc.planningProposals.generate.useMutation({
+    onSuccess: ({ id, report }) => {
+      setSelectedId(id);
+      setEmptyReport(id ? null : report);
+      setGenerationRequestId(null);
+      return utils.planningProposals.list.invalidate({ date });
+    },
+  });
   const proposal = trpc.planningProposals.get.useQuery(
     { id: selectedId ?? '' },
     { enabled: Boolean(selectedId), refetchInterval: 15000 }
@@ -79,9 +111,29 @@ export function ProposalWorkspace({ date }: { date: string }) {
   const accept = trpc.planningProposals.accept.useMutation({ onSuccess: refresh });
   const discard = trpc.planningProposals.discard.useMutation({ onSuccess: refresh });
   const error =
-    context.error ?? list.error ?? proposal.error ?? create.error ?? accept.error ?? discard.error;
+    context.error ??
+    list.error ??
+    proposal.error ??
+    create.error ??
+    accept.error ??
+    discard.error ??
+    generate.error;
   const ready = context.isFetchedAfterMount && !context.error ? context.data : undefined;
   const current = !proposal.error ? proposal.data : undefined;
+  const [clock, setClock] = useState(() => Date.now());
+  const reviewBy = current?.status === 'PENDING' ? current.preview.generation?.reviewBy : undefined;
+  useEffect(() => {
+    if (!reviewBy) {
+      return;
+    }
+    setClock(Date.now());
+    const interval = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [reviewBy]);
+  const reviewExpired = Boolean(reviewBy && new Date(reviewBy).getTime() < clock);
+  const invalidReason =
+    current?.invalidReason ??
+    (reviewExpired ? 'This preview’s start time has passed. Generate a fresh preview.' : null);
   const previewRef = useRef<HTMLDivElement>(null);
   const previewId = current?.id;
   useEffect(() => {
@@ -89,7 +141,7 @@ export function ProposalWorkspace({ date }: { date: string }) {
       previewRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
   }, [previewId]);
-  const busy = create.isPending || accept.isPending || discard.isPending;
+  const busy = create.isPending || accept.isPending || discard.isPending || generate.isPending;
   const timezone = ready?.timezone ?? current?.timezone ?? 'UTC';
   const format = (value: string, zone = current?.timezone ?? timezone) =>
     new Intl.DateTimeFormat(undefined, {
@@ -113,6 +165,57 @@ export function ProposalWorkspace({ date }: { date: string }) {
       <Text size="sm" c="dimmed">
         Times use {timezone}. Manual, fixed, started and historical blocks are protected.
       </Text>
+      <Select
+        label="Planning method"
+        value={mode}
+        data={[
+          { value: 'ai', label: 'AI task selection' },
+          { value: 'deterministic', label: 'Deterministic · urgency order' },
+        ]}
+        disabled={busy}
+        onChange={(value) => {
+          setMode(value as 'ai' | 'deterministic');
+          setGenerationRequestId(null);
+          generate.reset();
+        }}
+      />
+      <Textarea
+        label="Planning guidance"
+        placeholder="Focus on housework, or keep today light…"
+        description="Without guidance, fill eligible open time. Guidance can narrow the focus or request a lighter day. Existing commitments stay in place."
+        value={guidance}
+        maxLength={2000}
+        disabled={busy || mode === 'deterministic'}
+        onChange={(event) => {
+          setGuidance(event.currentTarget.value);
+          setGenerationRequestId(null);
+          generate.reset();
+        }}
+      />
+      <Button
+        loading={generate.isPending}
+        disabled={busy}
+        onClick={() => {
+          const id = generationRequestId ?? crypto.randomUUID();
+          setGenerationRequestId(id);
+          setEmptyReport(null);
+          generate.mutate({ date, requestId: id, mode, guidance: mode === 'ai' ? guidance : '' });
+        }}
+      >
+        Generate plan preview
+      </Button>
+      {generate.isPending && (
+        <Text size="sm" role="status">
+          Choosing tasks and calculating placements. You can review the saved proposal when
+          generation finishes.
+        </Text>
+      )}
+      {emptyReport && (
+        <>
+          <Text>No plan changes were needed or could fit.</Text>
+          <GenerationReview report={emptyReport} timezone={timezone} />
+        </>
+      )}
       {error && (
         <Alert color="red" role="alert">
           <Text>{error.message}</Text>
@@ -123,6 +226,7 @@ export function ProposalWorkspace({ date }: { date: string }) {
               create.reset();
               accept.reset();
               discard.reset();
+              generate.reset();
               void refresh();
             }}
           >
@@ -130,136 +234,145 @@ export function ProposalWorkspace({ date }: { date: string }) {
           </Button>
         </Alert>
       )}
-      <Select
-        label="Change"
-        value={type}
-        data={actions}
-        onChange={(value) => {
-          setType(value as EditType);
-          changed();
-        }}
-        disabled={busy}
-      />
-      {type !== 'add' && (
-        <Select
-          label="Block to change"
-          value={blockId}
-          searchable
-          data={
-            ready?.blocks
-              .filter((b) => b.editable)
-              .map((b) => ({
-                value: b.id,
-                label: `${b.title} · ${format(b.startsAt, ready.timezone)}`,
-              })) ?? []
-          }
-          onChange={(value) => {
-            setBlockId(value);
-            changed();
-            const block = ready?.blocks.find((b) => b.id === value);
-            if (block) {
-              const time = (instant: string) =>
-                new Intl.DateTimeFormat('en-GB', {
-                  timeZone: ready!.timezone,
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hourCycle: 'h23',
-                }).format(new Date(instant));
-              setStartTime(time(block.startsAt));
-              setEndTime(time(block.endsAt));
-            }
-          }}
-          disabled={busy}
-        />
-      )}
-      {(type === 'add' || type === 'replace') && (
-        <>
-          <Select
-            label="Add"
-            value={kind}
-            data={[
-              { value: 'TASK', label: 'Task' },
-              { value: 'REST', label: 'Break' },
-            ]}
-            onChange={(value) => {
-              setKind(value as 'TASK' | 'REST');
-              changed();
-            }}
-            disabled={busy}
-          />
-          {kind === 'TASK' && (
-            <Select
-              label="Task"
-              value={candidateId}
-              searchable
-              data={ready?.candidates.map((c) => ({ value: c.id, label: c.title })) ?? []}
-              onChange={(value) => {
-                setCandidateId(value);
-                changed();
-              }}
-              disabled={busy}
-            />
-          )}
-        </>
-      )}
-      {type !== 'remove' && (
-        <Group grow>
-          <TextInput
-            label="Start time"
-            type="time"
-            value={startTime}
-            onChange={(e) => {
-              setStartTime(e.currentTarget.value);
-              changed();
-            }}
-            disabled={busy}
-          />
-          <TextInput
-            label="End time"
-            type="time"
-            value={endTime}
-            onChange={(e) => {
-              setEndTime(e.currentTarget.value);
-              changed();
-            }}
-            disabled={busy}
-          />
-        </Group>
-      )}
-      <Textarea
-        label="Reason for this change"
-        value={explanation}
-        onChange={(e) => {
-          setExplanation(e.currentTarget.value);
-          changed();
-        }}
-        disabled={busy}
-      />
-      <Button
-        loading={create.isPending}
-        disabled={!ready || busy || !explanation.trim()}
-        onClick={() => {
-          if (!ready) {
-            return;
-          }
-          const nextId = requestId ?? crypto.randomUUID();
-          setRequestId(nextId);
-          create.mutate({
-            date,
-            baseHash: ready.baseHash,
-            requestId: nextId,
-            type,
-            blockId: blockId ?? undefined,
-            candidateId: candidateId ?? undefined,
-            kind,
-            startTime,
-            endTime,
-            explanation,
-          });
-        }}
-      >
-        Preview change
-      </Button>
+      <Accordion defaultValue={manualInitiallyOpen ? 'manual' : null}>
+        <Accordion.Item value="manual">
+          <Accordion.Control>Manual plan change</Accordion.Control>
+          <Accordion.Panel>
+            <Stack>
+              <Select
+                label="Change"
+                value={type}
+                data={actions}
+                onChange={(value) => {
+                  setType(value as EditType);
+                  changed();
+                }}
+                disabled={busy}
+              />
+              {type !== 'add' && (
+                <Select
+                  label="Block to change"
+                  value={blockId}
+                  searchable
+                  data={
+                    ready?.blocks
+                      .filter((b) => b.editable)
+                      .map((b) => ({
+                        value: b.id,
+                        label: `${b.title} · ${format(b.startsAt, ready.timezone)}`,
+                      })) ?? []
+                  }
+                  onChange={(value) => {
+                    setBlockId(value);
+                    changed();
+                    const block = ready?.blocks.find((b) => b.id === value);
+                    if (block) {
+                      const time = (instant: string) =>
+                        new Intl.DateTimeFormat('en-GB', {
+                          timeZone: ready!.timezone,
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hourCycle: 'h23',
+                        }).format(new Date(instant));
+                      setStartTime(time(block.startsAt));
+                      setEndTime(time(block.endsAt));
+                    }
+                  }}
+                  disabled={busy}
+                />
+              )}
+              {(type === 'add' || type === 'replace') && (
+                <>
+                  <Select
+                    label="Add"
+                    value={kind}
+                    data={[
+                      { value: 'TASK', label: 'Task' },
+                      { value: 'REST', label: 'Break' },
+                    ]}
+                    onChange={(value) => {
+                      setKind(value as 'TASK' | 'REST');
+                      changed();
+                    }}
+                    disabled={busy}
+                  />
+                  {kind === 'TASK' && (
+                    <Select
+                      label="Task"
+                      value={candidateId}
+                      searchable
+                      data={ready?.candidates.map((c) => ({ value: c.id, label: c.title })) ?? []}
+                      onChange={(value) => {
+                        setCandidateId(value);
+                        changed();
+                      }}
+                      disabled={busy}
+                    />
+                  )}
+                </>
+              )}
+              {type !== 'remove' && (
+                <Group grow>
+                  <TextInput
+                    label="Start time"
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.currentTarget.value);
+                      changed();
+                    }}
+                    disabled={busy}
+                  />
+                  <TextInput
+                    label="End time"
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => {
+                      setEndTime(e.currentTarget.value);
+                      changed();
+                    }}
+                    disabled={busy}
+                  />
+                </Group>
+              )}
+              <Textarea
+                label="Reason for this change"
+                value={explanation}
+                onChange={(e) => {
+                  setExplanation(e.currentTarget.value);
+                  changed();
+                }}
+                disabled={busy}
+              />
+              <Button
+                loading={create.isPending}
+                disabled={!ready || busy || !explanation.trim()}
+                onClick={() => {
+                  if (!ready) {
+                    return;
+                  }
+                  const nextId = requestId ?? crypto.randomUUID();
+                  setRequestId(nextId);
+                  create.mutate({
+                    date,
+                    baseHash: ready.baseHash,
+                    requestId: nextId,
+                    type,
+                    blockId: blockId ?? undefined,
+                    candidateId: candidateId ?? undefined,
+                    kind,
+                    startTime,
+                    endTime,
+                    explanation,
+                  });
+                }}
+              >
+                Preview change
+              </Button>
+            </Stack>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
       <Divider />
       <Select
         label="Saved proposals"
@@ -286,7 +399,48 @@ export function ProposalWorkspace({ date }: { date: string }) {
       {current && (
         <Stack ref={previewRef}>
           <Badge variant="light">{current.status}</Badge>
-          {current.invalidReason && <Alert color="yellow">{current.invalidReason}</Alert>}
+          {current.preview.generation && (
+            <GenerationReview
+              report={current.preview.generation}
+              timezone={current.timezone}
+              pending={current.status === 'PENDING'}
+            />
+          )}
+          {current.preview.reservations?.map((reservation) => (
+            <Paper withBorder p="sm" key={reservation.startsAt}>
+              <Text fw={600}>
+                Reserve leisure · {format(reservation.startsAt)}–{format(reservation.endsAt)}
+              </Text>
+              <Text size="sm">{reservation.explanation}</Text>
+            </Paper>
+          ))}
+          {invalidReason && (
+            <Alert color="yellow">
+              <Text>{invalidReason}</Text>
+              {current.preview.generation && (
+                <Button
+                  variant="subtle"
+                  disabled={busy}
+                  onClick={() => {
+                    const report = current.preview.generation!;
+                    setMode(report.mode);
+                    setGuidance(report.guidance);
+                    setEmptyReport(null);
+                    const requestId = crypto.randomUUID();
+                    setGenerationRequestId(requestId);
+                    generate.mutate({
+                      date,
+                      requestId,
+                      mode: report.mode,
+                      guidance: report.guidance,
+                    });
+                  }}
+                >
+                  Generate fresh preview
+                </Button>
+              )}
+            </Alert>
+          )}
           {current.preview.warnings.map((warning) => (
             <Alert key={warning} color="yellow">
               {warning}
@@ -328,7 +482,7 @@ export function ProposalWorkspace({ date }: { date: string }) {
           {current.status === 'PENDING' && (
             <Group>
               <Button
-                disabled={Boolean(current.invalidReason) || busy || proposal.isFetching}
+                disabled={Boolean(invalidReason) || busy || proposal.isFetching}
                 loading={accept.isPending}
                 onClick={() => accept.mutate({ id: current.id })}
               >
@@ -350,6 +504,129 @@ export function ProposalWorkspace({ date }: { date: string }) {
             </Text>
           )}
         </Stack>
+      )}
+    </Stack>
+  );
+}
+
+function GenerationReview({
+  report,
+  timezone,
+  pending = false,
+}: {
+  report: GenerationReport;
+  timezone: string;
+  pending?: boolean;
+}) {
+  return (
+    <Stack gap="xs">
+      <Text fw={600}>{report.summary}</Text>
+      {report.planningGoal && (
+        <Text size="sm">
+          Planning goal:{' '}
+          {report.planningGoal === 'fill'
+            ? 'Fill eligible available time'
+            : 'Follow planning guidance'}
+          {report.workBudgetMinutes != null
+            ? ` · Work budget: ${report.workBudgetMinutes} min`
+            : ''}
+        </Text>
+      )}
+      {report.availableWindows && (
+        <Stack gap={0}>
+          <Text size="sm" fw={600}>
+            Availability windows ({timezone})
+          </Text>
+          {report.availableWindows.map((window) => (
+            <Text size="sm" key={window.startsAt}>
+              {new Intl.DateTimeFormat(undefined, {
+                timeZone: timezone,
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+              }).format(new Date(window.startsAt))}
+              –
+              {new Intl.DateTimeFormat(undefined, {
+                timeZone: timezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+              }).format(new Date(window.endsAt))}
+            </Text>
+          ))}
+          {!report.availableWindows.length && (
+            <Text size="sm">No future availability for this date.</Text>
+          )}
+        </Stack>
+      )}
+      {Boolean(report.additionalCandidateCount) && (
+        <Text size="sm">
+          {report.additionalCandidateCount} additional eligible candidates considered after the AI
+          shortlist, in urgency order.
+        </Text>
+      )}
+      {pending && report.reviewBy && (
+        <Text size="sm">
+          Apply before{' '}
+          {new Intl.DateTimeFormat(undefined, {
+            timeZone: timezone,
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+          }).format(new Date(report.reviewBy))}{' '}
+          ({timezone}). New previews leave at least 10 minutes for review; changes to planning
+          inputs can require regeneration sooner.
+        </Text>
+      )}
+      <Text size="sm" c="dimmed">
+        {report.model
+          ? `AI · ${report.model.provider} / ${report.model.modelId}`
+          : report.mode === 'ai'
+            ? 'AI planning · no model call needed'
+            : 'Deterministic planning'}
+      </Text>
+      {report.guidance && <Text size="sm">Guidance: {report.guidance}</Text>}
+      {report.warnings.map((warning, index) => (
+        <Alert color="yellow" key={index}>
+          {warning}
+        </Alert>
+      ))}
+      {report.outcomes.map((outcome) => (
+        <Paper withBorder p="sm" key={outcome.key}>
+          <Text fw={600}>
+            {outcome.title}
+            {outcome.deadlineRisk ? ' · Deadline at risk' : ''}
+          </Text>
+          <Text size="sm">
+            {outcome.scheduledMinutes} min planned · {outcome.remainingMinutes} min remain
+          </Text>
+          <Text size="sm" c="dimmed">
+            {outcome.reason}
+          </Text>
+        </Paper>
+      ))}
+      {report.selectionSummary && (
+        <Accordion>
+          <Accordion.Item value="assessment">
+            <Accordion.Control>AI assessment before scheduling</Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="xs">
+                <Text size="sm">{report.selectionSummary}</Text>
+                {report.outcomes
+                  .filter((outcome) => outcome.selectionReason)
+                  .map((outcome) => (
+                    <Text size="sm" key={outcome.key}>
+                      {outcome.title}: {outcome.selectionReason}
+                    </Text>
+                  ))}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
       )}
     </Stack>
   );

@@ -14,7 +14,8 @@ export const taskSearchService = {
     return (await discoverModels()).filter((model) => model.capabilities.includes('embedding'));
   },
   synchronize: (userId: string) => collection.synchronize(userId),
-  search: (userId: string, query: string, limit: number) => collection.search(userId, query, limit),
+  search: (userId: string, query: string, limit: number, signal?: AbortSignal) =>
+    collection.search(userId, query, limit, signal),
   async rebuild(userId: string, selection: AiModelSelection, queryInstruction: string) {
     requireEmbeddingMaintainer(userId);
     return collection.rebuild(selection, queryInstruction);

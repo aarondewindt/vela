@@ -2,12 +2,14 @@
 
 Implemented for [#33](https://github.com/aarondewindt/vela/issues/33), under #18.
 This is the shared review/application workflow for the replacement scheduler.
-It follows [Scheduler policy](PLANNER_SCHEDULER_POLICY.md). AI generation (#34),
-retrieval (#7), and explicit changes to active/protected work (#36) remain separate.
+It follows [Scheduler policy](PLANNER_SCHEDULER_POLICY.md). [AI day planning](AI_DAY_PLANNING.md)
+(#34) now generates through this workflow. Richer retrieval (#7) and explicit changes to
+active/protected work (#36) remain separate.
 
 ## Using the workflow
 
-Open **Planner → Today → Plan changes** for the selected date. Choose an addition,
+Open **Planner → Today → Generate plan** for the selected date. For a manual change,
+expand **Manual plan change** and choose an addition,
 move, duration change, removal or replacement, specify its time and reason, and
 select **Preview change**. No planning records change at this point. Select a saved
 proposal to inspect its before/after times, explanations, warnings and remaining
@@ -20,7 +22,9 @@ The simple editor accepts same-day HH:mm times; the structured API accepts expli
 offset instants, including the end at next local midnight. Nonexistent or ambiguous
 wall times are rejected in the editor; the API can express either repeated-hour
 instant unambiguously. Server time determines the future-only cutoff at preview
-and acceptance, rounded up to the next minute.
+and acceptance, rounded up to the next minute. Generated schedules additionally
+leave at least ten minutes for review; the preview displays an apply deadline and
+offers regeneration if a proposed start passes. Manual edits keep their explicit times.
 
 Manual, fixed, active, completed, skipped, cancelled and calendar-linked blocks
 cannot be edited by this workflow. It also protects blocks that have already
@@ -35,6 +39,8 @@ moves keep the duration. Whole-task deletion and completion are not proposal act
 Protected `planningProposals` tRPC procedures delegate to
 `lib/planner/proposals/service.ts`:
 
+- `generate({requestId,date,mode,guidance})`: AI or explicit deterministic day generation;
+  see [AI day planning](AI_DAY_PLANNING.md) for reports, limits and replay semantics.
 - `context({date})`: owner-scoped candidate references, current block summaries,
   editing eligibility, timezone and planning-input fingerprint.
 - `create({requestId,date,baseHash,document})`: validate and persist a proposal;
@@ -50,19 +56,21 @@ Protected `planningProposals` tRPC procedures delegate to
 - `discard({id})`: idempotent for discarded proposals; applied proposals cannot
   be discarded. Missing/foreign proposals return the same NOT_FOUND response.
 
-`schemaVersion: 1` documents contain 1–100 structured operations, each with an
+`schemaVersion: 1` documents contain up to 100 structured operations, each with an
 explanation. Types are `add`, `move`, `resize`, `remove`, and `replace`. Added blocks
 are a referenced TASK (taskId plus existing occurrenceId, or null for an eligible
-non-recurring backlog task) or REST. Batch operations can collectively resolve
+non-recurring backlog task or virtual selected-day recurring occurrence) or REST. Batch operations can collectively resolve
 conflicts; a block may only be mutated once in a document. There is no executable
 model text, arbitrary task property patch, implicit completion, or inferred override
-permission. Future generation calls this same create/accept boundary.
+permission. Optional new LEISURE reservations and generation reports are stored in
+the same document; at least one operation or reservation is required. Generation calls
+this same create/accept boundary.
 
-The UI composes one operation per proposal. The service accepts batches, including
-split-task segments and explicit rests, for future generation. Leisure tasks require
-an existing matching reservation. Reservation creation/editing stays with the existing
-availability/category UI; #34 will need to construct flexible leisure reservations
-through an explicit validated extension when generating them anew.
+The manual editor composes one operation per proposal. The service accepts batches, including
+split-task segments and explicit rests. Leisure tasks require a matching existing or
+proposed reservation. #34 adds validated future LEISURE reservations; existing reservation
+editing stays with the availability/category UI. New reservations appear in the preview
+and are inserted atomically on acceptance.
 
 ## Validation and remaining work
 
@@ -75,8 +83,10 @@ reservations cannot be used to bypass availability.
 
 Committed and completed minutes in other current plans are counted, while edited
 allocations are replaced before evaluating the total. Recurring work is counted per
-occurrence. New occurrences are created only on acceptance for non-recurring tasks;
-this workflow never materializes recurrence or resurrects a closed occurrence.
+occurrence. New occurrences for non-recurring tasks are created only on acceptance;
+generation may also reference a virtual selected-day recurring occurrence, created on
+acceptance only after supported-rule/date validation. This workflow never
+backfills missed dates or resurrects a closed occurrence.
 Removing the last commitment leaves an open occurrence PENDING for future planning
 and returns a non-recurring IN_PROGRESS task to BACKLOG when no commitments remain.
 This retains cancelled block linkage rather than using legacy occurrence deletion.
@@ -88,8 +98,8 @@ after the target or finish merely a partial allocation. Future commitments elsew
 also prevent falsely claiming that the current segment finishes a task. Leisure has
 its separate hard session maximum. Removing/moving a rest cannot introduce a session
 violation in untouched downstream work. Existing session violations may remain but
-cannot be made worse. Placement optimization and early-break selection belong to
-#11/#34; the validator rejects a bad schedule rather than generating a replacement.
+cannot be made worse. Placement optimization and early-break selection now live in #34 generation; the
+validator rejects a bad schedule rather than generating a replacement.
 
 ## Persistence and concurrency
 
@@ -119,9 +129,8 @@ from current owned data, not trusted from the saved preview.
 
 Accepted proposals patch the current plan in place (or create an ACTIVE plan if
 none exists), preserving protected block IDs and outcomes. They do not use the legacy
-`generateDraft` or `clearDayPlan` implementations. The old Generate draft / Accept
-draft controls remain available with their existing behavior; #34 will replace
-that generation path with proposal creation. This feature does not rebuild or
+`generateDraft` or `clearDayPlan` implementations. Today now calls #34 proposal generation; acceptance of previously saved legacy
+drafts and the old generator API retain their existing behavior. This feature does not rebuild or
 restart the public deployment.
 
 ## Verification

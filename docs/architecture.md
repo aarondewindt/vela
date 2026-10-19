@@ -38,6 +38,7 @@ Next.js pages and Mantine components
 - `lib/nutrition/drafts.ts`, `draft-items.ts`, `draft-matching.ts` and `draft-generation.ts` own persistent meal drafts, typed conversational corrections, conservative matching and deterministic previews. `NutritionMealDraft` holds a revisioned JSONB item document and generation lease; `NutritionDraftTurn` holds saved messages/replies. The diary review UI resumes drafts by URL/list, permits manual resolution and confirms them through the same transactional logging path as manual entries. Product-version checks require renewed review after source changes; confirmed draft status prevents duplicate insertion.
 - `lib/nutrition/nevo-csv.ts` and `nevo.ts` validate, preview and transactionally apply user-uploaded NEVO datasets through protected Nutrition procedures. Stable per-owner source codes support updates; preview revisions, advisory/product locks and default manual-edit protection prevent lost changes. `Product.sourceSnapshot` retains original source rows separately from editable catalog fields. Catalog/diary/draft calculation displays include source/version attribution; see [NEVO](NEVO.md).
 - `/health` provides owner-scoped body composition, sleep and calorie-balance history, manual readings and a signed daily balance goal. `lib/health/` combines Nutrition diary snapshots with normalized total-burn records; missing values remain unknown. `/settings/home-assistant` configures private encrypted connections and health entity mappings. The reusable read adapter lives in `lib/integrations/home-assistant/`; a supervised `yarn home-assistant:sync` worker handles live subscriptions, bounded history recovery and database leases/revision fencing. See [Health](HEALTH.md) for configuration, timestamp semantics and upstream limits.
+- `lib/task-reviews/` owns saved AI task assessments, complete source fingerprints, freshness checks and explicit selective acceptance. The task inspector exposes owner-scoped reviews; day planning can reuse bounded fresh summaries as advisory context. Centralized model settings resolve `planner.taskReview`. See [task reviews](TASK_REVIEWS.md) for the focus scale, provenance, migration and acceptance locking limits.
 - `store/` contains Zustand UI stores. Use tRPC/TanStack Query for persistent server state rather than copying it into these stores. See [FRONTEND_API.md](FRONTEND_API.md) for the state ownership rules.
 - Jest tests are colocated with relevant components and services. `test-utils/` contains shared render helpers.
 
@@ -50,7 +51,10 @@ owner-scoped context/create/preview/accept/discard services and Today review UI.
 Proposals save without changing planning state and apply atomically after fingerprint
 and constraint revalidation. Acceptance briefly locks planner source tables to cover
 legacy writers; see the proposal documentation for the current concurrency tradeoff.
-AI generation (#34) and protected-work adjustments (#36) remain future work.
+[AI day planning](AI_DAY_PLANNING.md) (#34) now selects tasks through centralized model
+settings and computes valid placements through application code. Today generates reviewed
+proposals, with an explicit deterministic alternative. Protected-work adjustments (#36)
+remain future work.
 
 ## Persistence and behavior
 

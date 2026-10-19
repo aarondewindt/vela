@@ -55,9 +55,51 @@ export const operationSchema = z.discriminatedUnion('type', [
     })
     .strict(),
 ]);
-export const documentSchema = z
-  .object({ schemaVersion: z.literal(1), operations: z.array(operationSchema).min(1).max(100) })
+export const reservationSchema = z
+  .object({
+    category: z.literal('LEISURE'),
+    ...interval,
+    explanation: z.string().trim().min(1).max(2000),
+  })
   .strict();
+export const generationReportSchema = z.object({
+  requestHash: z.string(),
+  mode: z.enum(['ai', 'deterministic']),
+  model: z.object({ provider: z.literal('ollama'), modelId: z.string() }).nullable(),
+  guidance: z.string(),
+  summary: z.string(),
+  selectionSummary: z.string().optional(),
+  reviewBy: z.iso.datetime().optional(),
+  planningGoal: z.enum(['fill', 'guided']).optional(),
+  workBudgetMinutes: z.number().int().min(0).nullable().optional(),
+  availableWindows: z.array(z.object({ startsAt: z.string(), endsAt: z.string() })).optional(),
+  additionalCandidateCount: z.number().int().min(0).optional(),
+  warnings: z.array(z.string()),
+  outcomes: z.array(
+    z.object({
+      key: z.string(),
+      title: z.string(),
+      remainingMinutes: z.number(),
+      scheduledMinutes: z.number(),
+      reason: z.string(),
+      selectionReason: z.string().optional(),
+      deadlineRisk: z.boolean(),
+    })
+  ),
+});
+export type GenerationReport = z.infer<typeof generationReportSchema>;
+export const documentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    operations: z.array(operationSchema).max(100),
+    reservations: z.array(reservationSchema).max(16).optional(),
+    generation: generationReportSchema.optional(),
+  })
+  .strict()
+  .refine(
+    (d) => d.operations.length > 0 || Boolean(d.reservations?.length),
+    'A proposal needs a change.'
+  );
 export const createProposalSchema = z
   .object({
     requestId: z.uuid(),
@@ -100,6 +142,8 @@ const previewBlock = z.object({
   durationMinutes: z.number(),
 });
 export const previewSchema = z.object({
+  reservations: z.array(reservationSchema).optional(),
+  generation: generationReportSchema.optional(),
   changes: z.array(
     z.object({
       type: z.string(),

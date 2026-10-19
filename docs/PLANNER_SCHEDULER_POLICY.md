@@ -5,7 +5,8 @@ Status: policy baseline for [#31](https://github.com/aarondewindt/vela/issues/31
 The existing generator remains active. This document distinguishes its behavior
 from the replacement contract. #33 now implements proposal persistence, validation
 and atomic application; see [Planning proposals](PLANNING_PROPOSALS.md) for its
-boundaries and verification. AI generation is still future work. The session finish
+boundaries and verification. [AI day planning](AI_DAY_PLANNING.md) (#34) now uses
+the proposal path; the legacy generator remains available through its API. The session finish
 extension reflects the user's explicit choice on 2026-10-19; other new policies
 are implementation defaults for this work.
 
@@ -200,3 +201,30 @@ adds comparative quality evaluation and rollout. Task analysis in #32 is advisor
 The #31 baseline itself required no production scheduling/database change. The
 subsequent #33 proposal implementation is documented separately; its validator tests
 now exercise availability, preservation and session rules, including the finish extension.
+
+## Generation review and fragmentation preferences (#34 correction)
+
+Generated placements begin no earlier than ten minutes after placement calculation,
+rounded up to a whole minute. This gives a same-day preview time for review without
+relaxing the acceptance cutoff. The earliest proposed start is its displayed apply
+deadline; once that time passes, regenerate rather than silently shifting saved times.
+Future-day plans still begin within that day's availability.
+
+The first generator prefers an intact placement in any eligible window before
+splitting into earlier gaps. Partial segments and any remaining work they create
+are at least ten minutes; smaller gaps are left unused. Whole tasks shorter than
+ten minutes remain valid, as do manual positive-minute edits. This is a generator
+packing preference, not a new hard eligibility or validator constraint.
+
+The application describes the actual placements and unscheduled totals. AI selection
+intent is labeled separately because the model does not know placement results when
+it supplies its reasons.
+
+Without planning guidance, generation now tries to fill eligible available time: AI
+shortlist/order first, then remaining candidates by application urgency ranking,
+without an unsolicited model work cap. With guidance, AI selection and any light-day
+work cap remain planning preferences. This default does not override eligibility,
+reservations, availability or protected work. Standard weekday availability remains
+08:00–08:45, 12:00–13:00 and 17:15–24:00. The preview displays these windows, the
+planning goal and any guided work budget so unavailable gaps are distinguishable
+from time left unallocated.

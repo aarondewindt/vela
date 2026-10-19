@@ -7,10 +7,12 @@ import { devToolsRouter } from '@/lib/dev-tools/router';
 import { aiDevRouter } from '@/lib/ai-dev/router';
 import { taskSearchRouter } from '@/lib/task-search/router';
 import { nutritionRouter } from '@/lib/nutrition/router';
+import { taskReviewRouter } from '@/lib/task-reviews/router';
 import { router } from './server';
 
 export const appRouter = router({
   planner: plannerRouter,
+  taskReviews: taskReviewRouter,
   planningProposals: proposalRouter,
   settings: settingsRouter,
   devTools: devToolsRouter,

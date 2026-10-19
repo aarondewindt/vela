@@ -26,6 +26,7 @@ model User {
   themes                    Theme[]
   locations                 Location[]
   tasks                     Task[]
+  taskReviews               TaskReview[]
   savedViews                SavedView[]
   taskDependencies          TaskDependency[]
   taskOccurrences           TaskOccurrence[]
@@ -375,6 +376,7 @@ model Task {
   updatedAt        DateTime   @updatedAt
   archivedAt       DateTime?
   embedding        TaskEmbedding?
+  reviews          TaskReview[]
 
   dependenciesBlocking  TaskDependency[] @relation("TaskBlocked")
   dependenciesDependsOn TaskDependency[] @relation("TaskDependsOn")
@@ -1011,4 +1013,24 @@ model PlanningProposal {
   @@unique([userId, requestId])
   @@index([userId, planDate, createdAt])
   @@map("planning_proposals")
+}
+
+model TaskReview {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId         String   @db.Uuid
+  task           Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  sourceHash     String   @db.Char(64)
+  source         Json     @db.JsonB
+  document       Json     @db.JsonB
+  promptVersion  String   @db.VarChar(64)
+  provider       String   @db.VarChar(64)
+  modelId        String   @db.VarChar(200)
+  createdAt      DateTime @default(now())
+  acceptedAt     DateTime?
+  acceptedFields String[] @default([])
+
+  @@index([userId, taskId, createdAt])
+  @@map("task_reviews")
 }
