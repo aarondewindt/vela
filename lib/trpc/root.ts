@@ -1,5 +1,6 @@
 import { homeAssistantRouter } from '@/lib/integrations/home-assistant/router';
 import { healthRouter } from '@/lib/health/router';
+import { proposalRouter } from '@/lib/planner/proposals/router';
 import { plannerRouter } from '@/lib/planner/router';
 import { settingsRouter } from '@/lib/settings/router';
 import { devToolsRouter } from '@/lib/dev-tools/router';
@@ -10,6 +11,7 @@ import { router } from './server';
 
 export const appRouter = router({
   planner: plannerRouter,
+  planningProposals: proposalRouter,
   settings: settingsRouter,
   devTools: devToolsRouter,
   aiDev: aiDevRouter,

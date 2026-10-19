@@ -2,8 +2,42 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** User AI model settings, Nutrition Phases 1–6 and NEVO upload/update implemented and validated
-**Last updated:** 2026-10-18
+**Status:** Scheduler #31 baseline and #33 validated planning proposals implemented; AI generation remains in #7/#34/#36
+**Last updated:** 2026-10-19
+
+## Scheduler replacement checkpoint (#18 / #31 / #33)
+
+- User confirmed #31–#41 are native sub-issues of #18, authorized #31, then explicitly
+  authorized continuing with #33. [Scheduler policy](PLANNER_SCHEDULER_POLICY.md) separates
+  current generator behavior from the replacement contract. The user chose up to 30 extra
+  minutes beyond the session target only to finish the current task.
+- #33 is delivered through `lib/planner/proposals/`, protected `planningProposals` procedures,
+  `PlanningProposals` and Today → Plan changes. [Planning proposals](PLANNING_PROPOSALS.md)
+  documents API, persistence, limitations and setup. #34 AI generation is not implemented.
+- Proposal creation persists typed JSONB operations/preview without changing the plan. Acceptance
+  checks owner/current-input fingerprint and revalidates under short table locks covering legacy
+  writers, then atomically writes changes and a replayable receipt. Locks currently serialize
+  planner writes across users; reads continue. This conservative tradeoff is documented.
+- Add/move/resize/remove/replace and REST blocks are supported; UI composes single changes,
+  API supports batches. Protected manual/fixed/active/history/calendar blocks cannot be changed;
+  #36 will add explicit protected-work adjustments. Moves retain identity; removals/replacements
+  cancel old blocks and retain history/task linkage. Remaining budgets, session/rest limits,
+  earliest starts, ownership and availability/category constraints are validated.
+- Additive migration `20261019190000_planning_proposals` is applied locally and client regenerated.
+  Private backup completed first. Existing tables/data were not rewritten. Existing Generate
+  draft/Accept draft controls retain their old behavior; #34 should generate proposals instead.
+- Validation: 539 Jest tests (81 suites), TypeScript, scoped Oxlint/format and production build
+  pass. Thirty-three synthetic PostgreSQL/service checks cover owner isolation, creation/discard,
+  replay, concurrent acceptance, competing proposals, legacy concurrent writes and real rollback
+  after an injected receipt-save failure. Desktop/390px browser preview/apply checks pass with
+  no runtime errors; temporary fixture accounts/data are removed and browser sessions signed out.
+- Legacy gaps remain outside the proposal path: clear deletes completed blocks and completion of
+  one segment closes its occurrence. Recurrence materialization/retrieval remains with #7/#34.
+  The new path protects historical blocks and never implicitly completes work.
+- Native issue dependency corrections: #34 uses #33; #38 depends on #37. #7 includes semantic
+  retrieval/index freshness/fallback requirements. #18 owns the overall work breakdown.
+- Existing UI changes for #8/#1/#6 and #31 policy/tests are still in the working tree; preserve them.
+  No public build/restart or GitHub issue mutation was performed.
 
 ## Completed task: user AI model settings
 

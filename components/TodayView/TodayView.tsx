@@ -25,8 +25,10 @@ import {
 import { DatePickerInput } from '@mantine/dates';
 import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
 import { notifications } from '@mantine/notifications';
+import { PlanningProposals } from '../PlanningProposals/PlanningProposals';
 import {
   IconCalendar,
+  IconCalendarMinus,
   IconCheck,
   IconCircleCheck,
   IconChevronLeft,
@@ -626,12 +628,14 @@ export function TodayView() {
           </ActionIcon>
         </Tooltip>
       )}
-      <Tooltip label="Remove from day">
+      <Tooltip
+        label={selectedBlock.taskOccurrenceId ? 'Remove from day (keep task)' : 'Remove from day'}
+      >
         <ActionIcon
-          aria-label="Remove from day"
+          aria-label={selectedBlock.taskOccurrenceId ? 'Remove from day (keep task)' : 'Remove from day'}
           variant="subtle"
           size="xs"
-          color="red"
+          color="gray"
           disabled={selectedBlock.status !== 'PLANNED' && selectedBlock.status !== 'SKIPPED'}
           loading={removeBlock.isPending}
           onClick={() =>
@@ -641,7 +645,7 @@ export function TodayView() {
             )
           }
         >
-          <IconTrash size={16} />
+          <IconCalendarMinus size={16} />
         </ActionIcon>
       </Tooltip>
     </Group>
@@ -849,6 +853,7 @@ export function TodayView() {
               >
                 Generate draft
               </Button>
+              <PlanningProposals date={selectedDate} />
               {plan?.status === 'DRAFT' && (
                 <Button
                   size="xs"

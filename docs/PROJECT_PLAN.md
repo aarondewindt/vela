@@ -4,6 +4,8 @@
 
 > Health body/sleep tracking, calorie balance and per-user Home Assistant import are implemented; see [Health](HEALTH.md) for setup and current limits. Broader exercise/health capabilities below remain planned.
 
+> AI scheduler replacement: #18 is split into native sub-issues #31–#41. The current/replacement distinction and scheduling contract are in [Scheduler policy](PLANNER_SCHEDULER_POLICY.md); older deterministic planning details below are historical direction.
+
 _Last updated: 2026-06-18_
 
 ## 1. Project Vision

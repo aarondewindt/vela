@@ -41,6 +41,17 @@ Next.js pages and Mantine components
 - `store/` contains Zustand UI stores. Use tRPC/TanStack Query for persistent server state rather than copying it into these stores. See [FRONTEND_API.md](FRONTEND_API.md) for the state ownership rules.
 - Jest tests are colocated with relevant components and services. `test-utils/` contains shared render helpers.
 
+## Scheduler replacement policy
+
+The current generator remains available. The replacement scheduler policy under
+GitHub #18 starts with [constraints and planning policies](PLANNER_SCHEDULER_POLICY.md)
+from #31. The [planning proposal workflow](PLANNING_PROPOSALS.md) from #33 now exposes
+owner-scoped context/create/preview/accept/discard services and Today review UI.
+Proposals save without changing planning state and apply atomically after fingerprint
+and constraint revalidation. Acceptance briefly locks planner source tables to cover
+legacy writers; see the proposal documentation for the current concurrency tradeoff.
+AI generation (#34) and protected-work adjustments (#36) remain future work.
+
 ## Persistence and behavior
 
 The Prisma datasource is PostgreSQL, configured through `prisma.config.ts`; connection settings come from the runtime environment. Prisma 7 uses the `prisma-client` generator and PostgreSQL driver adapter in this repository. Review the schema and migrations before changing persistent models.

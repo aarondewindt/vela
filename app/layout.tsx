@@ -9,7 +9,7 @@ import '@mantine/schedule/styles.css';
 import 'mantine-datatable/styles.css';
 import '@blocknote/mantine/blocknoteStyles.css';
 
-import './globals.css'
+import './globals.css';
 
 import { ColorSchemeScript, mantineHtmlProps, MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
@@ -20,8 +20,8 @@ import { theme } from '../theme';
 import ClientLayout from './client_layout';
 
 export const metadata = {
-  title: 'Mantine Next.js template',
-  description: 'I am using Mantine with Next.js!',
+  title: 'Vela',
+  description: 'Your private planner for daily life.',
 };
 
 export default function RootLayout({ children }: { children: any }) {

@@ -34,7 +34,12 @@ export function useDeleteTaskMutation() {
   const utils = trpc.useUtils();
 
   return trpc.planner.deleteTask.useMutation({
-    onSuccess: () => utils.planner.listTasks.invalidate(),
+    onSuccess: () =>
+      Promise.all([
+        utils.planner.listTasks.invalidate(),
+        utils.planner.getDayData.invalidate(),
+        utils.planner.getPlan.invalidate(),
+      ]),
   });
 }
 

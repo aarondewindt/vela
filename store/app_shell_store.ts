@@ -1,5 +1,5 @@
-import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { AppShellResizeSizes } from '@mantine/core';
 
 type AppShellStoreState = {
@@ -10,6 +10,7 @@ type AppShellStoreState = {
 
 type AppShellStoreActions = {
   toggle_navbar: () => void;
+  close_navbar: () => void;
   set_aside_opened: (opened: boolean) => void;
   set_sizes: (sizes: AppShellResizeSizes) => void;
 };
@@ -35,6 +36,7 @@ export const useAppShellStore = create<AppShellStore>()(
       aside_opened: false,
       sizes: {},
       toggle_navbar: () => set((state) => ({ navbar_opened: !state.navbar_opened })),
+      close_navbar: () => set({ navbar_opened: false }),
       set_aside_opened: (opened) => set({ aside_opened: opened }),
       set_sizes: (sizes) => set({ sizes }),
     }),

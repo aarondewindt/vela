@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink } from '@mantine/core';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAppShellStore } from '@/store/app_shell_store';
 
 interface LinksGroupProps {
   icon: React.FC<any>;
@@ -20,6 +21,19 @@ export function LinksGroup({
   link,
   pathPattern,
 }: LinksGroupProps) {
+  const closeNavbar = useAppShellStore((state) => state.close_navbar);
+  const handleNavigate = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      !event.defaultPrevented &&
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      closeNavbar();
+    }
+  };
   const hasLinks = Array.isArray(links);
   const pathname = usePathname();
   const isActive = pathPattern?.test(pathname ?? '') ?? false;
@@ -40,6 +54,7 @@ export function LinksGroup({
         href={item.link}
         label={item.label}
         active={pathname === item.link}
+        onClick={handleNavigate}
       />
     ));
   const navLinkProps = {
@@ -52,7 +67,7 @@ export function LinksGroup({
 
   if (link) {
     return (
-      <NavLink {...navLinkProps} component={Link} href={link}>
+      <NavLink {...navLinkProps} component={Link} href={link} onClick={handleNavigate}>
         {children}
       </NavLink>
     );

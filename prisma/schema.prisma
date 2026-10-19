@@ -29,6 +29,7 @@ model User {
   savedViews                SavedView[]
   taskDependencies          TaskDependency[]
   taskOccurrences           TaskOccurrence[]
+  planningProposals         PlanningProposal[]
   dailyPlans                DailyPlan[]
   dailyBlocks               DailyBlock[]
   dayOverrides              DayOverride[]
@@ -988,4 +989,26 @@ model HealthGoal {
   updatedAt      DateTime @updatedAt
 
   @@map("health_goals")
+}
+
+
+model PlanningProposal {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId      String   @db.Uuid
+  requestHash    String   @db.Char(64)
+  planDate       DateTime @db.Date
+  timezone       String   @db.VarChar(64)
+  baseHash       String   @db.Char(64)
+  document       Json     @db.JsonB
+  preview        Json     @db.JsonB
+  status         String   @default("PENDING") @db.VarChar(16)
+  receipt        Json?    @db.JsonB
+  createdAt      DateTime @default(now())
+  resolvedAt     DateTime?
+
+  @@unique([userId, requestId])
+  @@index([userId, planDate, createdAt])
+  @@map("planning_proposals")
 }
