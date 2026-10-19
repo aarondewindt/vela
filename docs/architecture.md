@@ -53,8 +53,9 @@ and constraint revalidation. Acceptance briefly locks planner source tables to c
 legacy writers; see the proposal documentation for the current concurrency tradeoff.
 [AI day planning](AI_DAY_PLANNING.md) (#34) now selects tasks through centralized model
 settings and computes valid placements through application code. Today generates reviewed
-proposals, with an explicit deterministic alternative. Protected-work adjustments (#36)
-remain future work.
+proposals, with an explicit deterministic alternative. [Remaining-day replanning](REPLANNING.md) (#36) adds deterministic progress actions,
+actual block duration, explicit task completion and estimate increases, and reviewed
+downstream moves/removals through the same proposal and acceptance boundary.
 
 ## Persistence and behavior
 

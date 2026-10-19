@@ -8,12 +8,14 @@ import {
   editSchema,
   previewSchema,
   receiptSchema,
+  replanSchema,
   type Addition,
 } from './schema';
 import { existingBlocks, eligible, validateProposal, type ProposalBlock } from './validate';
 import { fingerprint, loadSnapshot, type Snapshot } from './snapshot';
 import { timeMinute, wallInstant } from './time';
 import { z } from 'zod';
+import { replanDay } from './replan';
 
 const day = (date: string) => new Date(`${date}T00:00:00Z`);
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -32,6 +34,7 @@ const blockPreview = (b: ProposalBlock | null) =>
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
         durationMinutes: b.durationMinutes,
+        status: b.status,
       }
     : null;
 function previewOf(result: ReturnType<typeof validateProposal>) {
@@ -43,6 +46,7 @@ function previewOf(result: ReturnType<typeof validateProposal>) {
       after: blockPreview(c.after),
     })),
     warnings: result.warnings,
+    taskChanges: result.taskChanges,
     remaining: result.remaining,
     reservations: result.reservations.map((r) => ({
       ...r,
@@ -148,6 +152,8 @@ export const proposalService = {
         candidates,
         blocks: existingBlocks(s).map((b) => ({
           ...blockPreview(b)!,
+          adjustable: ['PLANNED', 'IN_PROGRESS'].includes(b.status) && !b.calendarEventId,
+          status: b.status,
           editable:
             b.status === 'PLANNED' &&
             !b.isFixed &&
@@ -156,6 +162,54 @@ export const proposalService = {
             b.startsAt >= new Date(),
         })),
       };
+    });
+  },
+  async replan(userId: string, raw: z.input<typeof replanSchema>) {
+    const input = replanSchema.parse(raw);
+    const requestHash = fingerprint(input);
+    const prepared = await database(async (tx) => {
+      const existing = await tx.planningProposal.findUnique({
+        where: { userId_requestId: { userId, requestId: input.requestId } },
+      });
+      if (existing) {
+        if (documentSchema.parse(existing.document).replan?.requestHash !== requestHash) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'This request ID was already used for a different proposal.',
+          });
+        }
+        return { id: existing.id };
+      }
+      const s = await loadSnapshot(tx, userId, input.date);
+      if (s.hash !== input.baseHash) {
+        throw stale();
+      }
+      return { snapshot: s };
+    });
+    if ('id' in prepared) {
+      return { id: prepared.id! };
+    }
+    let document;
+    try {
+      // Placement search holds no database transaction; create rechecks the fingerprint.
+      document = replanDay(prepared.snapshot, input, requestHash);
+    } catch (error) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: error instanceof Error ? error.message : 'Could not replan this day.',
+      });
+    }
+    if (!document.operations.length) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'No changes are needed for the remaining day.',
+      });
+    }
+    return this.create(userId, {
+      requestId: input.requestId,
+      date: input.date,
+      baseHash: input.baseHash,
+      document,
     });
   },
   async create(userId: string, raw: z.input<typeof createProposalSchema>) {
@@ -188,7 +242,11 @@ export const proposalService = {
           timezone: s.timezone,
           baseHash: s.hash,
           document: json(input.document),
-          preview: json({ ...previewOf(result), generation: input.document.generation }),
+          preview: json({
+            ...previewOf(result),
+            generation: input.document.generation,
+            replan: input.document.replan,
+          }),
         },
       });
       return { id: proposal.id };
@@ -398,9 +456,14 @@ export const proposalService = {
               startsAt: after.startsAt,
               endsAt: after.endsAt,
               durationMinutes: after.durationMinutes,
+              status: after.status as 'PLANNED' | 'IN_PROGRESS' | 'DONE' | 'SKIPPED',
+              ...(change.type === 'finish' ? { completedAt: after.endsAt } : {}),
             },
           });
           changedBlockIds.push(after.id);
+          if (after.occurrenceId && (change.type === 'finish' || change.type === 'skip')) {
+            released.add(after.occurrenceId);
+          }
           continue;
         }
         let occurrenceId = after.occurrenceId;
@@ -455,7 +518,7 @@ export const proposalService = {
           where: {
             taskOccurrenceId: occurrenceId,
             plan: { isCurrent: true },
-            status: { in: ['PLANNED', 'IN_PROGRESS', 'DONE'] },
+            status: { in: ['PLANNED', 'IN_PROGRESS'] },
           },
         });
         if (!count) {
@@ -477,6 +540,34 @@ export const proposalService = {
               data: { status: 'BACKLOG' },
             });
           }
+        }
+      }
+      for (const change of result.taskChanges) {
+        if (change.estimatedMinutes !== undefined) {
+          await tx.task.update({
+            where: { id: change.taskId, userId },
+            data: { estimatedMinutes: change.estimatedMinutes },
+          });
+        }
+      }
+      const document = documentSchema.parse(row.document);
+      for (const op of document.operations) {
+        if (op.type !== 'finish' || !op.completeTask) {
+          continue;
+        }
+        const block = result.changes.find((c) => c.before?.id === op.blockId)!.after!;
+        if (block.occurrenceId) {
+          await tx.taskOccurrence.update({
+            where: { id: block.occurrenceId, userId },
+            data: { status: 'DONE', completedAt: block.endsAt },
+          });
+        }
+        if (!s.tasks.find((t) => t.id === block.taskId)!.isRecurring) {
+          await tx.task.update({ where: { id: block.taskId!, userId }, data: { status: 'DONE' } });
+          await tx.taskOccurrence.updateMany({
+            where: { userId, taskId: block.taskId!, status: { in: ['PENDING', 'SCHEDULED'] } },
+            data: { status: 'DONE', completedAt: block.endsAt },
+          });
         }
       }
       await tx.dailyPlan.update({

@@ -8,6 +8,7 @@ jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
     planningProposals: {
+      replan: { useMutation: jest.fn() },
       generate: { useMutation: jest.fn() },
       context: { useQuery: jest.fn() },
       list: { useQuery: jest.fn() },
@@ -79,6 +80,10 @@ beforeEach(() => {
   }));
   (trpc.planningProposals.createEdit.useMutation as jest.Mock).mockReturnValue({
     mutate: create,
+    reset,
+  });
+  (trpc.planningProposals.replan.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
     reset,
   });
   (trpc.planningProposals.generate.useMutation as jest.Mock).mockReturnValue({
@@ -197,7 +202,8 @@ it('generates a reviewable plan with guidance and an explicit deterministic opti
 it('creates a preview without applying changes', async () => {
   render(<ProposalWorkspace date={date} />);
   const user = userEvent.setup();
-  await user.click(screen.getByRole('combobox', { name: 'Task' }));
+  await user.click(screen.getByRole('button', { name: 'Manual plan change' }));
+  await user.click(await screen.findByRole('combobox', { name: 'Task' }));
   await user.click(screen.getByRole('option', { name: 'Fixture task' }));
   fireEvent.change(screen.getByLabelText('Reason for this change'), {
     target: { value: 'Morning focus' },

@@ -2,8 +2,45 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Scheduler #31, #33 and #34 implemented; richer retrieval and protected-work replanning remain in #7/#36
-**Last updated:** 2026-10-19
+**Status:** Scheduler #31, #33, #34 and remaining-day replanning #36 implemented; richer retrieval remains in #7
+**Last updated:** 2026-10-20
+
+## Remaining-day replanning (#36) — 2026-10-20
+
+- Added deterministic `planningProposals.replan` and `lib/planner/proposals/replan.ts`:
+  extend, finish, postpone, skip, cancel, replace and replan remaining flexible work.
+  The pure bounded placement search runs outside database transactions; saving and
+  acceptance recheck the existing owner fingerprint. No migration or model call.
+- New finish/extend/skip operations preserve identity/history. Actual finish records
+  whole-minute duration once and keeps the task/occurrence open by default. Explicit
+  completion closes only the selected recurring occurrence, or a nonrecurring task.
+  Future flexible allocations of completed work are released; protected/other-day
+  commitments require explicit resolution. Extension can include an explicitly reviewed
+  increased total task estimate, applied in the same transaction.
+- Downstream work keeps order, duration and valid original times where practical.
+  Necessary moves leave ten minutes to review; imminent future blocks can move too.
+  Started/calendar/resolved work stays protected. Future manual/fixed edits require
+  explicit selection. Unfit allocations become explained cancellations retaining tasks
+  and unfinished effort. Optional pull-forward fills earlier gaps. Reservations stay.
+- Today adds **Adjust remaining day**; its inspector now opens **Progress & replan**
+  with the selected block instead of using legacy direct outcome/removal shortcuts.
+  Preview shows statuses, estimate/completion changes, downstream moves and omissions.
+  Unresolved preview requests retain their retry ID; a successful preview permits a
+  fresh request with the same form values, including after placement expiry.
+  See [Replanning](REPLANNING.md) for semantics, limits and legacy API differences.
+- Validation: 669 tests in 94 suites, TypeScript, scoped proposal/UI lint/format and
+  an isolated Turbopack production build passed. Thirty-four synthetic PostgreSQL
+  assertions passed, including concurrent acceptance, request/receipt replay, owner
+  isolation, partial/explicit/recurring completion, stale rejection and real rollback
+  after an injected receipt failure. Fixture users/data were removed.
+  Existing TodayView curly-brace lint failures remain; no browser automation was run.
+  No public build/restart, migration, existing-user plan mutation, commit or GitHub
+  issue mutation was performed. The isolated build used a temporary source copy.
+- Limits: preserve whole downstream blocks rather than splitting, reordering or adding
+  backlog work. Generate plan can fill remaining capacity afterward. Legacy outcome,
+  unskip, drag/drop removal/time edits and clear-plan APIs retain earlier behavior;
+  clear-plan still deletes history and the old outcome API closes an occurrence per
+  completed segment. New progress/replan controls do not use those paths.
 
 ## Task reviews (#32) — 2026-10-19
 

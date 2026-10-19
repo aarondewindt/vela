@@ -6,6 +6,7 @@ jest.mock('server-only', () => ({}), { virtual: true });
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('./service', () => ({
   proposalService: {
+    replan: jest.fn(),
     context: jest.fn(),
     list: jest.fn(),
     get: jest.fn(),
@@ -55,4 +56,30 @@ it('rejects malformed proposal IDs and dates at the boundary', async () => {
   await expect(caller.list({ date: '2030-02-30' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   expect(proposalService.get).not.toHaveBeenCalled();
   expect(proposalService.list).not.toHaveBeenCalled();
+});
+
+it('authenticates and validates structured replanning before delegation', async () => {
+  const input = {
+    requestId: '00000000-0000-4000-8000-000000000001',
+    date: '2030-01-07',
+    baseHash: 'a'.repeat(64),
+    action: 'finish' as const,
+    blockId: '00000000-0000-4000-8000-000000000002',
+    endTime: '09:20',
+    explanation: 'Finished this segment',
+  };
+  await expect(proposalRouter.createCaller({ userId: null }).replan(input)).rejects.toMatchObject({
+    code: 'UNAUTHORIZED',
+  });
+  const caller = proposalRouter.createCaller({ userId: 'owner' });
+  await expect(caller.replan({ ...input, estimatedMinutes: -10 })).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+  });
+  expect(proposalService.replan).not.toHaveBeenCalled();
+  await caller.replan(input);
+  expect(proposalService.replan).toHaveBeenCalledWith('owner', {
+    ...input,
+    completeTask: false,
+    pullForward: false,
+  });
 });

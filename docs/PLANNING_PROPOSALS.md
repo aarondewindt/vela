@@ -3,8 +3,8 @@
 Implemented for [#33](https://github.com/aarondewindt/vela/issues/33), under #18.
 This is the shared review/application workflow for the replacement scheduler.
 It follows [Scheduler policy](PLANNER_SCHEDULER_POLICY.md). [AI day planning](AI_DAY_PLANNING.md)
-(#34) now generates through this workflow. Richer retrieval (#7) and explicit changes to
-active/protected work (#36) remain separate.
+(#34) now generates through this workflow. [Remaining-day replanning](REPLANNING.md)
+(#36) adds explicit progress and protected-work adjustments. Richer retrieval remains #7.
 
 ## Using the workflow
 
@@ -26,13 +26,14 @@ and acceptance, rounded up to the next minute. Generated schedules additionally
 leave at least ten minutes for review; the preview displays an apply deadline and
 offers regeneration if a proposed start passes. Manual edits keep their explicit times.
 
-Manual, fixed, active, completed, skipped, cancelled and calendar-linked blocks
-cannot be edited by this workflow. It also protects blocks that have already
+Ordinary manual edits protect manual, fixed, active, completed, skipped, cancelled
+and calendar-linked blocks. #36 permits explicit selected future manual/fixed edits
+and started-work finish/extension, while preserving calendar and resolved history. It also protects blocks that have already
 started by clock time. Existing conflicts are displayed as warnings; unrelated
 valid changes can still be proposed without moving those records. A removal or
 replacement marks the old block CANCELED and keeps its history and task. Moves
 and duration changes retain block identity/source. Duration changes keep the start;
-moves keep the duration. Whole-task deletion and completion are not proposal actions.
+moves keep the duration. Whole-task deletion is never a proposal action. #36 adds explicit task/occurrence completion through a reviewed finish action.
 
 ## Service/API contract
 
@@ -41,6 +42,8 @@ Protected `planningProposals` tRPC procedures delegate to
 
 - `generate({requestId,date,mode,guidance})`: AI or explicit deterministic day generation;
   see [AI day planning](AI_DAY_PLANNING.md) for reports, limits and replay semantics.
+- `replan(...)`: deterministic structured progress action and affected remainder;
+  see [Replanning](REPLANNING.md) for action semantics and limits.
 - `context({date})`: owner-scoped candidate references, current block summaries,
   editing eligibility, timezone and planning-input fingerprint.
 - `create({requestId,date,baseHash,document})`: validate and persist a proposal;
@@ -57,12 +60,14 @@ Protected `planningProposals` tRPC procedures delegate to
   be discarded. Missing/foreign proposals return the same NOT_FOUND response.
 
 `schemaVersion: 1` documents contain up to 100 structured operations, each with an
-explanation. Types are `add`, `move`, `resize`, `remove`, and `replace`. Added blocks
+explanation. Types are `add`, `move`, `resize`, `remove`, `replace`, `skip`, `finish` and `extend`.
+Explicit selected-block permission applies only to future planned manual/fixed edits;
+finish/extend have their own started-work validation. Extension can include an explicitly
+reviewed increased total task estimate; finish has an explicit completion boolean. Added blocks
 are a referenced TASK (taskId plus existing occurrenceId, or null for an eligible
 non-recurring backlog task or virtual selected-day recurring occurrence) or REST. Batch operations can collectively resolve
-conflicts; a block may only be mutated once in a document. There is no executable
-model text, arbitrary task property patch, implicit completion, or inferred override
-permission. Optional new LEISURE reservations and generation reports are stored in
+conflicts; a block may only be mutated once in a document. There is no executable model text, arbitrary task property patch, implicit completion,
+or inferred override permission. Optional new LEISURE reservations and generation reports are stored in
 the same document; at least one operation or reservation is required. Generation calls
 this same create/accept boundary.
 

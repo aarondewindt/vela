@@ -101,7 +101,8 @@ Current clearDayPlan deletes **all** blocks, including DONE/IN_PROGRESS, while k
 category slots. It is not a safe replanning primitive. Current completion of one
 segment marks its occurrence DONE even when completeTask is false. The replacement
 must distinguish block completion, occurrence completion and whole-task completion;
-#36 must not infer completion of unfinished segments from that legacy transition.
+#36 now distinguishes those outcomes in the proposal workflow and Today inspector;
+see [Replanning](REPLANNING.md). Legacy API callers retain their previous behavior.
 
 ## Adjustable planning preferences
 

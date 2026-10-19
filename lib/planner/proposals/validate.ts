@@ -132,6 +132,32 @@ export function availability(s: Snapshot) {
 }
 
 export function validateProposal(s: Snapshot, document: ProposalDocument, now = new Date()) {
+  const taskChanges: {
+    taskId: string;
+    title: string;
+    estimatedMinutes?: number;
+    complete?: boolean;
+  }[] = [];
+  const estimates = new Map<string, number>();
+  for (const op of document.operations) {
+    if (op.type === 'extend' && op.estimatedMinutes !== undefined) {
+      const block = existingBlocks(s).find((b) => b.id === op.blockId);
+      const task =
+        s.tasks.find((t) => t.id === block?.taskId) ??
+        fail('An estimate change requires an owned task block.');
+      if (estimates.has(task.id) || op.estimatedMinutes < (task.estimatedMinutes ?? 25)) {
+        fail('Provide one explicit increased total estimate per task.');
+      }
+      estimates.set(task.id, op.estimatedMinutes);
+      taskChanges.push({
+        taskId: task.id,
+        title: task.title,
+        estimatedMinutes: op.estimatedMinutes,
+      });
+    }
+  }
+  const estimateOf = (taskId: string | null) =>
+    estimates.get(taskId ?? '') ?? s.tasks.find((t) => t.id === taskId)?.estimatedMinutes ?? 25;
   const blocks = new Map(existingBlocks(s).map((b) => [b.id, b]));
   const touched = new Set<string>();
   const changed = new Set<string>();
@@ -179,18 +205,60 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       }
       touched.add(operation.blockId);
       before = blocks.get(operation.blockId) ?? fail('Block not found in the current plan.');
-      if (
+      const progress = operation.type === 'finish' || operation.type === 'extend';
+      if (progress) {
+        if (
+          !['PLANNED', 'IN_PROGRESS'].includes(before.status) ||
+          before.calendarEventId ||
+          before.startsAt > now ||
+          before.startsAt < dayStart ||
+          before.startsAt >= dayEnd
+        ) {
+          fail('Progress requires an unfinished, started, non-calendar block on the selected day.');
+        }
+      } else if (
         before.status !== 'PLANNED' ||
-        before.isFixed ||
-        before.source === 'MANUAL' ||
         before.calendarEventId ||
-        before.startsAt < cutoff
+        before.startsAt < cutoff ||
+        ((before.isFixed || before.source === 'MANUAL') && !operation.explicit)
       ) {
         fail('Manual, fixed, started, completed, skipped and cancelled blocks are protected.');
       }
     }
     let after: ProposalBlock | null = null;
-    if (operation.type === 'add' || operation.type === 'replace') {
+    if (operation.type === 'skip') {
+      after = { ...before!, status: 'SKIPPED' };
+    } else if (operation.type === 'finish' || operation.type === 'extend') {
+      const endsAt = new Date(operation.endsAt);
+      if (
+        operation.type === 'finish' &&
+        (endsAt > now || endsAt <= before!.startsAt || endsAt > dayEnd)
+      ) {
+        fail('Actual finish must follow the start and cannot be in the future or outside the day.');
+      }
+      if (operation.type === 'extend' && (endsAt <= before!.endsAt || endsAt <= cutoff)) {
+        fail('An extension must increase the end and leave future work.');
+      }
+      if (!Number.isInteger(minutes(before!.startsAt, endsAt))) {
+        fail('Actual work must use whole-minute durations.');
+      }
+      if (operation.type === 'extend' && before!.taskId) {
+        eligible(s, before!.taskId, before!.occurrenceId);
+      }
+      after = {
+        ...before!,
+        endsAt,
+        durationMinutes: minutes(before!.startsAt, endsAt),
+        status: operation.type === 'finish' ? 'DONE' : 'IN_PROGRESS',
+      };
+      if (operation.type === 'finish' && operation.completeTask) {
+        const task =
+          s.tasks.find((t) => t.id === before!.taskId) ??
+          fail('Only task work can complete a task.');
+        eligible(s, task.id, before!.occurrenceId);
+        taskChanges.push({ taskId: task.id, title: task.title, complete: true });
+      }
+    } else if (operation.type === 'add' || operation.type === 'replace') {
       after = add(operation.block, `new:${index}`);
     } else if (operation.type === 'move' || operation.type === 'resize') {
       after = {
@@ -250,7 +318,17 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     }
   }
   for (const block of final.filter((b) => changed.has(b.id))) {
-    if (block.startsAt < cutoff) {
+    if (block.status === 'SKIPPED') {
+      continue;
+    }
+    const progress = changes.find(
+      (c) => c.after?.id === block.id && (c.type === 'finish' || c.type === 'extend')
+    );
+    // Actual history is recorded even when the calendar/availability changed meanwhile.
+    if (progress?.type === 'finish') {
+      continue;
+    }
+    if (!progress && block.startsAt < cutoff) {
       fail(
         'This proposal’s start time has passed. Generate a fresh preview to keep all changes within future availability.'
       );
@@ -259,7 +337,12 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       !Number.isInteger(block.durationMinutes) ||
       block.durationMinutes <= 0 ||
       block.endsAt > dayEnd ||
-      !windows.some((w) => block.startsAt >= w.startsAt && block.endsAt <= w.endsAt)
+      !windows.some(
+        (w) =>
+          (progress
+            ? new Date(Math.max(block.startsAt.getTime(), cutoff.getTime()))
+            : block.startsAt) >= w.startsAt && block.endsAt <= w.endsAt
+      )
     ) {
       fail(
         'Changed blocks must have positive whole-minute durations within future availability and the selected day.'
@@ -313,8 +396,12 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     totals.set(taskKey(block), (totals.get(taskKey(block)) ?? 0) + block.durationMinutes);
   }
   for (const block of final.filter((b) => changed.has(b.id) && b.taskId)) {
-    const estimate = s.tasks.find((t) => t.id === block.taskId)?.estimatedMinutes ?? 25;
-    if ((totals.get(taskKey(block)) ?? 0) > estimate) {
+    const estimate = estimateOf(block.taskId);
+    if (
+      occupied(block) &&
+      block.status !== 'DONE' &&
+      (totals.get(taskKey(block)) ?? 0) > estimate
+    ) {
       fail(
         'Proposed time exceeds the task’s remaining estimate after completed work and commitments.'
       );
@@ -368,7 +455,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       } else if (block.taskId) {
         const target = s.settings.workSessionMinutes;
         const sameTask = previous?.taskId && taskKey(previous) === taskKey(block);
-        const estimate = s.tasks.find((t) => t.id === block.taskId)?.estimatedMinutes ?? 25;
+        const estimate = estimateOf(block.taskId);
         const finishes =
           (allocationTotals.get(taskKey(block)) ?? 0) === estimate &&
           !allAllocations.some(
@@ -404,6 +491,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     const old = baseline.get(id);
     if (
       metric.invalid &&
+      !changes.some((c) => c.type === 'finish' && c.after?.id === id) &&
       (changed.has(id) || !old?.invalid || metric.work > old.work || metric.leisure > old.leisure)
     ) {
       fail(
@@ -411,10 +499,37 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       );
     }
   }
+  for (const op of document.operations) {
+    if (op.type !== 'finish' || !op.completeTask) {
+      continue;
+    }
+    const finished = changes.find((c) => c.before?.id === op.blockId)!.after!;
+    if (allocations.some((b) => b.status !== 'DONE' && taskKey(b) === taskKey(finished))) {
+      fail('Completing work requires releasing its remaining commitments, including other days.');
+    }
+  }
   const warnings: string[] = [];
+  if (changes.some((c) => c.type === 'finish')) {
+    warnings.push(
+      'Actual work is recorded as entered. Finishing a block only completes its task or occurrence when explicitly selected.'
+    );
+  }
   if ([...baseline.values()].some((metric) => metric.invalid)) {
     warnings.push(
       'Existing blocks exceed the session policy. They are retained; proposed changes cannot worsen this.'
+    );
+  }
+  if (
+    changes.some(
+      (c) =>
+        c.type === 'finish' &&
+        c.after &&
+        (busy.some((e) => overlap(c.after!, e)) ||
+          final.some((b) => b.id !== c.after!.id && isOccupied(b) && overlap(c.after!, b)))
+    )
+  ) {
+    warnings.push(
+      'Recorded actual work overlaps another block or busy event. History is retained; review the overlapping records.'
     );
   }
   const unchanged = final.filter((b) => !changed.has(b.id) && isOccupied(b));
@@ -438,6 +553,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   }
   return {
     reservations,
+    taskChanges,
     changes,
     final,
     warnings,
@@ -452,11 +568,14 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       key,
       taskId: block.taskId!,
       title: block.title,
-      minutes: Math.max(
-        0,
-        (s.tasks.find((task) => task.id === block.taskId)?.estimatedMinutes ?? 25) -
-          (totals.get(key) ?? 0)
-      ),
+      minutes: document.operations.some(
+        (op) =>
+          op.type === 'finish' &&
+          op.completeTask &&
+          changes.some((c) => c.before?.id === op.blockId && c.after && taskKey(c.after) === key)
+      )
+        ? 0
+        : Math.max(0, estimateOf(block.taskId) - (totals.get(key) ?? 0)),
     })),
   };
 }

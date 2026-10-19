@@ -27,13 +27,10 @@ import { notifications } from '@mantine/notifications';
 import { PlanningProposals } from '../PlanningProposals/PlanningProposals';
 import {
   IconCalendar,
-  IconCalendarMinus,
   IconCheck,
-  IconCircleCheck,
   IconChevronLeft,
   IconChevronRight,
   IconPlus,
-  IconPlayerSkipForward,
   IconRotateClockwise,
   IconTargetArrow,
   IconTrash,
@@ -52,7 +49,6 @@ import {
   useThemesQuery,
   useUnskipBlockMutation,
   useUpdateDayAvailabilityMutation,
-  useUpdateBlockOutcomeMutation,
   useUpdateBlockTimeMutation,
   useSaveGeneratorSettingsMutation,
   useUpdateCategorySlotTimeMutation,
@@ -190,7 +186,6 @@ export function TodayView() {
   const removeCategorySlot = useRemoveCategorySlotMutation();
   const updateBlockTime = useUpdateBlockTimeMutation();
   const updateCategorySlotTime = useUpdateCategorySlotTimeMutation();
-  const updateOutcome = useUpdateBlockOutcomeMutation();
   const removeBlock = useRemoveBlockFromDayMutation();
   const unskipBlock = useUnskipBlockMutation();
 
@@ -369,7 +364,6 @@ export function TodayView() {
     removeCategorySlot.error ??
     updateCategorySlotTime.error ??
     updateBlockTime.error ??
-    updateOutcome.error ??
     removeBlock.error ??
     unskipBlock.error;
 
@@ -564,85 +558,18 @@ export function TodayView() {
           </ActionIcon>
         </Tooltip>
       ) : (
-        <Tooltip label="Skip">
-          <ActionIcon
-            aria-label="Skip"
-            variant="subtle"
-            size="xs"
-            disabled={selectedBlock.status === 'DONE'}
-            loading={updateOutcome.isPending}
-            onClick={() =>
-              updateOutcome.mutate(
-                { date: selectedDate, blockId: selectedBlock.id, outcome: 'SKIPPED' },
-                { onSuccess: closeSelectedBlock }
-              )
-            }
-          >
-            <IconPlayerSkipForward size={16} />
-          </ActionIcon>
-        </Tooltip>
+        ['PLANNED', 'IN_PROGRESS'].includes(selectedBlock.status) &&
+        !selectedBlock.calendarEventId && (
+          <PlanningProposals
+            date={selectedDate}
+            label="Progress & replan"
+            preset={{
+              action: selectedBlock.startsAt <= new Date() ? 'finish' : 'postpone',
+              blockId: selectedBlock.id,
+            }}
+          />
+        )
       )}
-      <Tooltip label="Done for now">
-        <ActionIcon
-          aria-label="Done for now"
-          variant="subtle"
-          size="xs"
-          disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-          loading={updateOutcome.isPending}
-          onClick={() =>
-            updateOutcome.mutate(
-              { date: selectedDate, blockId: selectedBlock.id, outcome: 'DONE' },
-              { onSuccess: closeSelectedBlock }
-            )
-          }
-        >
-          <IconCheck size={16} />
-        </ActionIcon>
-      </Tooltip>
-      {selectedBlock.taskOccurrenceId && (
-        <Tooltip label="Complete task">
-          <ActionIcon
-            aria-label="Complete task"
-            variant="subtle"
-            size="xs"
-            disabled={selectedBlock.status === 'DONE' || selectedBlock.status === 'SKIPPED'}
-            loading={updateOutcome.isPending}
-            onClick={() =>
-              updateOutcome.mutate(
-                {
-                  date: selectedDate,
-                  blockId: selectedBlock.id,
-                  outcome: 'DONE',
-                  completeTask: true,
-                },
-                { onSuccess: closeSelectedBlock }
-              )
-            }
-          >
-            <IconCircleCheck size={16} />
-          </ActionIcon>
-        </Tooltip>
-      )}
-      <Tooltip
-        label={selectedBlock.taskOccurrenceId ? 'Remove from day (keep task)' : 'Remove from day'}
-      >
-        <ActionIcon
-          aria-label={selectedBlock.taskOccurrenceId ? 'Remove from day (keep task)' : 'Remove from day'}
-          variant="subtle"
-          size="xs"
-          color="gray"
-          disabled={selectedBlock.status !== 'PLANNED' && selectedBlock.status !== 'SKIPPED'}
-          loading={removeBlock.isPending}
-          onClick={() =>
-            removeBlock.mutate(
-              { date: selectedDate, blockId: selectedBlock.id },
-              { onSuccess: closeSelectedBlock }
-            )
-          }
-        >
-          <IconCalendarMinus size={16} />
-        </ActionIcon>
-      </Tooltip>
     </Group>
   );
   const selectedBlockInspector = selectedBlock ? (
@@ -840,6 +767,7 @@ export function TodayView() {
                 Add task
               </Button>
               <PlanningProposals date={selectedDate} label="Generate plan" />
+              <PlanningProposals date={selectedDate} label="Adjust remaining day" />
               <Button size="xs" variant="default" onClick={() => setGeneratorOpen(true)}>
                 Planning settings
               </Button>

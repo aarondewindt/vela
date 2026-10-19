@@ -17,6 +17,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
+import { ReplanningControls, type ProgressPreset } from './ReplanningControls';
 import type { GenerationReport } from '@/lib/planner/proposals/schema';
 
 type EditType = 'add' | 'move' | 'resize' | 'remove' | 'replace';
@@ -31,9 +32,11 @@ const actions = [
 export function PlanningProposals({
   date,
   label = 'Plan changes',
+  preset,
 }: {
   date: string;
   label?: string;
+  preset?: ProgressPreset;
 }) {
   const [opened, setOpened] = useState(false);
   return (
@@ -51,7 +54,8 @@ export function PlanningProposals({
           <ProposalWorkspace
             key={date}
             date={date}
-            manualInitiallyOpen={label === 'Plan changes'}
+            manualInitiallyOpen={label !== 'Generate plan'}
+            preset={preset}
           />
         )}
       </Modal>
@@ -62,9 +66,11 @@ export function PlanningProposals({
 export function ProposalWorkspace({
   date,
   manualInitiallyOpen = true,
+  preset,
 }: {
   date: string;
   manualInitiallyOpen?: boolean;
+  preset?: ProgressPreset;
 }) {
   const utils = trpc.useUtils();
   const context = trpc.planningProposals.context.useQuery({ date }, { refetchOnMount: 'always' });
@@ -108,6 +114,12 @@ export function ProposalWorkspace({
       return utils.planningProposals.list.invalidate({ date });
     },
   });
+  const replan = trpc.planningProposals.replan.useMutation({
+    onSuccess: ({ id }) => {
+      setSelectedId(id);
+      return utils.planningProposals.list.invalidate({ date });
+    },
+  });
   const accept = trpc.planningProposals.accept.useMutation({ onSuccess: refresh });
   const discard = trpc.planningProposals.discard.useMutation({ onSuccess: refresh });
   const error =
@@ -117,11 +129,15 @@ export function ProposalWorkspace({
     create.error ??
     accept.error ??
     discard.error ??
-    generate.error;
+    generate.error ??
+    replan.error;
   const ready = context.isFetchedAfterMount && !context.error ? context.data : undefined;
   const current = !proposal.error ? proposal.data : undefined;
   const [clock, setClock] = useState(() => Date.now());
-  const reviewBy = current?.status === 'PENDING' ? current.preview.generation?.reviewBy : undefined;
+  const reviewBy =
+    current?.status === 'PENDING'
+      ? (current.preview.replan?.reviewBy ?? current.preview.generation?.reviewBy)
+      : undefined;
   useEffect(() => {
     if (!reviewBy) {
       return;
@@ -141,7 +157,12 @@ export function ProposalWorkspace({
       previewRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }
   }, [previewId]);
-  const busy = create.isPending || accept.isPending || discard.isPending || generate.isPending;
+  const busy =
+    create.isPending ||
+    accept.isPending ||
+    discard.isPending ||
+    generate.isPending ||
+    replan.isPending;
   const timezone = ready?.timezone ?? current?.timezone ?? 'UTC';
   const format = (value: string, zone = current?.timezone ?? timezone) =>
     new Intl.DateTimeFormat(undefined, {
@@ -163,7 +184,8 @@ export function ProposalWorkspace({
         your plan unchanged.
       </Text>
       <Text size="sm" c="dimmed">
-        Times use {timezone}. Manual, fixed, started and historical blocks are protected.
+        Times use {timezone}. Historical and calendar blocks are protected. Use progress actions to
+        adjust started work.
       </Text>
       <Select
         label="Planning method"
@@ -227,6 +249,7 @@ export function ProposalWorkspace({
               accept.reset();
               discard.reset();
               generate.reset();
+              replan.reset();
               void refresh();
             }}
           >
@@ -234,7 +257,21 @@ export function ProposalWorkspace({
           </Button>
         </Alert>
       )}
-      <Accordion defaultValue={manualInitiallyOpen ? 'manual' : null}>
+      <Accordion defaultValue={manualInitiallyOpen ? 'progress' : null}>
+        <Accordion.Item value="progress">
+          <Accordion.Control>Progress and remaining day</Accordion.Control>
+          <Accordion.Panel>
+            <ReplanningControls
+              key={`${date}:${ready?.baseHash}`}
+              date={date}
+              context={ready}
+              preset={preset}
+              savedId={replan.data?.id}
+              busy={busy}
+              submit={(input) => replan.mutate(input)}
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
         <Accordion.Item value="manual">
           <Accordion.Control>Manual plan change</Accordion.Control>
           <Accordion.Panel>
@@ -441,6 +478,25 @@ export function ProposalWorkspace({
               )}
             </Alert>
           )}
+          {current.preview.replan?.reviewBy && (
+            <Text size="sm">
+              Apply remaining-day changes before {format(current.preview.replan.reviewBy)} (
+              {current.timezone}).
+            </Text>
+          )}
+          {current.preview.taskChanges?.map((change, index) => (
+            <Text size="sm" fw={600} key={index}>
+              {change.title}:{' '}
+              {change.complete
+                ? 'explicitly complete task or occurrence'
+                : `change total estimate to ${change.estimatedMinutes} minutes`}
+            </Text>
+          ))}
+          {current.preview.replan?.warnings.map((warning) => (
+            <Alert key={warning} color="yellow">
+              {warning}
+            </Alert>
+          ))}
           {current.preview.warnings.map((warning) => (
             <Alert key={warning} color="yellow">
               {warning}
@@ -462,6 +518,7 @@ export function ProposalWorkspace({
                   <Text size="sm">
                     After: {change.after.title} · {format(change.after.startsAt)}–
                     {format(change.after.endsAt)} ({change.after.durationMinutes} min)
+                    {change.after.status ? ` · ${change.after.status}` : ''}
                   </Text>
                 ) : (
                   <Text size="sm">Removed from the day; the task is kept.</Text>
