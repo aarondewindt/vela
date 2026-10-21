@@ -110,3 +110,22 @@ it('delegates a valid plan review with authenticated ownership and safe defaults
     guidance: '',
   });
 });
+
+it('uses AI by default for API callers while retaining an explicit deterministic rollback', async () => {
+  const caller = proposalRouter.createCaller({ userId: 'owner' });
+  const requestId = '00000000-0000-4000-8000-000000000001';
+  await caller.generate({ requestId, date: '2030-01-07' });
+  expect(generateDayPlan).toHaveBeenLastCalledWith('owner', {
+    requestId,
+    date: '2030-01-07',
+    mode: 'ai',
+    guidance: '',
+  });
+  await caller.generate({ requestId, date: '2030-01-07', mode: 'deterministic' });
+  expect(generateDayPlan).toHaveBeenLastCalledWith('owner', {
+    requestId,
+    date: '2030-01-07',
+    mode: 'deterministic',
+    guidance: '',
+  });
+});

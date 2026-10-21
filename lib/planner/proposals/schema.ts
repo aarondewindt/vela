@@ -1,3 +1,4 @@
+import { mealKindSchema } from '../meals';
 import { z } from 'zod';
 
 const instant = z.iso
@@ -14,6 +15,7 @@ const addition = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('REST'), ...interval }).strict(),
+  z.object({ kind: z.literal('MEAL'), mealKind: mealKindSchema, ...interval }).strict(),
 ]);
 export const operationSchema = z.discriminatedUnion('type', [
   z
@@ -104,6 +106,22 @@ export const generationReportSchema = z.object({
   workBudgetMinutes: z.number().int().min(0).nullable().optional(),
   availableWindows: z.array(z.object({ startsAt: z.string(), endsAt: z.string() })).optional(),
   additionalCandidateCount: z.number().int().min(0).optional(),
+  diagnostics: z
+    .object({
+      elapsedMs: z.number().nonnegative(),
+      candidateCount: z.number().int().nonnegative(),
+      operationCount: z.number().int().nonnegative(),
+    })
+    .optional(),
+  meals: z
+    .array(
+      z.object({
+        mealKind: mealKindSchema,
+        status: z.enum(['scheduled', 'preserved', 'unmet', 'skipped']),
+        reason: z.string(),
+      })
+    )
+    .optional(),
   warnings: z.array(z.string()),
   outcomes: z.array(
     z.object({

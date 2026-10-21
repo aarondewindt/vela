@@ -4,7 +4,7 @@ export const generateDaySchema = z
   .object({
     requestId: z.uuid(),
     date: z.iso.date(),
-    mode: z.enum(['ai', 'deterministic']),
+    mode: z.enum(['ai', 'deterministic']).default('ai'),
     guidance: z.string().trim().max(2000).default(''),
   })
   .strict();

@@ -350,3 +350,11 @@ When adding or modifying functionality:
 10. **Keep PostgreSQL/backend state as the source of truth and use TanStack Query as its client-side cache.**
 
 The overall goal is to keep Vela's core behaviour independent from any particular UI, API protocol, or AI framework.
+
+## Planner meal preferences
+
+`planner.getMealPreferences` / `saveMealPreferences({version, preferences})` are
+owner-scoped settings services. Settings → Planner keeps unsaved fields local,
+validates complete windows/durations and invalidates the query after saving.
+Meals use existing daily blocks, proposal previews, explicit time/progress controls
+and atomic acceptance; see [daily meals](PLANNER_MEALS.md).

@@ -52,6 +52,15 @@ occurrence materialization and proposal eligibility resolve it through
 existing tasks. TaskView edits the anchor through the owner-scoped task service;
 existing occurrences and plans are retained when recurrence settings change.
 
+## Daily meal requirements
+
+[Meal scheduling](PLANNER_MEALS.md) uses versioned finite preferences on existing
+PlannerGenerationSettings and nullable DailyBlock.mealKind identities. Enabled
+meals are generated/replanned through the shared proposal validator before optional
+work, independently of tasks and Nutrition. See [scheduler evaluation](PLANNER_EVALUATION.md)
+for AI defaults/fallback/evidence and [routine architecture review](PLANNER_ROUTINES_REVIEW.md)
+for deferred sleep and cross-day considerations.
+
 ## Scheduler replacement policy
 
 The current generator remains available. The replacement scheduler policy under

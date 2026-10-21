@@ -118,3 +118,35 @@ it('retries unresolved requests with the same ID and allows a fresh preview afte
     uuid.mockRestore();
   }
 });
+
+it.each(['finish', 'extend'] as const)(
+  'keeps %s meal progress independent of task completion and estimates',
+  async (action) => {
+    const submit = jest.fn();
+    render(
+      <ReplanningControls
+        date="2030-01-07"
+        context={{
+          ...context,
+          blocks: [{ ...context.blocks[0], title: 'Lunch', mealKind: 'LUNCH' }],
+        }}
+        busy={false}
+        submit={submit}
+        preset={{ action, blockId: id, completeTask: true }}
+      />
+    );
+    expect(
+      screen.queryByRole('checkbox', { name: /Also complete the task/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('New total task estimate (optional, minutes)')
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Reason for replanning'), {
+      target: { value: 'Meal timing changed' },
+    });
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Preview remaining day' }));
+    expect(submit).toHaveBeenCalledWith(
+      expect.objectContaining({ action, completeTask: false, estimatedMinutes: undefined })
+    );
+  }
+);

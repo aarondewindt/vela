@@ -2,8 +2,45 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Health, recurrence, goal and shell improvements ready for review; all 30 database migrations applied. Earlier deployment notes retained.
-**Last updated:** 2026-10-21
+**Status:** Planner meals and AI-default evaluation ready for review; prior deployment notes retained.
+**Last updated:** 2026-10-22
+
+## Planner meals, AI default and routine review — 2026-10-22
+
+- Review PR: [#72](https://github.com/aarondewindt/vela/pull/72), unmerged.
+  #55/#41 received implementation/evaluation comments; #17 was revised directly
+  to overnight sleep and routine boundaries. All three issues remain open.
+- Dedicated branch `feat/planner-meals-ai-default`, based on master after merged
+  PR #65. Implements #55 with opt-in versioned breakfast/lunch/dinner preferences
+  on existing PlannerGenerationSettings and unique per-plan DailyBlock.mealKind.
+  AI and deterministic proposal generation/replanning place continuous meals before
+  optional work; explicit adjustments become fixed and skipped/cancelled identity
+  prevents regeneration. Meal progress hides task completion/estimate controls.
+- AI remains Today's default; omitted generate API mode now also defaults to AI.
+  Existing deterministic selection is the model-free rollback through the same
+  validator/proposal path. Reports add meal outcomes and safe timing/count diagnostics;
+  model errors expose finite codes without provider bodies/prompts.
+- See [meals](PLANNER_MEALS.md), [evaluation](PLANNER_EVALUATION.md) and
+  [routine review](PLANNER_ROUTINES_REVIEW.md). Retain/revise #17 for overnight sleep;
+  no generalized routines, Nutrition integration, #69/#70 or category migration.
+- Additive migration `20261022010000_planner_meals` applied to the application
+  database at the user's request on 2026-10-22, after a fresh private backup in
+  ignored `.local/backups`. Archive listing and a full restore into a temporary
+  database passed; the temporary database was removed and a private SHA-256 checksum
+  saved. All 32 migrations are applied, database-to-schema diff is empty and Prisma
+  Client regenerated. Old previews may need regeneration.
+- All 962 Jest tests / 132 suites, TypeScript, scoped lint/format, Stylelint and
+  production build pass.
+  Global lint/format retain baseline errors in untouched source portions.
+  Repeatable `scripts/evaluate-planner.ts` passed real PostgreSQL/qwen3:8b checks:
+  version races, concurrent acceptance, task-writer lock/stale rejection, owner isolation,
+  deferred recurrence, uniqueness, manual meal identity/fixing and zero-churn replan.
+  Disposable databases removed. Three successful model runs: 2.0–9.0 s, three meals,
+  3–5 of five tasks received time; overload remainder explicit in every run.
+- Keep #41 open for broader daily-use/explanation review. Browser tooling is not
+  installed; desktop/mobile interaction remains manual testing. Greedy ordering varies;
+  PTO/NO_WORK availability and existing REST semantics remain unchanged. Public application
+  server was not restarted. The application database migration is applied as noted above.
 
 ## Settings PR #65 feedback — 2026-10-21
 

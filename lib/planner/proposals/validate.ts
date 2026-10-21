@@ -1,3 +1,4 @@
+import { mealKindSchema, mealTitles, readMealPreferences, type MealKind } from '../meals';
 import type { Snapshot } from './snapshot';
 import type { Addition, ProposalDocument } from './schema';
 import { wallInstant } from './time';
@@ -6,6 +7,7 @@ import { occursOn } from './recurrence';
 export type ProposalBlock = {
   id: string;
   title: string;
+  mealKind?: MealKind | null;
   startsAt: Date;
   endsAt: Date;
   durationMinutes: number;
@@ -38,6 +40,7 @@ export function existingBlocks(s: Snapshot): ProposalBlock[] {
     .map((b) => ({
       id: b.id,
       title: b.title,
+      mealKind: b.mealKind ? mealKindSchema.parse(b.mealKind) : null,
       startsAt: b.startsAt,
       endsAt: b.endsAt,
       durationMinutes: b.durationMinutes,
@@ -182,9 +185,18 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   };
   const add = (input: Addition, id: string): ProposalBlock => {
     const task = input.kind === 'TASK' ? eligible(s, input.taskId, input.occurrenceId) : null;
+    if (
+      input.kind === 'MEAL' &&
+      !readMealPreferences('mealPreferences' in s.settings ? s.settings.mealPreferences : null)[
+        input.mealKind
+      ].enabled
+    ) {
+      fail('This meal requirement is disabled. Enable it in Planner settings first.');
+    }
     return {
       id,
-      title: task?.title ?? 'Short break',
+      title: task?.title ?? (input.kind === 'MEAL' ? mealTitles[input.mealKind] : 'Short break'),
+      mealKind: input.kind === 'MEAL' ? input.mealKind : null,
       startsAt: new Date(input.startsAt),
       endsAt: new Date(input.endsAt),
       durationMinutes: minutes(new Date(input.startsAt), new Date(input.endsAt)),
@@ -273,6 +285,9 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
       if (operation.type === 'resize' && after.startsAt.getTime() !== before!.startsAt.getTime()) {
         fail('A duration change must preserve the start time.');
       }
+      if (after.mealKind && operation.explicit) {
+        after.isFixed = true;
+      }
       if (after.taskId) {
         eligible(s, after.taskId, after.occurrenceId);
       }
@@ -287,6 +302,26 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     changes.push({ type: operation.type, explanation: operation.explanation, before, after });
   }
   const final = [...blocks.values()];
+  const mealCounts = new Set<string>();
+  for (const block of final) {
+    if (!block.mealKind) {
+      continue;
+    }
+    if (mealCounts.has(block.mealKind)) {
+      fail('A day can contain only one block per meal, including skipped or cancelled meals.');
+    }
+    mealCounts.add(block.mealKind);
+  }
+  // A cancelled meal remains an intentional daily override in persistence.
+  for (const change of changes) {
+    if (
+      change.after?.mealKind &&
+      change.after.id.startsWith('new:') &&
+      s.blocks.some((b) => b.planId === s.plan?.id && b.mealKind === change.after!.mealKind)
+    ) {
+      fail('This meal already has a block for the selected day. Edit the existing block.');
+    }
+  }
   const isOccupied = (b: ProposalBlock) =>
     occupied(b) &&
     (!b.calendarEventId || s.events.find((e) => e.id === b.calendarEventId)?.isBusy !== false);
@@ -387,6 +422,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     .filter((b) => b.planId !== s.plan?.id)
     .map((b) => ({
       ...b,
+      mealKind: b.mealKind ? mealKindSchema.parse(b.mealKind) : null,
       occurrenceId: b.taskOccurrenceId,
       taskId: s.occurrences.find((o) => o.id === b.taskOccurrenceId)?.taskId ?? null,
     }));

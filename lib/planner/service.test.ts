@@ -92,3 +92,22 @@ it('persists a calendar anchor and supports clearing it without modifying creati
     },
   });
 });
+
+it('retains a removed meal as a cancelled daily override so generation cannot recreate it', async () => {
+  const update = jest.fn().mockResolvedValue({ id: 'meal', status: 'CANCELED' });
+  const remove = jest.fn();
+  (prisma.$transaction as jest.Mock).mockImplementation((operation) =>
+    operation({
+      dailyBlock: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'meal', taskOccurrenceId: null, mealKind: 'LUNCH' }),
+        update,
+        delete: remove,
+      },
+    })
+  );
+  await plannerService.removeBlockFromDay('owner', { date: '2030-01-07', blockId: 'meal' });
+  expect(update).toHaveBeenCalledWith({ where: { id: 'meal' }, data: { status: 'CANCELED' } });
+  expect(remove).not.toHaveBeenCalled();
+});

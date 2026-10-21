@@ -99,3 +99,34 @@ it('captures successful output and preserves model resolution errors', async () 
     })
   );
 });
+
+it('aborts timed-out inference, masks provider details and records the failure', async () => {
+  const timeout = new AbortController();
+  const original = AbortSignal.timeout;
+  jest
+    .spyOn(AbortSignal, 'timeout')
+    .mockImplementation((ms) => (ms === 120_000 ? timeout.signal : original(ms)));
+  const onDiagnostics = jest.fn();
+  try {
+    (generateText as jest.Mock).mockImplementation(
+      ({ abortSignal }) =>
+        new Promise((_resolve, reject) => {
+          abortSignal.addEventListener('abort', () => reject(new Error('private provider body')), {
+            once: true,
+          });
+          timeout.abort(Object.assign(new Error('Timed out'), { name: 'TimeoutError' }));
+        })
+    );
+    await expect(generateStructured({ ...input, onDiagnostics })).rejects.toMatchObject({
+      code: 'INVALID_PROVIDER_RESPONSE',
+    });
+    expect(onDiagnostics).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        aborted: true,
+        errors: expect.arrayContaining([{ name: 'TimeoutError', message: 'Timed out' }]),
+      })
+    );
+  } finally {
+    jest.restoreAllMocks();
+  }
+});

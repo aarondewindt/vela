@@ -661,6 +661,23 @@ function GenerationReview({
             : 'Deterministic planning'}
       </Text>
       {report.guidance && <Text size="sm">Guidance: {report.guidance}</Text>}
+      {report.meals && report.meals.length > 0 && (
+        <Stack gap="xs">
+          <Text fw={600}>Daily meals</Text>
+          {report.meals.map((meal) => (
+            <Text key={meal.mealKind} size="sm" c={meal.status === 'unmet' ? 'orange' : undefined}>
+              {meal.reason}
+            </Text>
+          ))}
+        </Stack>
+      )}
+      {report.diagnostics && (
+        <Text size="xs" c="dimmed">
+          Planning took {(report.diagnostics.elapsedMs / 1000).toFixed(1)} s ·{' '}
+          {report.diagnostics.candidateCount} eligible occurrences ·{' '}
+          {report.diagnostics.operationCount} changes
+        </Text>
+      )}
       {report.warnings.map((warning, index) => (
         <Alert color="yellow" key={index}>
           {warning}

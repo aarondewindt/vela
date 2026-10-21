@@ -1,3 +1,5 @@
+import { loadSnapshot } from './proposals/snapshot';
+import { validateProposal } from './proposals/validate';
 import 'server-only';
 
 import { TRPCError } from '@trpc/server';
@@ -972,10 +974,33 @@ export const plannerService = {
           status: 'PLANNED',
           plan: { planDate, isCurrent: true },
         },
-        select: { id: true },
+        select: { id: true, mealKind: true, startsAt: true },
       });
       if (!block) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Editable block not found' });
+      }
+      if (block.mealKind) {
+        const snapshot = await loadSnapshot(transaction, userId, input.date);
+        try {
+          validateProposal(snapshot, {
+            schemaVersion: 1,
+            operations: [
+              {
+                type: startsAt.getTime() === block.startsAt.getTime() ? 'resize' : 'move',
+                blockId: block.id,
+                explicit: true,
+                startsAt: startsAt.toISOString(),
+                endsAt: endsAt.toISOString(),
+                explanation: 'Individual meal time adjustment.',
+              },
+            ],
+          });
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Invalid meal adjustment.',
+          });
+        }
       }
       const [overlap, calendarConflict] = await Promise.all([
         transaction.dailyBlock.findFirst({
@@ -1005,6 +1030,7 @@ export const plannerService = {
         data: {
           startsAt,
           endsAt,
+          ...(block.mealKind ? { isFixed: true } : {}),
           durationMinutes: Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000),
         },
       });
@@ -1021,12 +1047,18 @@ export const plannerService = {
           plan: { planDate, isCurrent: true },
           status: { in: ['PLANNED', 'SKIPPED'] },
         },
-        select: { id: true, taskOccurrenceId: true },
+        select: { id: true, taskOccurrenceId: true, mealKind: true },
       });
       if (!block) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Open block not found' });
       }
 
+      if (block.mealKind) {
+        return transaction.dailyBlock.update({
+          where: { id: block.id },
+          data: { status: 'CANCELED' },
+        });
+      }
       if (block.taskOccurrenceId) {
         await transaction.dailyBlock.delete({ where: { id: block.id } });
         await releaseOccurrences(transaction, userId, [block.taskOccurrenceId]);
@@ -1256,9 +1288,10 @@ export const plannerService = {
     const existingBlocks = currentPlan?.dailyBlocks ?? [];
     const categorySlots = generatorOptions.fillExistingPlan ? (currentPlan?.categorySlots ?? []) : [];
     const protectedBlocks = generatorOptions.fillExistingPlan
-      ? existingBlocks.filter((block) => block.status !== 'CANCELED')
+      ? existingBlocks.filter((block) => block.mealKind || block.status !== 'CANCELED')
       : existingBlocks.filter(
           (block) =>
+            Boolean(block.mealKind) ||
             (block.source === 'MANUAL' && block.status === 'PLANNED') ||
             (block.isFixed && ['PLANNED', 'IN_PROGRESS'].includes(block.status)) ||
             ['IN_PROGRESS', 'DONE'].includes(block.status)
@@ -1507,6 +1540,7 @@ export const plannerService = {
         source: block.source,
         position: block.position,
         isFixed: block.isFixed,
+        mealKind: block.mealKind,
         completedAt: block.completedAt,
         taskOccurrenceId: block.taskOccurrenceId,
         calendarEventId: block.calendarEventId,

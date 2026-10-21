@@ -1,3 +1,4 @@
+import { placeMeals } from './meals';
 import type { Snapshot } from '../proposals/snapshot';
 import type { ProposalDocument, ProposalOperation } from '../proposals/schema';
 import { availability, existingBlocks, validateProposal } from '../proposals/validate';
@@ -55,7 +56,20 @@ export function scheduleDay(
   }));
   const existingSlots = s.plan?.categorySlots ?? [];
   const document: ProposalDocument = { schemaVersion: 1, operations: [], reservations: [] };
-  const warnings: string[] = [];
+  const meals = placeMeals(s, document, now);
+  const warnings: string[] = meals.filter((m) => m.status === 'unmet').map((m) => m.reason);
+  obstacles.push(
+    ...document.operations.flatMap((op) =>
+      op.type === 'add'
+        ? [
+            {
+              start: new Date(op.block.startsAt).getTime(),
+              end: new Date(op.block.endsAt).getTime(),
+            },
+          ]
+        : []
+    )
+  );
   const existingLeisure = existingSlots
     .filter((slot) => slot.category === 'LEISURE')
     .reduce((total, slot) => total + (slot.endsAt.getTime() - slot.startsAt.getTime()) / MINUTE, 0);
@@ -298,6 +312,7 @@ export function scheduleDay(
   }
   return {
     document,
+    meals,
     scheduled,
     warnings,
     availableWindows: windows.map((window) => ({

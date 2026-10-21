@@ -157,3 +157,38 @@ it('replays an applied receipt without reapplying progress', async () => {
   expect(loadSnapshot).not.toHaveBeenCalled();
   expect(tx.dailyBlock.update).not.toHaveBeenCalled();
 });
+
+it('persists a scheduled meal without a task occurrence and protects explicit edits on acceptance', async () => {
+  s.blocks[1].mealKind = 'LUNCH';
+  s.blocks[1].taskOccurrenceId = null;
+  s.blocks[1].category = 'REST';
+  s.blocks[1].title = 'Lunch';
+  const document = {
+    schemaVersion: 1,
+    operations: [
+      {
+        type: 'move',
+        explicit: true,
+        blockId: s.blocks[1].id,
+        startsAt: at('12:00').toISOString(),
+        endsAt: at('12:30').toISOString(),
+        explanation: 'Lunch later',
+      },
+    ],
+  };
+  const input = { requestId: taskId(99), date, baseHash: s.hash, document };
+  const result = await proposalService.create(
+    'owner',
+    input as Parameters<typeof proposalService.create>[1]
+  );
+  const data = tx.planningProposal.create.mock.calls[0][0].data;
+  tx.planningProposal.findFirst.mockResolvedValue({ ...data, id: result.id, status: 'PENDING' });
+  await proposalService.accept('owner', result.id);
+  expect(tx.dailyBlock.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: { id: s.blocks[1].id },
+      data: expect.objectContaining({ isFixed: true, startsAt: at('12:00') }),
+    })
+  );
+  expect(tx.taskOccurrence.update).not.toHaveBeenCalled();
+});
