@@ -7,6 +7,7 @@ jest.mock('@/lib/planner/query', () => ({
   useUpdateTaskMutation: jest.fn(),
   useDeleteTaskMutation: jest.fn(),
 }));
+jest.mock('./TaskRecurrence', () => ({ TaskRecurrence: () => null }));
 jest.mock('./TaskReview', () => ({ TaskReview: () => null }));
 jest.mock('./TaskContentEditor', () => ({ TaskContentEditor: () => null }));
 jest.mock('../DataView/properties', () => ({

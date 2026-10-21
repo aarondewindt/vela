@@ -30,8 +30,15 @@ historical goal versions remain future work.
 ## UI and interpretation
 
 Nutrition and Health use the same goal-type controls and status labels. Nutrition
-shows a capped attainment bar only for minimum goals; other types use their bounds
-and status instead of treating distance to a limit as incomplete work. Health keeps
+shows marked bars for all configured positive nutrient goals. The desired upper
+edge initially sits at 90% of the track (the target itself for minimum/maximum
+and exact goals without tolerance). Ranges and tolerances show a shaded desired
+interval. When the amount exceeds the initial scale, the scale expands to leave
+5% headroom, keeping the target marker visible and distinguishing the overage.
+Bars are teal inside the desired bounds, orange below a minimum/target/range,
+and red above a maximum/target/range; exceeding a minimum remains teal. Accessible
+values report actual amounts, bounds and status rather than percent completion.
+Signed or zero Health goals still use bounds/status without a percentage bar. Health keeps
 the balance difference from the configured amount, alongside its evaluated status.
 These daily results describe logged data; they cannot establish complete food
 logging or finalized device totals. Health explicitly labels its comparison as

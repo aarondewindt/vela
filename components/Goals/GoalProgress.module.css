@@ -1,0 +1,22 @@
+.root {
+  position: relative;
+}
+
+.marker {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--mantine-color-text);
+  pointer-events: none;
+}
+
+.band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--mantine-color-teal-light);
+  border-inline: 1px solid var(--mantine-color-text);
+  pointer-events: none;
+}

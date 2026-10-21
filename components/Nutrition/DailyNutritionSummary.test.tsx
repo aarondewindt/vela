@@ -6,7 +6,7 @@ import { render } from '@/test-utils';
 import { nutritionGoalProgress, sumNutrition } from '@/lib/nutrition/calculations';
 import { DailyNutritionSummary } from './DailyNutritionSummary';
 
-it('shows minimum and maximum success, and range failure without presenting every goal as a percentage', () => {
+it('shows minimum and maximum success, and range failure with marked progress bars', () => {
   const totals = sumNutrition([
     { calories: '2300', protein: '180', carbohydrates: '250', fat: '50', fiber: null },
   ]);
@@ -39,5 +39,5 @@ it('shows minimum and maximum success, and range failure without presenting ever
   expect(screen.getByText('At least 160 g')).toBeInTheDocument();
   expect(screen.getByText('At most 70 g')).toBeInTheDocument();
   expect(screen.getByText('2000 to 2200 kcal')).toBeInTheDocument();
-  expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+  expect(screen.getAllByRole('progressbar')).toHaveLength(3);
 });

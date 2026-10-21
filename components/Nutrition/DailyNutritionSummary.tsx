@@ -1,7 +1,9 @@
 'use client';
 
-import { Paper, Progress, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import type { nutritionDiary } from '@/lib/nutrition/diary';
+import { GoalProgress } from '@/components/Goals/GoalProgress';
+import { goalProgressScale } from '@/lib/goals/progress';
 import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
 import { goalKeys } from '@/lib/nutrition/types';
 import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
@@ -45,14 +47,20 @@ export function DailyNutritionSummary({
                 </Text>
                 {progress.goal !== null && (
                   <>
-                    {progress.options.kind === 'minimum' && progress.percent !== null && (
-                      <Progress
-                        value={progress.percent}
-                        color={progress.evaluation.satisfied ? 'teal' : 'orange'}
-                        aria-label={`${labels[key]} goal progress`}
-                      />
-                    )}
-                    <Text size="xs" c={progress.evaluation.satisfied ? 'teal' : 'orange'}>
+                    <GoalProgress
+                      label={labels[key]}
+                      value={progress.consumed}
+                      target={progress.goal}
+                      options={progress.options}
+                      unit={unit}
+                    />
+                    <Text
+                      size="xs"
+                      c={
+                        goalProgressScale(progress.consumed, progress.goal, progress.options)
+                          ?.color ?? 'dimmed'
+                      }
+                    >
                       {goalStatusLabels[progress.evaluation.status]}
                     </Text>
                   </>

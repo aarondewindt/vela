@@ -34,6 +34,16 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   tests (113 suites), Stylelint, and scoped lint/format checks passed. Full lint
   and format checks still fail on existing repository issues, including untouched
   portions of `lib/planner/service.ts`; no new lint errors remain.
+- Follow-up feedback on #47 restores nutrient bars across goal types, with markers
+  near 90% initially, expanding overage scales, desired range/tolerance bands and
+  semantics-aware colors. Screen readers receive actual amounts/bounds/status.
+- #62: unset task recurrence timezones default to the user's saved preference.
+  Saved task timezones, manual edits and explicit clearing take precedence; opening
+  the editor does not persist a value. Loading/errors remain visible and retryable.
+- #48, #51, #9 and #5 were closed at the user's request; #47 and #62 remain linked
+  to PR #61 for review. No new migration is required for these UI follow-ups.
+  Validation: all 825 tests (115 suites), TypeScript, Stylelint, scoped Oxlint/format
+  and diff whitespace checks passed.
 - Dynamic goals, non-daily periods, fiber goals and recurrence occurrence reconciliation
   are follow-ups. No deployment/restart or automatic merge is part of this batch.
 

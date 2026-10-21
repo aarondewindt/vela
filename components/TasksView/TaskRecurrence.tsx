@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Stack, Switch, Text, TextInput } from '@mantine/core';
+import { trpc } from '@/lib/trpc/client';
 import { useUpdateTaskMutation } from '@/lib/planner/query';
 import { taskRecurrenceSchema } from '@/lib/planner/record-schema';
 import type { TaskRow } from '@/lib/planner/tasks';
@@ -9,7 +10,12 @@ import type { TaskRow } from '@/lib/planner/tasks';
 export function TaskRecurrence({ task }: { task: TaskRow }) {
   const [enabled, setEnabled] = useState(task.isRecurring ?? false);
   const [rule, setRule] = useState(task.recurrenceRule ?? 'FREQ=DAILY');
-  const [timezone, setTimezone] = useState(task.recurrenceTz ?? '');
+  const preferences = trpc.settings.getPreferences.useQuery(undefined, {
+    enabled: task.recurrenceTz == null,
+  });
+  // Null means no local edit yet; an explicit empty string still clears the field.
+  const [timezoneOverride, setTimezone] = useState<string | null>(task.recurrenceTz ?? null);
+  const timezone = timezoneOverride ?? preferences.data?.timezone ?? '';
   const [error, setError] = useState<string | null>(null);
   const update = useUpdateTaskMutation();
   return (
@@ -31,7 +37,7 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
         label="Recurrence timezone"
         value={timezone}
         disabled={update.isPending}
-        placeholder="No timezone configured"
+        placeholder={preferences.isPending ? 'Loading default timezone…' : 'No timezone configured'}
         onChange={(event) => setTimezone(event.currentTarget.value)}
       />
       <Text size="xs" c="dimmed">
@@ -39,12 +45,21 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
         metadata; the current scheduler does not shift occurrences by timezone. Changes apply to
         newly generated occurrences; existing occurrences and plans are kept.
       </Text>
+      {preferences.error && timezoneOverride === null && (
+        <Alert color="red">
+          Could not load your default timezone: {preferences.error.message}
+          <Button variant="subtle" size="xs" onClick={() => void preferences.refetch()}>
+            Retry timezone
+          </Button>
+        </Alert>
+      )}
       {error && <Alert color="red">{error}</Alert>}
       {update.error && <Alert color="red">{update.error.message}</Alert>}
       <Button
         size="xs"
         variant="light"
         loading={update.isPending}
+        disabled={timezoneOverride === null && !preferences.data}
         onClick={() => {
           const parsed = taskRecurrenceSchema.safeParse({
             isRecurring: enabled,
