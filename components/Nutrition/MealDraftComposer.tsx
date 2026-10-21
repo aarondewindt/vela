@@ -35,6 +35,7 @@ export function MealDraftComposer({
   const [modelId, setModelId] = useState<string | null>(null);
   const [text, setText] = useState('');
   const creationId = useRef<string | null>(null);
+  const sending = useRef(false);
   const viewRevision = useRef(0);
   const pendingTurn = useRef<{ draftId: string; text: string; requestId: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -91,9 +92,19 @@ export function MealDraftComposer({
     await utils.nutrition.listDrafts.invalidate();
   };
   const send = async (message: string, retryRequestId?: string) => {
-    if (!message.trim() || interpret.isPending || create.isPending || changeModel.isPending) {
+    if (
+      sending.current ||
+      !message.trim() ||
+      interpret.isPending ||
+      create.isPending ||
+      changeModel.isPending ||
+      current?.generating ||
+      (current && current.status !== 'DRAFT') ||
+      !resolution.selection
+    ) {
       return;
     }
+    sending.current = true;
     setSendError(null);
     const requestViewRevision = viewRevision.current;
     let active = current;
@@ -143,6 +154,8 @@ export function MealDraftComposer({
         await utils.nutrition.getDraft.invalidate({ id: active.id });
         await utils.nutrition.listDrafts.invalidate();
       }
+    } finally {
+      sending.current = false;
     }
   };
   return (
@@ -350,6 +363,15 @@ export function MealDraftComposer({
                   maxLength={4000}
                   value={text}
                   onChange={(event) => setText(event.currentTarget.value)}
+                  description="Shift+Enter to send; Enter for a new line."
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.shiftKey && !event.nativeEvent.isComposing) {
+                      event.preventDefault();
+                      if (!event.repeat) {
+                        event.currentTarget.form?.requestSubmit();
+                      }
+                    }
+                  }}
                 />
                 <Group justify="space-between">
                   <Text size="xs" c="dimmed">

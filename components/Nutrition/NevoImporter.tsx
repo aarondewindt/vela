@@ -14,6 +14,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { trpc } from '@/lib/trpc/client';
 import { maxNevoFileBytes } from '@/lib/nutrition/nevo-schema';
 import type { NevoImportPreview } from '@/lib/nutrition/nevo';
@@ -78,7 +79,8 @@ function ImportSummary({ value }: { value: NevoImportPreview }) {
             Dutch alias: {food.dutchName}
           </Text>
           <Text size="xs" c="dimmed">
-            NEVO {food.code} · {food.calories} kcal per 100 {food.referenceUnit.toLowerCase()}
+            NEVO {food.code} · {amount(food.calories)} kcal per 100{' '}
+            {food.referenceUnit.toLowerCase()}
           </Text>
         </Paper>
       ))}

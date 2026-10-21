@@ -1,10 +1,10 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { TaskView } from './TaskView';
-import type { TaskRow } from '@/lib/planner/tasks';
+import type { TaskRow, ThemeRow } from '@/lib/planner/tasks';
 
 jest.mock('@/lib/planner/query', () => ({
-  useUpdateTaskMutation: () => ({ mutate: jest.fn() }),
+  useUpdateTaskMutation: jest.fn(),
   useDeleteTaskMutation: jest.fn(),
 }));
 jest.mock('./TaskReview', () => ({ TaskReview: () => null }));
@@ -12,15 +12,20 @@ jest.mock('./TaskContentEditor', () => ({ TaskContentEditor: () => null }));
 jest.mock('../DataView/properties', () => ({
   DateProperty: () => null,
   NumberProperty: () => null,
-  SelectProperty: () => null,
+  SelectProperty: jest.requireActual('../DataView/properties').SelectProperty,
   TagsProperty: () => null,
   TextProperty: () => null,
 }));
-import { useDeleteTaskMutation } from '@/lib/planner/query';
+import { useDeleteTaskMutation, useUpdateTaskMutation } from '@/lib/planner/query';
 
 const task = {
   id: 'task-1',
   title: 'Buy groceries',
+  status: 'BACKLOG',
+  priority: 2,
+  size: 1,
+  category: null,
+  themeId: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 } as TaskRow;
@@ -40,6 +45,7 @@ beforeEach(() => {
     value: new EventTarget(),
   });
   jest.clearAllMocks();
+  (useUpdateTaskMutation as jest.Mock).mockReturnValue({ mutate: jest.fn() });
   mutation = { mutate, reset, isPending: false, error: null };
   (useDeleteTaskMutation as jest.Mock).mockImplementation(() => mutation);
 });
@@ -106,4 +112,47 @@ it('prevents repeat submission and cancellation while deletion is pending', asyn
   fireEvent.keyDown(document, { key: 'Escape' });
   expect(mutate).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
+it('shows the current theme category while preserving inheritance and explicit overrides', async () => {
+  const theme = { id: 'theme-1', name: 'Home', category: 'LIFE' } as ThemeRow;
+  const update = jest.fn();
+  (useUpdateTaskMutation as jest.Mock).mockReturnValue({ mutate: update });
+  const view = render(
+    <TaskView
+      task={{ ...task, themeId: theme.id }}
+      themes={[theme]}
+      tagSuggestions={[]}
+      onClose={onClose}
+    />
+  );
+  expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue(
+    'Use theme default (Life)'
+  );
+  expect(update).not.toHaveBeenCalled();
+  view.rerender(
+    <TaskView
+      task={{ ...task, themeId: theme.id }}
+      themes={[{ ...theme, category: 'REST' }]}
+      tagSuggestions={[]}
+      onClose={onClose}
+    />
+  );
+  expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue(
+    'Use theme default (Rest)'
+  );
+  view.rerender(
+    <TaskView
+      task={{ ...task, themeId: theme.id, category: 'WORK' }}
+      themes={[theme]}
+      tagSuggestions={[]}
+      onClose={onClose}
+    />
+  );
+  expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Work');
+  fireEvent.click(screen.getByRole('combobox', { name: 'Category' }));
+  fireEvent.click(await screen.findByRole('option', { name: 'Use theme default (Life)' }));
+  expect(update).toHaveBeenCalledWith({ id: task.id, patch: { category: null } });
+  view.rerender(<TaskView task={task} themes={[]} tagSuggestions={[]} onClose={onClose} />);
+  expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Use theme default');
 });

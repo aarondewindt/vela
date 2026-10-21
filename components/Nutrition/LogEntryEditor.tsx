@@ -15,6 +15,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { trpc } from '@/lib/trpc/client';
 import type { DiaryEntry } from '@/lib/nutrition/diary';
 import type { NutritionProduct } from '@/lib/nutrition/products';
@@ -253,11 +254,11 @@ export function LogEntryEditor({
               {data && (
                 <>
                   <Text size="xl" fw={700}>
-                    {data.nutrients.calories} kcal
+                    {amount(data.nutrients.calories)} kcal
                   </Text>
                   <Text size="sm">
-                    Protein {data.nutrients.protein} g · Carbs {data.nutrients.carbohydrates} g ·
-                    Fat {data.nutrients.fat} g
+                    Protein {amount(data.nutrients.protein)} g · Carbs{' '}
+                    {amount(data.nutrients.carbohydrates)} g · Fat {amount(data.nutrients.fat)} g
                   </Text>
                   {data.estimated && (
                     <Badge variant="light" color="yellow">

@@ -10,6 +10,7 @@ import {
   Group,
   Text,
   TextInput,
+  Tooltip,
   UnstyledButton,
 } from '@mantine/core';
 import { DataTable, useDataTableColumns, type DataTableColumn } from 'mantine-datatable';
@@ -112,12 +113,15 @@ function buildColumns(
     accessor: 'title',
     title: 'Task',
     width: 260,
+    cellsStyle: () => ({ maxWidth: 0 }),
     draggable: true,
     resizable: true,
     render: (t) => (
-      <Text fw={500} size="sm">
-        {t.title}
-      </Text>
+      <Tooltip label={t.title} events={{ hover: true, focus: true, touch: true }}>
+        <Text fw={500} size="sm" truncate tabIndex={0}>
+          {t.title}
+        </Text>
+      </Tooltip>
     ),
   };
 
@@ -128,7 +132,9 @@ function buildColumns(
     }
     // Brief takes the remaining width; max-width 0 lets the cell shrink and truncate.
     const flexible =
-      key === 'brief' ? { width: '100%', cellsStyle: () => ({ maxWidth: 0 }) } : { width: columnWidths[key] };
+      key === 'brief'
+        ? { width: '100%', cellsStyle: () => ({ maxWidth: 0 }) }
+        : { width: columnWidths[key] };
     return [
       {
         accessor: key,

@@ -13,7 +13,7 @@ jest.mock('@/lib/trpc/client', () => ({
   },
 }));
 jest.mock('./MealDraftReview', () => ({ MealDraftReview: () => <div>Saved draft review</div> }));
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
@@ -146,4 +146,65 @@ it('keeps a new form intact when an older closed draft finishes asynchronously',
   expect(screen.getByRole('textbox', { name: 'What did you eat?' })).toHaveValue(
     'A new meal in progress.'
   );
+});
+
+it('preserves Enter/newlines and submits a new meal with Shift+Enter only once', async () => {
+  const user = userEvent.setup();
+  let finish: (result: unknown) => void = () => undefined;
+  const create = jest.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  (trpc.nutrition.createDraft.useMutation as jest.Mock).mockReturnValue({
+    mutateAsync: create,
+    reset: jest.fn(),
+    isPending: false,
+  });
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: {
+      resolved: { 'nutrition.mealDraft': { selection: value.selection, source: 'Default LLM' } },
+    },
+  });
+  interpret.mutateAsync.mockResolvedValueOnce(value);
+  render(<MealDraftComposer date="2026-10-18" onConfirmed={jest.fn()} />);
+  await user.click(screen.getByRole('button', { name: 'Describe a meal' }));
+  const input = screen.getByRole('textbox', { name: 'What did you eat?' });
+  await user.type(input, 'Rice{Enter}Chicken');
+  expect(input).toHaveValue('Rice\nChicken');
+  expect(create).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true, isComposing: true });
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true, repeat: true });
+  expect(create).not.toHaveBeenCalled();
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+  fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Create meal draft' }));
+  expect(create).toHaveBeenCalledTimes(1);
+  await act(async () => finish(value));
+  await waitFor(() => expect(interpret.mutateAsync).toHaveBeenCalledTimes(1));
+  expect(interpret.mutateAsync).toHaveBeenCalledWith(
+    expect.objectContaining({ text: 'Rice\nChicken' })
+  );
+});
+
+it('uses Shift+Enter for corrections and blocks whitespace and generating drafts', async () => {
+  const user = userEvent.setup();
+  interpret.mutateAsync.mockResolvedValueOnce(value);
+  render(<MealDraftComposer date="2026-10-18" initialDraftId={id} onConfirmed={jest.fn()} />);
+  const input = screen.getByRole('textbox', { name: 'Correct or extend this meal' });
+  await user.type(input, '   {Shift>}{Enter}{/Shift}');
+  expect(interpret.mutateAsync).not.toHaveBeenCalled();
+  await user.type(input, 'More rice{Shift>}{Enter}{/Shift}');
+  await waitFor(() => expect(interpret.mutateAsync).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(input).toHaveValue(''));
+  (trpc.nutrition.getDraft.useQuery as jest.Mock).mockReturnValue({
+    data: { ...value, generating: true },
+    isFetchedAfterMount: true,
+    error: null,
+  });
+  await user.type(input, 'More chicken{Shift>}{Enter}{/Shift}');
+  expect(interpret.mutateAsync).toHaveBeenCalledTimes(1);
 });

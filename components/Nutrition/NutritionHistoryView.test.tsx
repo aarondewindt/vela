@@ -2,8 +2,20 @@ jest.mock('@/lib/trpc/client', () => ({
   trpc: { nutrition: { getHistory: { useQuery: jest.fn() } } },
 }));
 jest.mock('@mantine/charts', () => ({
-  LineChart: ({ data, connectNulls }: { data: unknown[]; connectNulls: boolean }) => (
-    <div data-testid="chart" data-connect-nulls={String(connectNulls)}>
+  LineChart: ({
+    data,
+    connectNulls,
+    valueFormatter,
+  }: {
+    data: unknown[];
+    connectNulls: boolean;
+    valueFormatter: (value: number) => string;
+  }) => (
+    <div
+      data-testid="chart"
+      data-connect-nulls={String(connectNulls)}
+      data-formatted={valueFormatter(184.73913043)}
+    >
       {JSON.stringify(data)}
     </div>
   ),
@@ -34,9 +46,10 @@ it('renders missing days separately from logged zero and requests both chart per
   render(<NutritionHistoryView initialDate="2026-10-18" />);
   expect(screen.getAllByText('Not logged')).toHaveLength(4);
   expect(screen.getAllByText('0 kcal').length).toBeGreaterThan(0);
-  screen
-    .getAllByTestId('chart')
-    .forEach((chart) => expect(chart).toHaveAttribute('data-connect-nulls', 'false'));
+  screen.getAllByTestId('chart').forEach((chart) => {
+    expect(chart).toHaveAttribute('data-connect-nulls', 'false');
+    expect(chart).toHaveAttribute('data-formatted', '184.7');
+  });
   await userEvent.setup().click(screen.getByText('30 days'));
   expect(trpc.nutrition.getHistory.useQuery).toHaveBeenLastCalledWith(
     { endDate: '2026-10-18', days: 30 },

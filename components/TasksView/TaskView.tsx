@@ -38,6 +38,7 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
   const [deleteTarget, setDeleteTarget] = useState<TaskRow | null>(null);
   const update = useUpdateTaskMutation();
   const remove = useDeleteTaskMutation();
+  const themeCategory = themes.find((theme) => theme.id === task.themeId)?.category;
   const save = (patch: Parameters<typeof update.mutate>[0]['patch']) =>
     update.mutate({ id: task.id, patch });
 
@@ -173,7 +174,12 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
           label="Category"
           value={task.category ?? ''}
           data={[
-            { value: '', label: 'Use theme default' },
+            {
+              value: '',
+              label: themeCategory
+                ? `Use theme default (${planningCategoryLabels[themeCategory]})`
+                : 'Use theme default',
+            },
             ...planningCategories.map((value) => ({ value, label: planningCategoryLabels[value] })),
           ]}
           onSave={(category) =>

@@ -14,6 +14,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { trpc } from '@/lib/trpc/client';
 import { positiveDecimalSchema } from '@/lib/nutrition/schema';
 import { unitLabels, type QuantityUnit } from '@/lib/nutrition/types';
@@ -111,14 +112,15 @@ export function ProductCalculator({
         {data && (
           <>
             <Text size="xl" fw={700}>
-              {data.nutrients.calories} kcal
+              {amount(data.nutrients.calories)} kcal
             </Text>
             <SimpleGrid cols={2}>
-              <Text>Protein: {data.nutrients.protein} g</Text>
-              <Text>Carbs: {data.nutrients.carbohydrates} g</Text>
-              <Text>Fat: {data.nutrients.fat} g</Text>
+              <Text>Protein: {amount(data.nutrients.protein)} g</Text>
+              <Text>Carbs: {amount(data.nutrients.carbohydrates)} g</Text>
+              <Text>Fat: {amount(data.nutrients.fat)} g</Text>
               <Text>
-                Fiber: {data.nutrients.fiber === null ? 'unknown' : `${data.nutrients.fiber} g`}
+                Fiber:{' '}
+                {data.nutrients.fiber === null ? 'unknown' : `${amount(data.nutrients.fiber)} g`}
               </Text>
             </SimpleGrid>
             {data.estimated && (
