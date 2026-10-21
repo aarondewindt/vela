@@ -13,7 +13,6 @@ import {
   type ModelChoice,
   type ModelSettingKey,
 } from '@/lib/model-settings/schema';
-import { SharedIndexSettings } from './SharedIndexSettings';
 
 function encode(value?: ModelChoice) {
   return !value
@@ -156,7 +155,6 @@ export function AiModelSettings() {
           {modelFeatures.map((feature) => picker(feature, featureDefinitions[feature].label, true))}
         </Stack>
       </Paper>
-      <SharedIndexSettings />
     </Stack>
   );
 }

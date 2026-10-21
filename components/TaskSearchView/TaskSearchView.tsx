@@ -133,7 +133,7 @@ export function TaskSearchView() {
                 {current.lastError && !failure && <Alert color="yellow">{current.lastError}</Alert>}
               </Stack>
             </Paper>
-            <Button component={Link} href="/settings#ai-models" variant="subtle">
+            <Button component={Link} href="/settings/planner" variant="subtle">
               Manage search models in Settings
             </Button>
           </>

@@ -1,6 +1,6 @@
 # Nutrition
 
-Phases 1–6 provide a food catalog, manual calorie/macronutrient tracker, hybrid food search, persistent conversational meal drafts, reusable recipes and historical charts. A subsequently authorized [NEVO upload/update workflow](NEVO.md) adds English primary names and Dutch aliases from user-supplied CSV files. Open **Nutrition → Diary** (`/nutrition`), **Food products** (`/nutrition/products`), **History** (`/nutrition/history`) or **Daily goals** (`/nutrition/settings`). The user explicitly approved these phases following the [architecture proposal](NUTRITION_PROPOSAL.md). The user subsequently authorized Phases 5 and 6 together on 2026-10-18.
+Phases 1–6 provide a food catalog, manual calorie/macronutrient tracker, hybrid food search, persistent conversational meal drafts, reusable recipes and historical charts. A subsequently authorized [NEVO upload/update workflow](NEVO.md) adds English primary names and Dutch aliases from user-supplied CSV files. Open **Nutrition → Diary** (`/nutrition`), **Food products** (`/nutrition/products`), **History** (`/nutrition/history`) or **Settings → Nutrition** (`/settings/nutrition`) for daily goals and related-food search setup. The user explicitly approved these phases following the [architecture proposal](NUTRITION_PROPOSAL.md). The user subsequently authorized Phases 5 and 6 together on 2026-10-18.
 
 ## Using the diary
 
@@ -31,7 +31,7 @@ New products always have manual provenance. Verification is independently editab
 ## Implementation
 
 - `app/nutrition/products/page.tsx`: explicit Better Auth session check and user-keyed view.
-- `app/nutrition/page.tsx`, `app/nutrition/settings/page.tsx`: authenticated diary/goals pages; timezone-derived initial day and validated URL dates.
+- `app/nutrition/page.tsx`, `app/settings/nutrition/page.tsx`: authenticated diary/goals pages; timezone-derived initial day and validated URL dates.
 - `components/Nutrition/`: responsive desktop table/mobile cards, editor, serving controls and saved-product calculator. TanStack Query manages server state; local React state manages form/filter/modal interactions.
 - `NutritionDiaryView`, `MealSection`, `LogEntryEditor`, `ProductPicker`, `DailyNutritionSummary` and `NutritionGoalsView` provide the Phase 2 manual diary, inline catalog creation, editable historical entries, summary and goals.
 - `lib/nutrition/router.ts`: protected Zod-validated procedures registered as `nutrition` in the root tRPC router. Owner identity always comes from the session; safe errors mask unexpected persistence details.

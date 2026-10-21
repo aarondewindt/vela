@@ -15,7 +15,7 @@ import userEvent from '@testing-library/user-event';
 import { modals } from '@mantine/modals';
 import { trpc } from '@/lib/trpc/client';
 import { render } from '@/test-utils';
-import { SharedIndexSettings } from './SharedIndexSettings';
+import { TaskIndexSettings, FoodIndexSettings } from './SharedIndexSettings';
 const rebuild = jest.fn();
 const status = {
   isFetchedAfterMount: true,
@@ -56,7 +56,12 @@ beforeEach(() => {
 });
 it('keeps published models pinned until a maintainer explicitly confirms a complete rebuild', async () => {
   const user = userEvent.setup();
-  render(<SharedIndexSettings />);
+  render(
+    <>
+      <TaskIndexSettings />
+      <FoodIndexSettings />
+    </>
+  );
   expect(screen.getByRole('combobox', { name: 'Planner · Task search model' })).toHaveValue(
     'old:latest'
   );
@@ -80,7 +85,12 @@ it('shows ordinary users the published configuration without rebuild controls', 
   const data = { ...status, data: { ...status.data, isMaintainer: false } };
   (trpc.taskSearch.status.useQuery as jest.Mock).mockReturnValue(data);
   (trpc.nutrition.productIndexStatus.useQuery as jest.Mock).mockReturnValue(data);
-  render(<SharedIndexSettings />);
+  render(
+    <>
+      <TaskIndexSettings />
+      <FoodIndexSettings />
+    </>
+  );
   expect(screen.queryByRole('button', { name: 'Rebuild shared index' })).not.toBeInTheDocument();
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   expect(screen.getAllByText(/old:latest · 1024 dimensions/)).toHaveLength(2);

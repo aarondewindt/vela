@@ -16,21 +16,7 @@ type IndexStatus = {
   lastError: string | null;
 };
 
-export function SharedIndexSettings() {
-  return (
-    <Stack>
-      <Title order={4}>Shared search indexes</Title>
-      <Text size="sm" c="dimmed">
-        These models are fixed to each published index. Your defaults can prefill a rebuild;
-        changing a default leaves the active index on its published configuration.
-      </Text>
-      <TaskIndexSettings />
-      <FoodIndexSettings />
-    </Stack>
-  );
-}
-
-function TaskIndexSettings() {
+export function TaskIndexSettings() {
   const utils = trpc.useUtils();
   const status = trpc.taskSearch.status.useQuery(undefined, {
     retry: false,
@@ -58,7 +44,7 @@ function TaskIndexSettings() {
   );
 }
 
-function FoodIndexSettings() {
+export function FoodIndexSettings() {
   const utils = trpc.useUtils();
   const status = trpc.nutrition.productIndexStatus.useQuery(undefined, {
     retry: false,
@@ -135,7 +121,11 @@ function IndexSettings({
   return (
     <Paper withBorder p="md">
       <Stack gap="sm">
-        <Title order={5}>{title}</Title>
+        <Title order={4}>{title}</Title>
+        <Text size="sm" c="dimmed">
+          The published search model stays fixed until a maintainer rebuilds the shared index.
+          Changing your AI defaults does not change this index.
+        </Text>
         {error && <Alert color="red">{error}</Alert>}
         {!status && !error && <Text role="status">Loading index…</Text>}
         {status && (

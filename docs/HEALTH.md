@@ -146,3 +146,5 @@ check verified import through the worker, normalization, daily-total deduplicati
 Nutrition balance/goal comparison, manual retries and cross-user isolation; all
 synthetic accounts/data were removed. Real device entities still need setup and
 end-to-end verification by the account owner.
+
+Health’s daily calorie-balance goal is configured in **Settings → Health** (`/settings/health`). The Health dashboard links to this editor. **Settings → Home Assistant** retains the private connection, health sensor mappings and diagnostics.

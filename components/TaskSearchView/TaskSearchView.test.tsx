@@ -75,7 +75,7 @@ it('links maintainers to the centralized model settings', () => {
   render(<TaskSearchView />);
   expect(screen.getByRole('link', { name: 'Manage search models in Settings' })).toHaveAttribute(
     'href',
-    '/settings#ai-models'
+    '/settings/planner'
   );
   expect(screen.queryByRole('combobox', { name: 'Embedding model' })).not.toBeInTheDocument();
 });

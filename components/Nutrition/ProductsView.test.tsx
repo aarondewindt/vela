@@ -8,7 +8,6 @@ jest.mock('@/lib/trpc/client', () => ({
     },
   },
 }));
-jest.mock('./ProductSearchSettings', () => ({ ProductSearchSettings: () => null }));
 jest.mock('./ProductEditor', () => ({
   ProductEditor: ({ initialCalculationMode }: { initialCalculationMode?: string }) => (
     <div

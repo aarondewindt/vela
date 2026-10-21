@@ -231,3 +231,23 @@ it('evaluates signed balance ranges without treating missing data as zero', asyn
     })
   );
 });
+
+it('loads only the owner goal for Settings and preserves saved goal semantics', async () => {
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue(null);
+  await expect(healthService.getGoal('alice')).resolves.toEqual({
+    version: 0,
+    calorieBalance: null,
+    semantics: { kind: 'target' },
+  });
+  expect(prisma.healthGoal.findUnique).toHaveBeenCalledWith({ where: { userId: 'alice' } });
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue({
+    version: 4,
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200' },
+  });
+  await expect(healthService.getGoal('alice')).resolves.toEqual({
+    version: 4,
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200' },
+  });
+});

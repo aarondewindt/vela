@@ -14,6 +14,14 @@ import { settingsService } from '@/lib/settings/service';
 import { calorieBalance, inspectMetric } from './normalization';
 
 export const healthService = {
+  async getGoal(userId: string) {
+    const goal = await prisma.healthGoal.findUnique({ where: { userId } });
+    return {
+      semantics: readGoalOptions(goal?.semantics),
+      calorieBalance: goal?.calorieBalance ?? null,
+      version: goal?.version ?? 0,
+    };
+  },
   async diagnostics(userId: string) {
     try {
       const [{ client }, mappings, { timezone }] = await Promise.all([

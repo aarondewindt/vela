@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { useEffect, useState } from 'react';
 import {
@@ -28,7 +29,6 @@ import { unitLabels } from '@/lib/nutrition/types';
 import type { NutritionProduct } from '@/lib/nutrition/products';
 import { ProductEditor } from './ProductEditor';
 import { ProductCalculator } from './ProductCalculator';
-import { ProductSearchSettings } from './ProductSearchSettings';
 import { NevoImporter } from './NevoImporter';
 import { NevoAttribution } from './NevoAttribution';
 import { productSources } from '@/lib/nutrition/attribution';
@@ -144,7 +144,9 @@ export function ProductsView() {
             </Button>
           </Group>
         </Group>
-        <ProductSearchSettings />
+        <Button component={Link} href="/settings/nutrition#related-food-search" variant="subtle">
+          Related-food search settings
+        </Button>
         <Group align="flex-end">
           <TextInput
             className={classes.search}

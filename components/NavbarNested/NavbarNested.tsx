@@ -33,12 +33,10 @@ const navbar_map = [
       { label: 'Diary', link: '/nutrition' },
       { label: 'Food products', link: '/nutrition/products' },
       { label: 'History', link: '/nutrition/history' },
-      { label: 'Daily goals', link: '/nutrition/settings' },
     ],
   },
   { label: 'Health', icon: HeartbeatIcon, link: '/health' },
-  { label: 'Home Assistant', icon: GearIcon, link: '/settings/home-assistant' },
-  { label: 'Settings', icon: GearIcon, link: '/settings' },
+  { label: 'Settings', icon: GearIcon, link: '/settings', pathPattern: /^\/settings(?:\/|$)/ },
   {
     label: 'AI Dev',
     icon: ChatCircleIcon,

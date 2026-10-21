@@ -13,7 +13,6 @@ jest.mock('@/lib/trpc/client', () => ({
 }));
 import { LineChart } from '@mantine/charts';
 import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { HealthView } from './HealthView';
@@ -51,28 +50,15 @@ beforeEach(() => {
     (mutation as jest.Mock).mockReturnValue({ mutate: save });
   }
 });
-it('shows missing data explicitly and persists a user-selected deficit goal', async () => {
-  const user = userEvent.setup();
+it('shows missing data and links to the single Health settings editor', () => {
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
   expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-  const goal = screen.getByRole('textbox', { name: 'Goal (kcal per day)' });
-  expect(goal).toHaveValue('');
-  await user.type(goal, '-300');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenCalledWith({
-    version: 0,
-    calorieBalance: -300,
-    semantics: { kind: 'target' },
-  });
-  await user.clear(goal);
-  await user.type(goal, '0');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenLastCalledWith({
-    version: 0,
-    calorieBalance: 0,
-    semantics: { kind: 'target' },
-  });
+  expect(screen.getByRole('link', { name: 'Edit daily calorie balance goal' })).toHaveAttribute(
+    'href',
+    '/settings/health'
+  );
+  expect(screen.queryByRole('button', { name: 'Save goal' })).not.toBeInTheDocument();
 });
 
 it('labels carried readings and offers deletion only on their original measurement date', () => {
@@ -93,29 +79,4 @@ it('labels carried readings and offers deletion only on their original measureme
   expect((LineChart as unknown as jest.Mock).mock.calls[0][0].data[0].weight).toBeNull();
   expect(screen.getByText(/Manual reading/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Delete manual reading' })).not.toBeInTheDocument();
-});
-
-it('configures a signed balance range and validates its inclusive bounds', async () => {
-  const user = userEvent.setup();
-  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
-  await user.type(screen.getByRole('textbox', { name: 'Goal (kcal per day)' }), '-400');
-  await user.click(screen.getByRole('combobox', { name: 'Calorie balance goal type' }));
-  await user.click(screen.getByRole('option', { name: 'Range' }));
-  const upper = screen.getByRole('textbox', { name: 'Calorie balance upper bound' });
-  await user.type(upper, '-500');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(screen.getByText(/Use an ordered range/)).toBeInTheDocument();
-  expect(save).not.toHaveBeenCalled();
-  await user.clear(upper);
-  await user.type(upper, '-200');
-  await user.type(
-    screen.getByRole('textbox', { name: 'Calorie balance preferred target' }),
-    '-300'
-  );
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenCalledWith({
-    version: 0,
-    calorieBalance: -400,
-    semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
-  });
 });

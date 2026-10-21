@@ -20,21 +20,9 @@ import {
   Title,
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
-import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
-import {
-  defaultGoalOptions,
-  describeGoal,
-  goalStatusLabels,
-  type GoalOptions,
-} from '@/lib/goals/semantics';
+import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
-import {
-  goalSchema,
-  metricKinds,
-  metricLabels,
-  metricUnits,
-  type MetricKind,
-} from '@/lib/health/schema';
+import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { dateInTimezone } from '@/lib/nutrition/dates';
 
@@ -42,70 +30,6 @@ const amount = (value: number | null | undefined, unit = '') =>
   value == null
     ? 'Not recorded'
     : `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(value)}${unit ? ` ${unit}` : ''}`;
-function GoalForm({
-  initial,
-}: {
-  initial: { calorieBalance: number | null; version: number; semantics?: GoalOptions };
-}) {
-  const utils = trpc.useUtils();
-  const [options, setOptions] = useState(initial.semantics ?? defaultGoalOptions);
-  const [error, setError] = useState<string | null>(null);
-  const [goal, setGoal] = useState<number | string>(initial.calorieBalance ?? '');
-  const save = trpc.health.saveGoal.useMutation({
-    onSuccess: () => utils.health.history.invalidate(),
-  });
-  return (
-    <Paper withBorder p="md">
-      <Stack>
-        <Title order={3}>Daily calorie balance goal</Title>
-        <Text size="sm">
-          Balance = logged intake − total calories burned. Use a negative goal for a deficit, zero
-          for maintenance, or a positive goal for a surplus. Your current goal is used for all dates
-          shown.
-        </Text>
-        <NumberInput
-          label="Goal (kcal per day)"
-          description="For example, −300 for a deficit or +200 for a surplus. Leave empty for no goal."
-          min={-10000}
-          max={10000}
-          decimalScale={0}
-          value={goal}
-          onChange={setGoal}
-        />
-        <GoalOptionsFields
-          label="Calorie balance"
-          value={options}
-          onChange={setOptions}
-          disabled={save.isPending}
-        />
-        <Text size="xs" c="dimmed">
-          For a range, use the goal amount as its minimum, then set the maximum and optional
-          preferred target. Bounds are inclusive.
-        </Text>
-        {error && <Alert color="red">{error}</Alert>}
-        {save.error && <Alert color="red">{save.error.message}</Alert>}
-        <Button
-          loading={save.isPending}
-          onClick={() => {
-            const parsed = goalSchema.safeParse({
-              calorieBalance: goal === '' ? null : Number(goal),
-              version: initial.version,
-              semantics: options,
-            });
-            if (!parsed.success) {
-              setError(parsed.error.issues[0].message);
-              return;
-            }
-            setError(null);
-            save.mutate(parsed.data);
-          }}
-        >
-          Save goal
-        </Button>
-      </Stack>
-    </Paper>
-  );
-}
 function ManualEntry({ date }: { date: string }) {
   const utils = trpc.useUtils();
   const [metric, setMetric] = useState<MetricKind>('WEIGHT');
@@ -442,7 +366,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
-            <GoalForm key={data.goal.version} initial={data.goal} />
+            <Button component={Link} href="/settings/health" variant="default">
+              Edit daily calorie balance goal
+            </Button>
             <ManualEntry key={date} date={date} />
           </>
         )}
