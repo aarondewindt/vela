@@ -47,9 +47,32 @@ it('rejects a zero goal without persisting or replacing the input', async () => 
   render(<NutritionGoalsView />);
   await user.type(screen.getByRole('textbox', { name: 'Calories (kcal)' }), '0');
   await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
-  expect(
-    await screen.findByText('Enter a positive decimal for each goal, or leave it empty.')
-  ).toBeInTheDocument();
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(screen.getByRole('textbox', { name: 'Calories (kcal)' })).toHaveValue('0');
   expect(mutateAsync).not.toHaveBeenCalled();
+});
+
+it('edits minimum and range settings and rejects reversed bounds before saving', async () => {
+  const user = userEvent.setup();
+  render(<NutritionGoalsView />);
+  await user.type(screen.getByRole('textbox', { name: 'Calories (kcal)' }), '2000');
+  await user.click(screen.getByRole('combobox', { name: 'Calories (kcal) goal type' }));
+  await user.click(screen.getByRole('option', { name: 'Range' }));
+  const upper = screen.getByRole('textbox', { name: 'Calories (kcal) upper bound' });
+  await user.type(upper, '1900');
+  await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Range upper bound');
+  expect(mutateAsync).not.toHaveBeenCalled();
+  await user.clear(upper);
+  await user.type(upper, '2200');
+  await user.type(screen.getByRole('textbox', { name: 'Protein (g)' }), '160');
+  await user.click(screen.getByRole('combobox', { name: 'Protein (g) goal type' }));
+  await user.click(screen.getByRole('option', { name: 'Minimum' }));
+  await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
+  expect(mutateAsync).toHaveBeenCalledWith({
+    ...initial,
+    calories: '2000',
+    protein: '160',
+    semantics: { calories: { kind: 'range', upperBound: '2200' }, protein: { kind: 'minimum' } },
+  });
 });

@@ -2,14 +2,21 @@
 
 The **Health** app (`/health`) tracks weight (kg), body fat (%), lean mass (kg), sleep
 (hours) and total daily calories burned (kcal). It shows the latest reading for each
-metric on each calendar date, with 7/30-day history and gaps for missing data. Manual
+metric on each calendar date, with 7/30-day history. Weight, body fat and lean mass
+cards/table carry the latest known reading forward, even from before the selected
+period, and label its original date. Source, timestamp basis and record identity
+remain unchanged; no measurements are inserted. Charts show actual readings with
+gaps. Sleep and total daily burn are never carried forward, and calorie balance
+requires same-day intake and burn. Manual
 readings can be added and deleted. Home Assistant readings retain their provenance;
 removing a mapping stops its future import without deleting history.
 
 Calorie balance is **Nutrition diary intake − total calories burned**. Negative
 means deficit; positive means surplus. The optional signed daily goal supports a
 deficit, maintenance (zero), surplus, or no goal. Difference from goal is balance
-minus goal. This is a comparison, not a pass/fail threshold. The current goal applies
+minus the configured goal amount. Minimum, maximum, exact target (with optional
+tolerance) and range semantics use the shared [goal evaluator](GOAL_SEMANTICS.md).
+The status compares recorded data and remains provisional. The current goal applies
 to all dates shown. No daily burn is inferred from active calories or BMR alone.
 Missing food entries or burn data produce an unknown balance; unfinished days and
 incomplete records are explicitly provisional. Nutrition entries stay authoritative

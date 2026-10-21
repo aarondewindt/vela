@@ -2,8 +2,35 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Planner conversation #37/#38 implemented (migration pending on daily-use database); earlier scheduler/search work preserved
-**Last updated:** 2026-10-20
+**Status:** Health, recurrence, goal and shell improvements ready for review; goal semantics migration pending. Earlier deployment notes retained.
+**Last updated:** 2026-10-21
+
+## Health, recurrence, goals and shell (#48/#51/#47/#9/#5) — 2026-10-21
+
+- Branch `feat/health-recurrence-goal-improvements`. Health carries only body
+  composition forward, including pre-window readings, with original date/source/
+  entity/timestamp/identity and explicit carried labels. Charts show actual samples;
+  sleep, daily burn and missing balances remain date-specific/unknown.
+- TaskView exposes recurrence rule, enabled flag, timezone metadata and lead time.
+  Rule validation reuses the scheduler's supported subset. Calendar recurrence is
+  still anchored to task creation; timezone is stored but not interpreted by the
+  scheduler. Changing/disabling recurrence retains existing occurrences and plans.
+  Conversational recurrence edits remain excluded from the interpreter schema.
+- Shared goal evaluator and controls support minimum, maximum, target/tolerance and
+  range semantics. Existing amounts retain exact target semantics until configured.
+  See [goal semantics](GOAL_SEMANTICS.md) for compatibility and follow-up scope.
+- **Migration `20261021210000_goal_semantics` is not applied to persisted app tables.**
+  Client generated; schema/diff checked. Temporary PostgreSQL tables in a rolled-back
+  transaction verified migration retention and the actual history SQL. Deploy via
+  the normal backup/migrate procedure before running the new app version.
+- Global primary text is softer; dimmed text meets 4.5:1 contrast on dark surfaces.
+  Desktop header height/offset is zero at `sm`; the mobile menu remains available.
+- Validation: route type generation, TypeScript, Prisma validation, all 807 Jest
+  tests (113 suites), Stylelint, and scoped lint/format checks passed. Full lint
+  and format checks still fail on existing repository issues, including untouched
+  portions of `lib/planner/service.ts`; no new lint errors remain.
+- Dynamic goals, non-daily periods, fiber goals and recurrence occurrence reconciliation
+  are follow-ups. No deployment/restart or automatic merge is part of this batch.
 
 ## Planner conversation (#37/#38) — 2026-10-20
 

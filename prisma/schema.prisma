@@ -681,6 +681,7 @@ model NutritionMealCopy {
 }
 
 model NutritionGoals {
+  semantics     Json     @default("{}")
   userId        String   @id
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   calories      Decimal? @db.Decimal(20, 8)
@@ -986,6 +987,7 @@ model HealthMetric {
 }
 
 model HealthGoal {
+  semantics     Json     @default("{}")
   userId         String   @id
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   calorieBalance Int?

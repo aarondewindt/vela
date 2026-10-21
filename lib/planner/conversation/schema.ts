@@ -13,7 +13,7 @@ export const instructionSchema = z.discriminatedUnion('type', [
       action: z.enum(['create', 'update', 'delete']),
       query: query.nullable(),
       task: taskPatchSchema
-        .omit({ themeId: true })
+        .omit({ themeId: true, recurrence: true })
         .extend({ themeQuery: query.nullable().optional() })
         .strict()
         .nullable(),

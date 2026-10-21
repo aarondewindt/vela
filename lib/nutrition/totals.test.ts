@@ -33,7 +33,7 @@ it('reports user-entered targets, exact remaining values and capped display prog
     carbohydrates: '5',
     fat: '15',
   });
-  expect(progress.calories).toEqual({
+  expect(progress.calories).toMatchObject({
     consumed: '176.4',
     goal: '200',
     remaining: '23.6',
@@ -48,4 +48,26 @@ it('reports user-entered targets, exact remaining values and capped display prog
   });
   expect(progress.carbohydrates).toMatchObject({ remaining: '0', percent: 100, exceeded: true });
   expect(progress.fat).toMatchObject({ remaining: '0', percent: 100, exceeded: false });
+});
+
+it('treats exceeding a minimum and staying below a maximum as successful, and evaluates ranges', () => {
+  const progress = nutritionGoalProgress(
+    { calories: '2100', protein: '180', carbohydrates: '250', fat: '50', fiber: null },
+    {
+      calories: '2000',
+      protein: '160',
+      carbohydrates: '250',
+      fat: '70',
+      semantics: {
+        calories: { kind: 'range', upperBound: '2200' },
+        protein: { kind: 'minimum' },
+        carbohydrates: { kind: 'target', tolerance: '10' },
+        fat: { kind: 'maximum' },
+      },
+    }
+  );
+  for (const key of ['calories', 'protein', 'carbohydrates', 'fat'] as const) {
+    expect(progress[key].evaluation.satisfied).toBe(true);
+    expect(progress[key].exceeded).toBe(false);
+  }
 });

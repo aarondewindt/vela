@@ -4,6 +4,8 @@ import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '../../generated/prisma/client';
 import type { PlanningCategoryValue, TaskRow } from './tasks';
+import { taskPatchSchema } from './record-schema';
+import type { z } from 'zod';
 import type { ViewConfig } from '@/lib/views/types';
 import { recurrenceMatchesDate } from './recurrence';
 import {
@@ -17,19 +19,7 @@ import {
   type TimeInterval,
 } from './scheduling';
 
-type TaskPatch = {
-  title?: string;
-  brief?: string | null;
-  status?: TaskRow['status'];
-  priority?: number;
-  size?: number;
-  dueDate?: string | null;
-  estimatedMinutes?: number | null;
-  leadTimeDays?: number | null;
-  themeId?: string | null;
-  category?: PlanningCategoryValue | null;
-  tags?: string[];
-};
+type TaskPatch = z.infer<typeof taskPatchSchema>;
 
 type ThemePatch = {
   name?: string;
@@ -322,6 +312,9 @@ export const plannerService = {
       scheduledDate: occurrences[0]?.occurrenceDate ?? null,
       estimatedMinutes: task.estimatedMinutes,
       leadTimeDays: task.leadTimeDays,
+      isRecurring: task.isRecurring,
+      recurrenceRule: task.recurrenceRule,
+      recurrenceTz: task.recurrenceTz,
       themeId: task.themeId,
       category: task.category,
       tags: task.tags,
@@ -343,11 +336,15 @@ export const plannerService = {
 
   async updateTask(userId: string, id: string, patch: TaskPatch, tx?: Prisma.TransactionClient) {
     await assertOwnsTheme(userId, patch.themeId, tx);
-    const { dueDate, ...rest } = patch;
+    const { dueDate, recurrence, ...rest } = taskPatchSchema.parse(patch);
     const apply = async (transaction: Prisma.TransactionClient) => {
       const result = await transaction.task.updateMany({
         where: { id, userId },
-        data: { ...rest, ...(dueDate !== undefined && { dueDate: toDate(dueDate) }) },
+        data: {
+          ...rest,
+          ...recurrence,
+          ...(dueDate !== undefined && { dueDate: toDate(dueDate) }),
+        },
       });
       if (!result.count) {
         throw new TRPCError({ code: 'NOT_FOUND' });
