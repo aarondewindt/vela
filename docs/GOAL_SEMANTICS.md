@@ -40,5 +40,5 @@ provisional. Current settings still apply to every date shown.
 Generate Prisma Client and apply the reviewed migration through the normal
 backup/deploy procedure before running this version against an existing database.
 The migration has been checked against Prisma's schema diff and tested on temporary
-PostgreSQL tables inside a rolled-back transaction. It has not been applied to the
-application's persisted tables by this change.
+PostgreSQL tables inside a rolled-back transaction. Local deployment status is recorded in the
+[shared handoff](agent-handoff.md).

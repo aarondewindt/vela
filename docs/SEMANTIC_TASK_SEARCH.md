@@ -44,6 +44,13 @@ reuses its vector while refreshing metadata. Deletes cascade immediately to task
 status/archival edits invalidate old timestamps and planning retrieval excludes closed
 work. Existing owners receive an initial queued pass.
 
+`TaskIndexJob.updatedAt` has both a database `now()` default and Prisma
+`@updatedAt`: trigger inserts provide only `userId`, while Prisma worker writes
+refresh the timestamp on updates. The relation explicitly retains the original
+foreign key’s `ON UPDATE NO ACTION` behavior and cascading owner deletion. Keep
+these schema declarations aligned with migration SQL; dropping the timestamp
+default would break the first task write for an owner without an index job.
+
 `lib/task-search/worker.ts` follows the established product-index worker lifecycle:
 `SKIP LOCKED` claims, renewable five-minute leases, revision/token acknowledgement,
 recovery after crashes and safe failures with 15-second to one-hour retry delays. Changes

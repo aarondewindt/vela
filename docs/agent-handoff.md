@@ -2,7 +2,7 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Health, recurrence, goal and shell improvements ready for review; goal semantics migration pending. Earlier deployment notes retained.
+**Status:** Health, recurrence, goal and shell improvements ready for review; all 28 database migrations applied. Earlier deployment notes retained.
 **Last updated:** 2026-10-21
 
 ## Health, recurrence, goals and shell (#48/#51/#47/#9/#5) — 2026-10-21
@@ -19,10 +19,15 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 - Shared goal evaluator and controls support minimum, maximum, target/tolerance and
   range semantics. Existing amounts retain exact target semantics until configured.
   See [goal semantics](GOAL_SEMANTICS.md) for compatibility and follow-up scope.
-- **Migration `20261021210000_goal_semantics` is not applied to persisted app tables.**
-  Client generated; schema/diff checked. Temporary PostgreSQL tables in a rolled-back
-  transaction verified migration retention and the actual history SQL. Deploy via
-  the normal backup/migrate procedure before running the new app version.
+- Planner conversation and goal semantics migrations were subsequently applied to
+  the local app database after a verified private backup. All 28 migrations are
+  applied; Prisma Client regenerated. No application process was restarted.
+- A follow-up aligns `TaskIndexJob` with its existing SQL: keep the trigger-required
+  `updatedAt` database default alongside Prisma `@updatedAt`, and declare the existing
+  `ON UPDATE NO ACTION` relation explicitly. No migration or persisted-data change
+  is needed; Prisma's database-to-schema diff is now empty. A fresh backup and a
+  rolled-back temporary-table check verified the actual enqueue trigger creates and
+  refreshes jobs with timestamps. The five worker tests and TypeScript passed.
 - Global primary text is softer; dimmed text meets 4.5:1 contrast on dark surfaces.
   Desktop header height/offset is zero at `sm`; the mobile menu remains available.
 - Validation: route type generation, TypeScript, Prisma validation, all 807 Jest
