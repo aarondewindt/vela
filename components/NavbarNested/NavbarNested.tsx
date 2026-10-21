@@ -2,6 +2,7 @@ import { Box, ScrollArea } from '@mantine/core';
 import { LinksGroup } from '../NavbarLinksGroup/NavbarLinksGroup';
 import classes from './NavbarNested.module.css';
 import CurrentUserBadge from '../CurrentUserBadge';
+import { settingsSections } from '@/components/SettingsView/sections';
 import {
   GaugeIcon,
   KanbanIcon,
@@ -36,7 +37,15 @@ const navbar_map = [
     ],
   },
   { label: 'Health', icon: HeartbeatIcon, link: '/health' },
-  { label: 'Settings', icon: GearIcon, link: '/settings', pathPattern: /^\/settings(?:\/|$)/ },
+  {
+    label: 'Settings',
+    icon: GearIcon,
+    pathPattern: /^\/settings(?:\/|$)/,
+    links: [
+      { label: 'Overview', link: '/settings' },
+      ...settingsSections.map(({ label, href }) => ({ label, link: href })),
+    ],
+  },
   {
     label: 'AI Dev',
     icon: ChatCircleIcon,

@@ -26,6 +26,7 @@ it('persists a user-selected deficit or maintenance goal', async () => {
   await user.click(screen.getByRole('button', { name: 'Save goal' }));
   expect(save).toHaveBeenCalledWith({
     version: 0,
+    metricGoals: {},
     calorieBalance: -300,
     semantics: { kind: 'target' },
   });
@@ -34,6 +35,7 @@ it('persists a user-selected deficit or maintenance goal', async () => {
   await user.click(screen.getByRole('button', { name: 'Save goal' }));
   expect(save).toHaveBeenLastCalledWith({
     version: 0,
+    metricGoals: {},
     calorieBalance: 0,
     semantics: { kind: 'target' },
   });
@@ -59,6 +61,7 @@ it('configures a signed balance range and validates its inclusive bounds', async
   await user.click(screen.getByRole('button', { name: 'Save goal' }));
   expect(save).toHaveBeenCalledWith({
     version: 0,
+    metricGoals: {},
     calorieBalance: -400,
     semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
   });
@@ -79,4 +82,33 @@ it('hides cached goal settings until the request is authorized and offers a retr
   view.rerender(<HealthGoalSettings />);
   expect(screen.getByRole('alert')).toHaveTextContent('Unavailable');
   expect(screen.getByRole('button', { name: 'Retry loading goal' })).toBeInTheDocument();
+});
+
+it('edits and clears metric targets without prescribing defaults or exposing lean mass', async () => {
+  const user = userEvent.setup();
+  render(
+    <HealthGoalForm
+      initial={{
+        version: 2,
+        calorieBalance: null,
+        metricGoals: {
+          WEIGHT: { target: 80, semantics: { kind: 'range', upperBound: '85' } },
+        },
+      }}
+    />
+  );
+  expect(screen.getByRole('textbox', { name: 'Sleep goal (hours)' })).toHaveValue('');
+  expect(screen.queryByLabelText(/Lean mass goal/)).not.toBeInTheDocument();
+  await user.type(screen.getByRole('textbox', { name: 'Sleep goal (hours)' }), '8');
+  await user.clear(screen.getByRole('textbox', { name: 'Weight goal (kg)' }));
+  await user.click(screen.getByRole('button', { name: 'Save goal' }));
+  expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      version: 2,
+      metricGoals: {
+        WEIGHT: { target: null, semantics: { kind: 'range', upperBound: '85' } },
+        SLEEP: { target: 8, semantics: { kind: 'target' } },
+      },
+    })
+  );
 });

@@ -5,6 +5,35 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Health, recurrence, goal and shell improvements ready for review; all 30 database migrations applied. Earlier deployment notes retained.
 **Last updated:** 2026-10-21
 
+## Settings PR #65 feedback — 2026-10-21
+
+- Current branch remains `feat/restructure-settings`. Follow-ups on #46, #30,
+  #27 and #23 plus #66 are implemented in the same PR. Settings sections are
+  nested in the main navbar; the dashboard uses the live Nutrition summary,
+  including fiber. Fiber has no default target and can be cleared.
+- Nutrition and Health histories use shared Mantine goal lines and shaded finite
+  bands; separate nutrient charts keep references clear. Settings → Health adds
+  optional weight/body-fat/sleep targets with shared semantics and owner/version
+  fencing. Existing Health readings and missing-data behavior are retained.
+- Food picker/catalog and Tasks list default to semantic search (honoring saved
+  catalog opt-outs). Tasks retain view filters/sorts and combine conventional
+  matches with up to 50 related tasks. Published collection models and maintainer
+  setup remain authoritative; expected inference/configuration failures fall back
+  with a notice, empty queries skip inference. No automatic model download/rebuild.
+- Created #67 for calculated lean mass as requested in #23; calculation and
+  lean-mass goals remain deferred.
+- Migration `20261022000000_health_metric_goals` passed a rolled-back temporary
+  table check, then was applied after a private database backup. All 31 migrations
+  are applied; database/schema diff is empty; Prisma Client regenerated. Live
+  service checks verified metric goal persistence/clearing, owner isolation,
+  version conflicts, older-caller preservation, history propagation and fiber
+  defaults/clearing. Synthetic users/data and temporary script removed.
+- Validation: all 910 Jest tests / 129 suites, TypeScript, production build,
+  changed-file Oxlint/format, Stylelint and whitespace checks pass. Global lint
+  and format still report baseline failures in untouched files. No browser
+  automation was available; React tests cover navigation, dashboard, charts,
+  goal editing and default/fallback search. Public application was not restarted.
+
 ## Compact task recurrence settings (#51 follow-up) — 2026-10-21
 
 - Task View's Recurrence row now shows a short saved cadence/weekday summary and

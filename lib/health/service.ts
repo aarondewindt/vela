@@ -7,7 +7,13 @@ import { Prisma, type HealthMetric } from '../../generated/prisma/client';
 import { diaryDate } from '@/lib/nutrition/dates';
 import { nutritionHistory } from '@/lib/nutrition/history';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
-import { goalSchema, manualMetricSchema, mappingSchema, metricKinds } from './schema';
+import {
+  goalSchema,
+  manualMetricSchema,
+  mappingSchema,
+  metricKinds,
+  metricGoalsSchema,
+} from './schema';
 import { ownerClient } from '@/lib/integrations/home-assistant/service';
 import { HomeAssistantError } from '@/lib/integrations/home-assistant/client';
 import { settingsService } from '@/lib/settings/service';
@@ -18,6 +24,7 @@ export const healthService = {
     const goal = await prisma.healthGoal.findUnique({ where: { userId } });
     return {
       semantics: readGoalOptions(goal?.semantics),
+      metricGoals: metricGoalsSchema.parse(goal?.metricGoals ?? {}),
       calorieBalance: goal?.calorieBalance ?? null,
       version: goal?.version ?? 0,
     };
@@ -90,6 +97,7 @@ export const healthService = {
     return {
       goal: {
         semantics: goalOptions,
+        metricGoals: metricGoalsSchema.parse(goal?.metricGoals ?? {}),
         calorieBalance: goal?.calorieBalance ?? null,
         version: goal?.version ?? 0,
       },
@@ -161,7 +169,7 @@ export const healthService = {
     };
   },
   async saveGoal(userId: string, input: z.infer<typeof goalSchema>) {
-    const { version, calorieBalance: balance, semantics } = goalSchema.parse(input);
+    const { version, calorieBalance: balance, semantics, metricGoals } = goalSchema.parse(input);
     const options =
       semantics ??
       readGoalOptions(
@@ -173,7 +181,7 @@ export const healthService = {
     if (!version) {
       try {
         return await prisma.healthGoal.create({
-          data: { userId, calorieBalance: balance, semantics: options },
+          data: { userId, calorieBalance: balance, semantics: options, metricGoals },
         });
       } catch (error) {
         if ((error as { code?: string }).code !== 'P2002') {
@@ -184,7 +192,12 @@ export const healthService = {
     }
     const result = await prisma.healthGoal.updateMany({
       where: { userId, version },
-      data: { calorieBalance: balance, semantics: options, version: { increment: 1 } },
+      data: {
+        calorieBalance: balance,
+        semantics: options,
+        ...(metricGoals === undefined ? {} : { metricGoals }),
+        version: { increment: 1 },
+      },
     });
     if (!result.count) {
       throw new TRPCError({ code: 'CONFLICT', message: 'Goal changed. Reload before saving.' });

@@ -49,3 +49,32 @@ it('fails closed when the maintainer setting is absent', async () => {
     taskSearchService.rebuild('maintainer-a', { provider: 'ollama', modelId: 'embed' }, '')
   ).rejects.toMatchObject({ code: 'FORBIDDEN' });
 });
+
+import { AiError } from '@/lib/ai/errors';
+import { EmbeddingCollectionError } from '@/lib/embeddings/errors';
+it('retrieves related tasks through the published collection with an owner and deadline', async () => {
+  engine.search.mockResolvedValue({ results: [{ id: 'a' }] });
+  await expect(taskSearchService.related('alice', 'housework', 50)).resolves.toEqual({
+    ids: ['a'],
+    notice: null,
+  });
+  expect(engine.search).toHaveBeenCalledWith('alice', 'housework', 50, expect.any(AbortSignal));
+});
+it.each([
+  new AiError('MODEL_NOT_FOUND', 'Unavailable'),
+  new AiError('PROVIDER_UNAVAILABLE', 'Offline'),
+  new EmbeddingCollectionError('PRECONDITION_FAILED', 'Configure collection'),
+  new EmbeddingCollectionError('CONFLICT', 'Rebuild'),
+])('permits text fallback for expected collection/model failures: %s', async (error) => {
+  engine.search.mockRejectedValue(error);
+  await expect(taskSearchService.related('alice', 'housework', 50)).resolves.toEqual({
+    ids: [],
+    notice: expect.stringContaining('Showing text matches'),
+  });
+});
+it('surfaces unexpected storage errors', async () => {
+  engine.search.mockRejectedValue(new Error('Storage failed'));
+  await expect(taskSearchService.related('alice', 'housework', 50)).rejects.toThrow(
+    'Storage failed'
+  );
+});

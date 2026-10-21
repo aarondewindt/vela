@@ -9,7 +9,7 @@ type NutritionProductsState = {
 export const useNutritionProductsStore = create<NutritionProductsState>()(
   persist(
     (set) => ({
-      fuzzySearch: false,
+      fuzzySearch: true,
       setFuzzySearch: (fuzzySearch) => set({ fuzzySearch }),
     }),
     {

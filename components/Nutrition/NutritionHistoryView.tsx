@@ -17,12 +17,15 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { goalChartReferences } from '@/lib/goals/chart-references';
 import { LineChart } from '@mantine/charts';
 import { trpc } from '@/lib/trpc/client';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { formatNutritionAmount } from '@/lib/nutrition/format';
 
 export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
+  const goals = trpc.nutrition.getGoals.useQuery(undefined, { retry: false });
+  const currentGoals = goals.error ? undefined : goals.data;
   const [date, setDate] = useState(initialDate);
   const [days, setDays] = useState<7 | 30>(7);
   const valid = historyInputSchema.safeParse({ endDate: date, days }).success;
@@ -101,6 +104,20 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
             </Button>
           </Alert>
         )}
+        {goals.error && (
+          <Alert color="red">
+            Could not load goal references: {goals.error.message}
+            <Button variant="subtle" onClick={() => void goals.refetch()}>
+              Retry goals
+            </Button>
+          </Alert>
+        )}
+        <Anchor component={Link} href="/settings/nutrition">
+          Edit nutrition goals
+        </Anchor>
+        <Text size="sm" c="dimmed">
+          Reference lines and shaded bands show your current goals for all dates.
+        </Text>
         {data && (
           <>
             <Text>
@@ -118,6 +135,11 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                   data={chart}
                   dataKey="date"
                   series={[{ name: 'calories', label: 'Calories', color: 'teal.6' }]}
+                  {...goalChartReferences(
+                    currentGoals?.calories ?? null,
+                    currentGoals?.semantics.calories,
+                    'Calories'
+                  )}
                   unit=" kcal"
                   valueFormatter={(value) => formatNutritionAmount(String(value))}
                   connectNulls={false}
@@ -128,29 +150,39 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                 />
               </Stack>
             </Paper>
-            <Paper withBorder p="md">
-              <Stack>
-                <Title order={3}>Macronutrients</Title>
-                <LineChart
-                  h={260}
-                  data={chart}
-                  dataKey="date"
-                  series={[
-                    { name: 'protein', label: 'Protein', color: 'blue.6' },
-                    { name: 'carbohydrates', label: 'Carbohydrates', color: 'orange.6' },
-                    { name: 'fat', label: 'Fat', color: 'grape.6' },
-                    { name: 'fiber', label: 'Fiber', color: 'cyan.6' },
-                  ]}
-                  unit=" g"
-                  valueFormatter={(value) => formatNutritionAmount(String(value))}
-                  connectNulls={false}
-                  curveType="linear"
-                  withDots
-                  withLegend
-                  yAxisProps={{ domain: [0, 'auto'] }}
-                />
-              </Stack>
-            </Paper>
+            {(
+              [
+                { key: 'protein', label: 'Protein', color: 'blue.6' },
+                { key: 'carbohydrates', label: 'Carbohydrates', color: 'orange.6' },
+                { key: 'fat', label: 'Fat', color: 'grape.6' },
+                { key: 'fiber', label: 'Fiber', color: 'cyan.6' },
+              ] as const
+            ).map(({ key, label, color }) => (
+              <Paper withBorder p="md" key={key}>
+                <Stack>
+                  <Title order={3}>{label}</Title>
+                  <LineChart
+                    h={240}
+                    data={chart}
+                    dataKey="date"
+                    series={[{ name: key, label, color }]}
+                    {...goalChartReferences(
+                      currentGoals?.[key] ?? null,
+                      currentGoals?.semantics[key],
+                      label,
+                      color
+                    )}
+                    unit=" g"
+                    valueFormatter={(value) => formatNutritionAmount(String(value))}
+                    connectNulls={false}
+                    curveType="linear"
+                    withDots
+                    withLegend
+                    yAxisProps={{ domain: [0, 'auto'] }}
+                  />
+                </Stack>
+              </Paper>
+            ))}
             <Table.ScrollContainer minWidth={560}>
               <Table captionSide="top">
                 <Table.Caption>

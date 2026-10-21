@@ -11,11 +11,14 @@ import {
   Popover,
   Portal,
   Stack,
+  Switch,
   Tabs,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
+import { trpc } from '@/lib/trpc/client';
 import { IconDeviceFloppy, IconPlus, IconRestore, IconTrash } from '@tabler/icons-react';
 import {
   useCreateTaskMutation,
@@ -97,6 +100,19 @@ export const TasksView = () => {
 
   const { activeViewId, draft, search, selection, collapsed } = useTasksViewStore();
   const { setActiveView, setDraft, setSearch, select, toggleCollapsed } = useTasksViewStore();
+  const [semantic, setSemantic] = useState(true);
+  const [debouncedSearch] = useDebouncedValue(search.trim(), 350);
+  const related = trpc.taskSearch.related.useQuery(
+    { query: debouncedSearch, limit: 50 },
+    {
+      enabled:
+        semantic &&
+        Boolean(debouncedSearch) &&
+        debouncedSearch === search.trim() &&
+        debouncedSearch.length <= 2000,
+      retry: false,
+    }
+  );
   const setAsideOpened = useAppShellStore((state) => state.set_aside_opened);
 
   useEffect(() => () => setAsideOpened(false), [setAsideOpened]);
@@ -118,10 +134,20 @@ export const TasksView = () => {
   const config: ViewConfig = draft ?? activeView.config;
 
   const today = new Date().toLocaleDateString('en-CA');
-  const visibleTasks = useMemo(
-    () => runView(tasks, config, defs, { search, searchFields, today }),
-    [tasks, config, defs, search, today]
-  );
+  const visibleTasks = useMemo(() => {
+    const matching = new Set(
+      runView(tasks, config, defs, { search, searchFields, today }).map((task) => task.id)
+    );
+    if (semantic && debouncedSearch === search.trim() && !related.error) {
+      related.data?.ids.forEach((id) => matching.add(id));
+    }
+    return runView(
+      tasks.filter((task) => matching.has(task.id)),
+      config,
+      defs,
+      { today, search: '', searchFields }
+    );
+  }, [tasks, config, defs, search, today, semantic, debouncedSearch, related.data, related.error]);
 
   const groupDef = config.groupBy ? defs.find((d) => d.key === config.groupBy) : undefined;
   const groups = useMemo(() => {
@@ -292,7 +318,10 @@ export const TasksView = () => {
               color="red"
               loading={deleteView.isPending}
               onClick={() =>
-                deleteView.mutate({ id: activeView.id }, { onSuccess: () => setActiveView('builtin:all') })
+                deleteView.mutate(
+                  { id: activeView.id },
+                  { onSuccess: () => setActiveView('builtin:all') }
+                )
               }
             >
               <IconTrash size={16} />
@@ -301,6 +330,24 @@ export const TasksView = () => {
         </Group>
       </Group>
 
+      <Switch
+        label="Include related tasks"
+        checked={semantic}
+        onChange={(event) => setSemantic(event.currentTarget.checked)}
+      />
+      {semantic && debouncedSearch === search.trim() && search.trim() && (
+        <>
+          {related.isFetching && (
+            <Text size="sm" role="status">
+              Finding related tasks…
+            </Text>
+          )}
+          {related.data?.notice && <Alert color="yellow">{related.data.notice}</Alert>}
+          {related.error && (
+            <Alert color="red">{related.error.message} Text matches remain available.</Alert>
+          )}
+        </>
+      )}
       {error && (
         <Alert color="red" title="Could not load tasks">
           {error.message}
@@ -324,7 +371,10 @@ export const TasksView = () => {
             </Text>
           )}
           {groups.map((group, index) => {
-            const theme = groupDef?.key === 'theme' && group.key ? themes.find((t) => t.id === group.key) : null;
+            const theme =
+              groupDef?.key === 'theme' && group.key
+                ? themes.find((t) => t.id === group.key)
+                : null;
             const key = `${config.groupBy}:${group.key ?? 'none'}`;
             return (
               <TaskGroup

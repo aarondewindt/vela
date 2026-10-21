@@ -30,6 +30,11 @@ async function call<T>(operation: () => Promise<T>) {
 }
 
 export const taskSearchRouter = router({
+  related: protectedProcedure
+    .input(searchSchema)
+    .query(({ ctx, input }) =>
+      call(() => taskSearchService.related(ctx.userId, input.query, input.limit))
+    ),
   retrieve: protectedProcedure
     .input(
       z.object({

@@ -33,7 +33,7 @@ export const settingsSections = [
     label: 'Health',
     href: '/settings/health',
     group: 'Apps',
-    description: 'Daily calorie balance goal and sensor setup links.',
+    description: 'Calorie balance, weight, body-fat and sleep goals; sensor setup links.',
   },
   {
     label: 'Home Assistant',

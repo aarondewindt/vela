@@ -8,6 +8,7 @@ jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/lib/ai', () => jest.requireActual('@/lib/ai/errors'));
 jest.mock('./service', () => ({
   taskSearchService: {
+    related: jest.fn(),
     status: jest.fn(),
     models: jest.fn(),
     synchronize: jest.fn(),
@@ -34,6 +35,7 @@ it('authenticates every endpoint', async () => {
   for (const operation of [
     () => caller.retrieve({ query: 'test', date: '2030-01-07' }),
     () => caller.retry(),
+    () => caller.related({ query: 'test' }),
     () => caller.status(),
     () => caller.models(),
     () => caller.index(),
@@ -46,6 +48,8 @@ it('authenticates every endpoint', async () => {
 });
 it('takes owner identity only from the authenticated session', async () => {
   const caller = taskSearchRouter.createCaller({ userId: 'user-a' });
+  await caller.related({ query: 'test' });
+  expect(taskSearchService.related).toHaveBeenCalledWith('user-a', 'test', 10);
   await caller.status();
   await caller.index();
   await caller.search({ query: 'test' });

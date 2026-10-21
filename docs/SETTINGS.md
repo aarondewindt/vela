@@ -3,9 +3,9 @@
 `/settings` is the directory for implemented configuration. Account, Apps and
 Integrations group the links. Every subpage shares an overview link, links to all
 other sections and an active-page indicator. Mantine's responsive grid keeps this
-navigation visible on desktop and mobile without a second collapsible sidebar.
-The main application navigation highlights Settings for all its subroutes and
-retains the existing mobile-menu close behavior.
+navigation visible on desktop and mobile. The main application navbar also nests
+Overview and every section under an expandable Settings group, which opens on
+Settings routes and retains the existing mobile-menu close behavior.
 
 ## Inventory and destinations
 
@@ -37,6 +37,8 @@ configuration screen. Environment/deployment settings such as provider URLs and
 worker credentials remain server configuration; no credential-management UI is added.
 
 All persistent configuration continues through authenticated tRPC/Better Auth APIs.
-Search-maintainer authorization remains server-enforced. The only new procedure is
-`health.getGoal`, an owner-scoped read of the existing goal for the Settings editor;
-no schema migration or scheduling change is required.
+Search-maintainer authorization remains server-enforced. `health.getGoal` provides an owner-scoped read for the Settings editor;
+the additive `20261022000000_health_metric_goals` migration adds nullable,
+user-entered weight, body-fat and sleep goals in a JSONB map on the existing
+owner/version-fenced Health goal record. Older callers retain these goals. No
+scheduling behavior changes.

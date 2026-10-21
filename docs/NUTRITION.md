@@ -168,3 +168,24 @@ The recipe name input includes a sparkle ActionIcon to **Autofill recipe details
 Each saved meal message has a **Show debug details** control. New attempts retain bounded model output, error/validation causes, model attribution, finish reason, elapsed time and generation limits in the owner-scoped draft turn. This includes successful responses. Raw output is limited to 20,000 characters, with an explicit truncation marker; error chains retain up to four bounded messages. SDK request objects, headers and connection configuration are excluded. Diagnostics are private meal data and are deleted with the draft. Retrying replaces the prior attempt's diagnostics, and stale generations cannot overwrite a newer attempt. Older messages and interrupted attempts may have no captured output.
 
 Migration `20261019120000_meal_turn_diagnostics` adds the nullable JSONB field. A live `qwen3:8b` check reproduced quoted `"null"` for an unknown hummus quantity; explicit JSON-null guidance and a worked example produced schema-valid output while preserving the missing-amount clarification. Validation continues to reject invalid model output.
+
+
+## Dashboard and chart references (#27/#46/#23 follow-ups)
+
+The authenticated dashboard shows today's live diary summary in the account's
+configured timezone, including fiber and the existing marked goal bars. It links
+to the diary and Settings, and reports loading/failures with retry. Fiber remains
+nullable with no default amount; clearing a goal saves no goal. Unknown fiber is
+still distinct from zero.
+
+Nutrition history shows calories and each macro/fiber in separate charts with
+current user-goal reference lines and shaded ranges/tolerance bands, extending the
+axis to include goals. Separate plots keep overlapping nutrient thresholds clear.
+Missing-day gaps and unknown fiber remain visible; goals apply to all dates.
+
+Semantic food search starts enabled in the product picker and, for new browser
+preferences, the food catalog. Explicit saved catalog preferences remain honored;
+archived browsing stays conventional. Existing published index models and
+maintainer setup are retained: missing/offline/incompatible models or unconfigured
+indexes fall back to text matches with a notice. No models are silently selected,
+downloaded or used against vectors built with a different model.

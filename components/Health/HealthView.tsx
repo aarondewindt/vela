@@ -20,6 +20,7 @@ import {
   Title,
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
+import { goalChartReferences } from '@/lib/goals/chart-references';
 import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
 import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
@@ -109,18 +110,6 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
       fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
       balance: day.balance,
-      goal:
-        data.goal.semantics?.kind === 'range'
-          ? data.goal.semantics.preferredTarget === undefined
-            ? null
-            : Number(data.goal.semantics.preferredTarget)
-          : (data.goal.semantics?.kind ?? 'target') === 'target'
-            ? data.goal.calorieBalance
-            : null,
-      goalLower:
-        day.goalEvaluation?.lowerBound == null ? null : Number(day.goalEvaluation.lowerBound),
-      goalUpper:
-        day.goalEvaluation?.upperBound == null ? null : Number(day.goalEvaluation.upperBound),
     })) ?? [];
   return (
     <Container size="lg" py="xl">
@@ -266,6 +255,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
               {[
                 {
                   title: 'Weight and lean mass',
+                  metric: 'WEIGHT' as const,
                   unit: ' kg',
                   series: [
                     { name: 'weight', label: 'Weight', color: 'teal.6' },
@@ -274,34 +264,21 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 },
                 {
                   title: 'Body fat',
+                  metric: 'BODY_FAT' as const,
                   unit: '%',
                   series: [{ name: 'fat', label: 'Body fat', color: 'grape.6' }],
                 },
                 {
                   title: 'Sleep',
+                  metric: 'SLEEP' as const,
                   unit: ' h',
                   series: [{ name: 'sleep', label: 'Sleep', color: 'indigo.6' }],
                 },
                 {
                   title: 'Calorie balance',
+                  metric: null,
                   unit: ' kcal',
-                  series: [
-                    ...(data.goal.semantics?.kind === 'range' &&
-                    data.goal.semantics.preferredTarget !== undefined
-                      ? [{ name: 'goal', label: 'Preferred target', color: 'green.6' }]
-                      : []),
-                    { name: 'balance', label: 'Balance', color: 'orange.6' },
-                    ...((data.goal.semantics?.kind ?? 'target') === 'target'
-                      ? [{ name: 'goal', label: 'Current target', color: 'gray.6' }]
-                      : [
-                          ...(data.goal.semantics.kind !== 'maximum'
-                            ? [{ name: 'goalLower', label: 'Goal lower bound', color: 'gray.6' }]
-                            : []),
-                          ...(data.goal.semantics.kind !== 'minimum'
-                            ? [{ name: 'goalUpper', label: 'Goal upper bound', color: 'gray.6' }]
-                            : []),
-                        ]),
-                  ],
+                  series: [{ name: 'balance', label: 'Balance', color: 'orange.6' }],
                 },
               ].map((item) => (
                 <Paper withBorder p="md" key={item.title}>
@@ -313,6 +290,17 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     data={chart}
                     dataKey="date"
                     series={item.series}
+                    {...(item.metric === null
+                      ? goalChartReferences(
+                          data.goal.calorieBalance?.toString() ?? null,
+                          data.goal.semantics,
+                          'Balance'
+                        )
+                      : goalChartReferences(
+                          data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
+                          data.goal.metricGoals?.[item.metric]?.semantics,
+                          metricLabels[item.metric]
+                        ))}
                     unit={item.unit}
                     connectNulls={false}
                     curveType="linear"
@@ -367,7 +355,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
               </Table>
             </Table.ScrollContainer>
             <Button component={Link} href="/settings/health" variant="default">
-              Edit daily calorie balance goal
+              Edit health goals
             </Button>
             <ManualEntry key={date} date={date} />
           </>

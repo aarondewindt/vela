@@ -54,7 +54,7 @@ it('shows missing data and links to the single Health settings editor', () => {
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
   expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-  expect(screen.getByRole('link', { name: 'Edit daily calorie balance goal' })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: 'Edit health goals' })).toHaveAttribute(
     'href',
     '/settings/health'
   );
@@ -79,4 +79,26 @@ it('labels carried readings and offers deletion only on their original measureme
   expect((LineChart as unknown as jest.Mock).mock.calls[0][0].data[0].weight).toBeNull();
   expect(screen.getByText(/Manual reading/)).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Delete manual reading' })).not.toBeInTheDocument();
+});
+
+it('shows current metric and signed balance reference bands even with no observations', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.goal = {
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200' },
+    metricGoals: {
+      WEIGHT: { target: 80, semantics: { kind: 'range', upperBound: '85' } },
+      BODY_FAT: { target: 20, semantics: { kind: 'maximum' } },
+      SLEEP: { target: 8, semantics: { kind: 'minimum' } },
+    },
+  };
+  query.mockReturnValue({ data });
+  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
+  expect(charts[0].referenceAreas).toEqual([expect.objectContaining({ y1: 80, y2: 85 })]);
+  expect(charts[1].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
+  expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
+  expect(charts[3].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
+  expect(charts[0].data[0].weight).toBeNull();
 });

@@ -17,9 +17,61 @@ export const metricUnits: Record<MetricKind, string> = {
   SLEEP: 'hours',
   TOTAL_CALORIES: 'kcal',
 };
+export const goalMetricKinds = ['WEIGHT', 'BODY_FAT', 'SLEEP'] as const;
+const metricGoalSchema = z
+  .object({
+    target: z.number().finite().nullable(),
+    semantics: goalOptionsSchema,
+  })
+  .strict();
+export const metricGoalsSchema = z
+  .object({
+    WEIGHT: metricGoalSchema.optional(),
+    BODY_FAT: metricGoalSchema.optional(),
+    SLEEP: metricGoalSchema.optional(),
+  })
+  .strict()
+  .superRefine((goals, ctx) => {
+    for (const metric of goalMetricKinds) {
+      const goal = goals[metric];
+      if (!goal || goal.target === null) {
+        continue;
+      }
+      const options = goal.semantics;
+      const values = [goal.target];
+      if (options.kind === 'range' || options.kind === 'minimum') {
+        if (options.preferredTarget !== undefined) {
+          values.push(Number(options.preferredTarget));
+        }
+        if (options.kind === 'range') {
+          values.push(Number(options.upperBound));
+        } else if (options.excellent !== undefined) {
+          values.push(Number(options.excellent));
+        }
+      }
+      if (options.kind === 'target') {
+        values.push(
+          goal.target - Number(options.tolerance ?? 0),
+          goal.target + Number(options.tolerance ?? 0)
+        );
+      }
+      if (
+        !validateGoalBounds(String(goal.target), options) ||
+        values.some((value) => !validMetricValue(metric, value))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [metric],
+          message: `Enter ordered ${metricLabels[metric].toLowerCase()} goals within the metric's valid range.`,
+        });
+      }
+    }
+  });
+export type MetricGoals = z.infer<typeof metricGoalsSchema>;
 export const goalSchema = z
   .object({
     semantics: goalOptionsSchema.optional(),
+    metricGoals: metricGoalsSchema.optional(),
     version: z.number().int().nonnegative(),
     calorieBalance: z.number().int().min(-10000).max(10000).nullable(),
   })

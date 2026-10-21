@@ -4,14 +4,26 @@ import Link from 'next/link';
 import { Alert, Button, NumberInput, Paper, Stack, Text, Title } from '@mantine/core';
 import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
 import { defaultGoalOptions, type GoalOptions } from '@/lib/goals/semantics';
-import { goalSchema } from '@/lib/health/schema';
+import {
+  goalSchema,
+  goalMetricKinds,
+  metricLabels,
+  metricUnits,
+  type MetricGoals,
+} from '@/lib/health/schema';
 import { trpc } from '@/lib/trpc/client';
 export function HealthGoalForm({
   initial,
 }: {
-  initial: { calorieBalance: number | null; version: number; semantics?: GoalOptions };
+  initial: {
+    calorieBalance: number | null;
+    version: number;
+    semantics?: GoalOptions;
+    metricGoals?: MetricGoals;
+  };
 }) {
   const utils = trpc.useUtils();
+  const [metricGoals, setMetricGoals] = useState<MetricGoals>(initial.metricGoals ?? {});
   const [options, setOptions] = useState(initial.semantics ?? defaultGoalOptions);
   const [error, setError] = useState<string | null>(null);
   const [goal, setGoal] = useState<number | string>(initial.calorieBalance ?? '');
@@ -49,6 +61,39 @@ export function HealthGoalForm({
           For a range, use the goal amount as its minimum, then set the maximum and optional
           preferred target. Bounds are inclusive.
         </Text>
+        <Title order={3}>Body composition and sleep goals</Title>
+        <Text size="sm">
+          Optional goals apply to all dates in Health charts. Leave an amount empty for no goal. For
+          a range, enter its minimum here and its maximum below.
+        </Text>
+        {goalMetricKinds.map((metric) => {
+          const current = metricGoals[metric] ?? { target: null, semantics: defaultGoalOptions };
+          const label = metricLabels[metric];
+          return (
+            <Stack key={metric} gap="xs">
+              <NumberInput
+                label={`${label} goal (${metricUnits[metric]})`}
+                placeholder="No goal"
+                value={current.target ?? ''}
+                disabled={save.isPending}
+                onChange={(value) =>
+                  setMetricGoals({
+                    ...metricGoals,
+                    [metric]: { ...current, target: value === '' ? null : Number(value) },
+                  })
+                }
+              />
+              <GoalOptionsFields
+                label={label}
+                value={current.semantics}
+                disabled={save.isPending}
+                onChange={(semantics) =>
+                  setMetricGoals({ ...metricGoals, [metric]: { ...current, semantics } })
+                }
+              />
+            </Stack>
+          );
+        })}
         {error && <Alert color="red">{error}</Alert>}
         {save.error && <Alert color="red">{save.error.message}</Alert>}
         <Button
@@ -58,6 +103,7 @@ export function HealthGoalForm({
               calorieBalance: goal === '' ? null : Number(goal),
               version: initial.version,
               semantics: options,
+              metricGoals,
             });
             if (!parsed.success) {
               setError(parsed.error.issues[0].message);

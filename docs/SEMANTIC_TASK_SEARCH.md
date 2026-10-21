@@ -88,3 +88,16 @@ All 692 Jest tests (97 suites), TypeScript, scoped Oxlint/format, Prisma validat
 worker startup and an isolated default Turbopack production build passed. The optional
 Webpack build fails on the Mantine schedule/rrule default export; dependencies were
 unchanged. No live browser automation was run.
+
+
+## Default search behavior (#66)
+
+The Tasks list includes related tasks by default through the published owner-scoped
+collection, alongside conventional title/brief/tag matches. The existing saved-view
+filters, sort and grouping still apply to the combined results. Related results
+are bounded to 50 candidates; queries are debounced and stale query results are
+excluded. The switch permits conventional-only search. Empty queries do not call
+inference. Expected model/collection failures show a fallback notice while text
+matches remain available; unexpected failures are surfaced. No scheduling
+eligibility filter is applied to this general task-list search. Today and guided
+planning retain their existing default hybrid retrieval and eligibility rules.

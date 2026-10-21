@@ -148,3 +148,23 @@ synthetic accounts/data were removed. Real device entities still need setup and
 end-to-end verification by the account owner.
 
 Health’s daily calorie-balance goal is configured in **Settings → Health** (`/settings/health`). The Health dashboard links to this editor. **Settings → Home Assistant** retains the private connection, health sensor mappings and diagnostics.
+
+
+## Chart goal references (#23 follow-up)
+
+Settings → Health now includes optional weight (kg), body-fat (%) and sleep
+(hours) goals alongside the signed calorie-balance goal. Each supports the shared
+goal types, including ranges and target tolerance. Values and bounds are validated
+against the metric's supported limits. Empty amounts mean no goal; no health
+thresholds are prescribed. Current goals apply to every displayed date.
+
+Health history uses Mantine reference lines for targets, bounds and milestones,
+and shaded reference areas for finite ranges/tolerance bands. These remain visible
+when observations are missing and extend the chart domain when needed. Actual
+reading gaps and carried-forward labels retain their existing meaning. Lean mass
+remains an observed series without goals; calculated lean mass is tracked in #67.
+
+Migration `20261022000000_health_metric_goals` adds `health_goals.metricGoals`
+with an empty JSONB default, preserving existing calorie goals and versions. All
+goals save under the existing owner/version check; omitted metric goals from older
+clients are retained.
