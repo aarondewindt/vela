@@ -171,7 +171,7 @@ it('uses the saved configuration and passes ownership to exact search', async ()
   await engine.search('user-a', 'test', 10);
   expect(embeddingSession).toHaveBeenCalledWith(config, config, undefined);
   expect(session.embed).toHaveBeenCalledWith(['Query: test'], 3);
-  expect(adapter.search).toHaveBeenCalledWith(prisma, 'user-a', [1, 0, 0], 10);
+  expect(adapter.search).toHaveBeenCalledWith(prisma, 'user-a', [1, 0, 0], 10, undefined);
 });
 it('rejects a search if the collection changed during inference', async () => {
   session.verifyIdentity.mockImplementation(async () => {

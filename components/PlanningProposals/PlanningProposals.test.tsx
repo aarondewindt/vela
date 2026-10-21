@@ -8,6 +8,8 @@ jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
     planningProposals: {
+      review: { useMutation: jest.fn() },
+      create: { useMutation: jest.fn() },
       replan: { useMutation: jest.fn() },
       generate: { useMutation: jest.fn() },
       context: { useQuery: jest.fn() },
@@ -53,6 +55,14 @@ const preview = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (trpc.planningProposals.review.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+    reset,
+  });
+  (trpc.planningProposals.create.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+    reset,
+  });
   invalidReason = null;
   status = 'PENDING';
   preview.generation = undefined;

@@ -4,7 +4,7 @@ Implemented for [#33](https://github.com/aarondewindt/vela/issues/33), under #18
 This is the shared review/application workflow for the replacement scheduler.
 It follows [Scheduler policy](PLANNER_SCHEDULER_POLICY.md). [AI day planning](AI_DAY_PLANNING.md)
 (#34) now generates through this workflow. [Remaining-day replanning](REPLANNING.md)
-(#36) adds explicit progress and protected-work adjustments. Richer retrieval remains #7.
+(#36) adds explicit progress and protected-work adjustments. [Day plan reviews](PLAN_REVIEWS.md) (#35) separate verified conflicts from advisory AI concerns and compose validated corrections through this workflow.
 
 ## Using the workflow
 
@@ -42,6 +42,7 @@ Protected `planningProposals` tRPC procedures delegate to
 
 - `generate({requestId,date,mode,guidance})`: AI or explicit deterministic day generation;
   see [AI day planning](AI_DAY_PLANNING.md) for reports, limits and replay semantics.
+- `review({date,proposalId?,mode,guidance})`: transient current/pending-plan conflict and contextual review, with independently validated correction documents; see [Day plan review](PLAN_REVIEWS.md).
 - `replan(...)`: deterministic structured progress action and affected remainder;
   see [Replanning](REPLANNING.md) for action semantics and limits.
 - `context({date})`: owner-scoped candidate references, current block summaries,

@@ -39,6 +39,7 @@ model User {
   automationRuns            AutomationRun[]
   availabilityWindows       AvailabilityWindow[]
   plannerGenerationSettings PlannerGenerationSettings?
+  plannerConversations      PlannerConversation[]
   aiConversations           AiConversation[]
   aiModelSettings           UserAiModelSetting[]
   products                  Product[]
@@ -47,6 +48,7 @@ model User {
   healthMetrics             HealthMetric[]
   healthGoal                HealthGoal?
   nutritionGoals            NutritionGoals?
+  taskIndexJob              TaskIndexJob?
   nutritionIndexJob         NutritionProductIndexJob?
   nutritionDrafts           NutritionMealDraft[]
   nutritionMealCopies       NutritionMealCopy[]
@@ -1033,4 +1035,52 @@ model TaskReview {
 
   @@index([userId, taskId, createdAt])
   @@map("task_reviews")
+}
+
+model TaskIndexJob {
+  userId            String    @id
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revision          Int       @default(1)
+  completedRevision Int       @default(0)
+  attempts          Int       @default(0)
+  runAfter          DateTime  @default(now())
+  leaseId           String?   @db.Uuid
+  leaseExpiresAt    DateTime?
+  lastError         String?   @db.VarChar(500)
+  updatedAt         DateTime  @updatedAt
+
+  @@index([runAfter])
+  @@map("task_index_jobs")
+}
+
+
+model PlannerConversation {
+  id             String @id @default(uuid()) @db.Uuid
+  userId         String
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  revision       Int @default(0)
+  activeTurnId   String? @db.Uuid
+  leaseExpiresAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  turns          PlannerConversationTurn[]
+
+  @@index([userId, updatedAt])
+  @@map("planner_conversations")
+}
+
+model PlannerConversationTurn {
+  id             String @id @db.Uuid
+  conversationId String @db.Uuid
+  conversation   PlannerConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  revision       Int
+  inputHash      String @db.VarChar(64)
+  text           String @db.VarChar(2000)
+  status         String @default("GENERATING") @db.VarChar(20)
+  result         Json? @db.JsonB
+  receipt        Json? @db.JsonB
+  createdAt      DateTime @default(now())
+
+  @@unique([conversationId, revision])
+  @@map("planner_conversation_turns")
 }

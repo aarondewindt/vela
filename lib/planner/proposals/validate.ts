@@ -552,6 +552,9 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     warnings.push('An existing category reservation extends outside availability. It is retained.');
   }
   return {
+    sessionViolations: [...sessionMetrics(final, totals, allocations)]
+      .filter(([, metric]) => metric.invalid)
+      .map(([id]) => id),
     reservations,
     taskChanges,
     changes,

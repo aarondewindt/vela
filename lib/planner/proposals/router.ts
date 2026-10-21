@@ -9,8 +9,13 @@ import {
 import { proposalService } from './service';
 import { generateDaySchema } from '../generation/schema';
 import { generateDayPlan } from '../generation/service';
+import { reviewDaySchema } from '../review/schema';
+import { reviewDayPlan } from '../review/service';
 
 export const proposalRouter = router({
+  review: protectedProcedure
+    .input(reviewDaySchema)
+    .mutation(({ ctx, input }) => reviewDayPlan(ctx.userId, input)),
   generate: protectedProcedure
     .input(generateDaySchema)
     .mutation(({ ctx, input }) => generateDayPlan(ctx.userId, input)),

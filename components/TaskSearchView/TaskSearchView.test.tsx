@@ -5,7 +5,7 @@ jest.mock('@/lib/trpc/client', () => ({
     taskSearch: {
       status: { useQuery: jest.fn() },
       models: { useQuery: jest.fn() },
-      index: { useMutation: jest.fn() },
+      retry: { useMutation: jest.fn() },
       rebuild: { useMutation: jest.fn() },
       search: { useMutation: jest.fn() },
     },
@@ -55,7 +55,7 @@ beforeEach(() => {
     error: null,
     refetch: jest.fn(),
   });
-  (trpc.taskSearch.index.useMutation as jest.Mock).mockReturnValue(index);
+  (trpc.taskSearch.retry.useMutation as jest.Mock).mockReturnValue(index);
   (trpc.taskSearch.rebuild.useMutation as jest.Mock).mockReturnValue(rebuild);
   (trpc.taskSearch.search.useMutation as jest.Mock).mockReturnValue(search);
 });
@@ -64,7 +64,7 @@ it('shows freshness and limits ordinary users to owner indexing', async () => {
   render(<TaskSearchView />);
   expect(screen.getByText('2 of 3 tasks current · 1 need indexing')).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Embedding model' })).not.toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Index my tasks' }));
+  await user.click(screen.getByRole('button', { name: 'Queue index refresh' }));
   expect(index.mutate).toHaveBeenCalledWith();
 });
 it('links maintainers to the centralized model settings', () => {
@@ -121,7 +121,7 @@ it('hides cached private status and results until fresh authorization', () => {
   });
   render(<TaskSearchView />);
   expect(screen.queryByText('Private task')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Index my tasks' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Queue index refresh' })).not.toBeInTheDocument();
 });
 it('disables indexing and search until configured', () => {
   (trpc.taskSearch.status.useQuery as jest.Mock).mockReturnValue({
@@ -129,7 +129,7 @@ it('disables indexing and search until configured', () => {
     data: { ...data, configuration: null },
   });
   render(<TaskSearchView />);
-  expect(screen.getByRole('button', { name: 'Index my tasks' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Queue index refresh' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
 });
 it('reports search errors and allows retry', async () => {
@@ -151,6 +151,6 @@ it('disables index operations during a shared rebuild', () => {
     data: { ...data, busy: true },
   });
   render(<TaskSearchView />);
-  expect(screen.getByRole('button', { name: 'Index my tasks' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Queue index refresh' })).toBeDisabled();
   expect(screen.getByText(/Indexing is in progress/)).toBeInTheDocument();
 });

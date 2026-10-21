@@ -4,10 +4,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { generateStructured } from '@/lib/ai/structured';
 import { AiError } from '@/lib/ai/errors';
-import { EmbeddingCollectionError } from '@/lib/embeddings/errors';
 import { requireModelSelection } from '@/lib/model-settings/service';
 import { taskReviewService } from '@/lib/task-reviews/service';
-import { taskSearchService } from '@/lib/task-search/service';
+import { retrievePlanningTasks } from '@/lib/task-search/retrieval';
 import { blockNoteText } from '@/lib/task-search/text';
 import { fingerprint, loadSnapshot } from '../proposals/snapshot';
 import { proposalService } from '../proposals/service';
@@ -67,28 +66,19 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
     model = await requireModelSelection(userId, 'planner.dayPlan');
     const semantic = new Set<string>();
     if (input.guidance) {
-      try {
-        const status = await taskSearchService.status(userId);
-        if (status.pending) {
-          warnings.push(
-            `Semantic index has ${status.pending} pending tasks; stale vectors are excluded. Current task data and urgency ranking remain available.`
-          );
-        }
-        const result = await taskSearchService.search(
-          userId,
-          input.guidance,
-          30,
-          AbortSignal.timeout(12000)
-        );
-        result.results.forEach((task) => semantic.add(task.id));
-      } catch (error) {
-        if (!(error instanceof AiError) && !(error instanceof EmbeddingCollectionError)) {
-          throw error;
-        }
-        warnings.push(
-          'Semantic retrieval is unavailable; selection uses current task context and urgency ranking.'
-        );
-      }
+      const retrieval = await retrievePlanningTasks(
+        userId,
+        {
+          query: input.guidance,
+          date: input.date,
+          limit: 30,
+          semantic: true,
+        },
+        s
+      );
+      retrieval.semanticIds.forEach((id) => semantic.add(id));
+      warnings.push(...retrieval.warnings.filter((warning) => !warnings.includes(warning)));
+      pool = retrieval.candidates;
     }
     const mandatory = candidates.filter((c) => c.mandatory);
     if (mandatory.length > 60) {
@@ -98,11 +88,7 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
           'More than 60 due or important occurrences need review. Use deterministic planning or reduce the overdue backlog before AI generation.',
       });
     }
-    pool = [
-      ...mandatory,
-      ...candidates.filter((c) => !c.mandatory && semantic.has(c.taskId)),
-      ...candidates.filter((c) => !c.mandatory && !semantic.has(c.taskId)),
-    ].slice(0, 60);
+    pool = [...pool.filter((c) => c.mandatory), ...pool.filter((c) => !c.mandatory)].slice(0, 60);
     if (pool.length < candidates.length) {
       warnings.push(
         `AI considered ${pool.length} of ${candidates.length} eligible occurrences, including every due/important candidate. ${input.guidance ? 'Other work is listed as unscheduled.' : 'Other eligible work remains available for the application fill pass.'}`

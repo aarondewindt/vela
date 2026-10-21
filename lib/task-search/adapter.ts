@@ -62,11 +62,14 @@ export const taskEmbeddingAdapter: EmbeddingCollectionAdapter<TaskSearchResult> 
         WHERE "taskId" = ${document.id}::uuid AND "sourceHash" = ${document.sourceHash}`;
     }
   },
-  search(db, userId, vector, limit) {
-    return db.$queryRaw<TaskSearchResult[]>`SELECT t.id, t.title, t.brief, t.status::text,
+  search(db, userId, vector, limit, allowedIds) {
+    return db.$queryRaw<
+      TaskSearchResult[]
+    >(Prisma.sql`SELECT t.id, t.title, t.brief, t.status::text,
       greatest(-1, least(1, 1 - (e.embedding <=> ${JSON.stringify(vector)}::vector)))::double precision AS similarity
       FROM task_embeddings e JOIN tasks t ON t.id = e."taskId"
       WHERE t."userId" = ${userId} AND e."sourceUpdatedAt" = t."updatedAt"
-      ORDER BY e.embedding <=> ${JSON.stringify(vector)}::vector, t.id LIMIT ${limit}`;
+      ${allowedIds ? (allowedIds.length ? Prisma.sql`AND t.id IN (${Prisma.join(allowedIds.map((id) => Prisma.sql`${id}::uuid`))})` : Prisma.sql`AND FALSE`) : Prisma.empty}
+      ORDER BY e.embedding <=> ${JSON.stringify(vector)}::vector, t.id LIMIT ${limit}`);
   },
 };

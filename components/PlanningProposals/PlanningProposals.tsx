@@ -19,6 +19,7 @@ import {
 import { trpc } from '@/lib/trpc/client';
 import { ReplanningControls, type ProgressPreset } from './ReplanningControls';
 import type { GenerationReport } from '@/lib/planner/proposals/schema';
+import { PlanReview } from './PlanReview';
 
 type EditType = 'add' | 'move' | 'resize' | 'remove' | 'replace';
 const actions = [
@@ -67,15 +68,17 @@ export function ProposalWorkspace({
   date,
   manualInitiallyOpen = true,
   preset,
+  initialProposalId,
 }: {
   date: string;
   manualInitiallyOpen?: boolean;
   preset?: ProgressPreset;
+  initialProposalId?: string;
 }) {
   const utils = trpc.useUtils();
   const context = trpc.planningProposals.context.useQuery({ date }, { refetchOnMount: 'always' });
   const list = trpc.planningProposals.list.useQuery({ date }, { refetchOnMount: 'always' });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialProposalId ?? null);
   const [mode, setMode] = useState<'ai' | 'deterministic'>('ai');
   const [guidance, setGuidance] = useState('');
   const [generationRequestId, setGenerationRequestId] = useState<string | null>(null);
@@ -258,6 +261,17 @@ export function ProposalWorkspace({
         </Alert>
       )}
       <Accordion defaultValue={manualInitiallyOpen ? 'progress' : null}>
+        <Accordion.Item value="review">
+          <Accordion.Control>Review day plan</Accordion.Control>
+          <Accordion.Panel>
+            <PlanReview
+              key={`${date}:${selectedId ?? 'current'}`}
+              date={date}
+              proposalId={current?.status === 'PENDING' ? current.id : undefined}
+              onCreated={setSelectedId}
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
         <Accordion.Item value="progress">
           <Accordion.Control>Progress and remaining day</Accordion.Control>
           <Accordion.Panel>

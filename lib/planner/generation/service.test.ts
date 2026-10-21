@@ -1,12 +1,16 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({
-  prisma: { $transaction: jest.fn(), planningProposal: { findUnique: jest.fn() } },
+  prisma: {
+    $transaction: jest.fn(),
+    planningProposal: { findUnique: jest.fn() },
+    task: { findMany: jest.fn() },
+  },
 }));
 jest.mock('@/lib/ai/structured', () => ({ generateStructured: jest.fn() }));
 jest.mock('@/lib/model-settings/service', () => ({ requireModelSelection: jest.fn() }));
 jest.mock('@/lib/task-search/service', () => ({
-  taskSearchService: { status: jest.fn(), search: jest.fn() },
+  taskCollection: { status: jest.fn(), search: jest.fn() },
 }));
 jest.mock('@/lib/task-reviews/service', () => ({
   taskReviewService: { schedulerContext: jest.fn() },
@@ -17,7 +21,7 @@ import { prisma } from '@/lib/prisma';
 import { generateStructured } from '@/lib/ai/structured';
 import { AiError } from '@/lib/ai/errors';
 import { requireModelSelection } from '@/lib/model-settings/service';
-import { taskSearchService } from '@/lib/task-search/service';
+import { taskCollection } from '@/lib/task-search/service';
 import { proposalService } from '../proposals/service';
 import { generateDayPlan } from './service';
 import { fixture, date, taskId } from './fixtures';
@@ -32,6 +36,7 @@ let s = fixture();
 beforeEach(() => {
   jest.resetAllMocks();
   s = fixture();
+  (prisma.task.findMany as jest.Mock).mockResolvedValue([]);
   (taskReviewService.schedulerContext as jest.Mock).mockResolvedValue([]);
   (prisma.planningProposal.findUnique as jest.Mock).mockResolvedValue(null);
   (prisma.$transaction as jest.Mock).mockImplementation(async () => s);
@@ -39,8 +44,8 @@ beforeEach(() => {
     provider: 'ollama',
     modelId: 'fixture-model',
   });
-  (taskSearchService.status as jest.Mock).mockResolvedValue({ pending: 1 });
-  (taskSearchService.search as jest.Mock).mockResolvedValue({ results: [] });
+  (taskCollection.status as jest.Mock).mockResolvedValue({ pending: 1 });
+  (taskCollection.search as jest.Mock).mockResolvedValue({ results: [] });
   (proposalService.create as jest.Mock).mockResolvedValue({ id: taskId(100) });
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'A lighter day focused on the first task.',
@@ -54,11 +59,12 @@ it('uses centralized settings, current task context and the validated proposal b
   const before = JSON.stringify(s);
   const result = await generateDayPlan('owner', input);
   expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan');
-  expect(taskSearchService.search).toHaveBeenCalledWith(
+  expect(taskCollection.search).toHaveBeenCalledWith(
     'owner',
     input.guidance,
     30,
-    expect.any(AbortSignal)
+    expect.any(AbortSignal),
+    s.tasks.map((t) => t.id)
   );
   expect(JSON.parse((generateStructured as jest.Mock).mock.calls[0][0].prompt)).toMatchObject({
     guidance: input.guidance,
@@ -112,7 +118,7 @@ it('retains due/important candidates independently of semantic top-k', async () 
 });
 
 it('uses current context and reports semantic retrieval failure', async () => {
-  (taskSearchService.search as jest.Mock).mockRejectedValue(
+  (taskCollection.search as jest.Mock).mockRejectedValue(
     new AiError('PROVIDER_UNAVAILABLE', 'Unavailable')
   );
   const result = await generateDayPlan('owner', input);
@@ -175,7 +181,7 @@ it('creates a proposal when the model selects a subset and skips omission bookke
 });
 
 it('propagates unexpected retrieval errors rather than swallowing failures', async () => {
-  (taskSearchService.status as jest.Mock).mockRejectedValue(new Error('Database failed'));
+  (taskCollection.status as jest.Mock).mockRejectedValue(new Error('Database failed'));
   await expect(generateDayPlan('owner', input)).rejects.toThrow('Database failed');
   expect(generateStructured).not.toHaveBeenCalled();
 });

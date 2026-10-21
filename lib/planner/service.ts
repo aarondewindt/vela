@@ -276,11 +276,15 @@ async function materializeRecurringOccurrences(userId: string, planDate: Date) {
   }
 }
 
-async function assertOwnsTheme(userId: string, themeId: string | null | undefined) {
+async function assertOwnsTheme(
+  userId: string,
+  themeId: string | null | undefined,
+  db: Prisma.TransactionClient = prisma
+) {
   if (!themeId) {
     return;
   }
-  const theme = await prisma.theme.findFirst({
+  const theme = await db.theme.findFirst({
     where: { id: themeId, userId },
     select: { id: true },
   });
@@ -328,18 +332,19 @@ export const plannerService = {
 
   async createTask(
     userId: string,
-    input: { title: string; brief?: string; themeId?: string | null }
+    input: { title: string; brief?: string; themeId?: string | null },
+    db: Prisma.TransactionClient = prisma
   ) {
-    await assertOwnsTheme(userId, input.themeId);
-    return prisma.task.create({
+    await assertOwnsTheme(userId, input.themeId, db);
+    return db.task.create({
       data: { userId, title: input.title, brief: input.brief, themeId: input.themeId ?? null },
     });
   },
 
-  async updateTask(userId: string, id: string, patch: TaskPatch) {
-    await assertOwnsTheme(userId, patch.themeId);
+  async updateTask(userId: string, id: string, patch: TaskPatch, tx?: Prisma.TransactionClient) {
+    await assertOwnsTheme(userId, patch.themeId, tx);
     const { dueDate, ...rest } = patch;
-    await prisma.$transaction(async (transaction) => {
+    const apply = async (transaction: Prisma.TransactionClient) => {
       const result = await transaction.task.updateMany({
         where: { id, userId },
         data: { ...rest, ...(dueDate !== undefined && { dueDate: toDate(dueDate) }) },
@@ -350,11 +355,12 @@ export const plannerService = {
       if (patch.status === 'DONE' || patch.status === 'ARCHIVED') {
         await cancelOpenOccurrences(transaction, userId, id);
       }
-    });
+    };
+    await (tx ? apply(tx) : prisma.$transaction(apply));
   },
 
-  async deleteTask(userId: string, id: string) {
-    await prisma.task.deleteMany({ where: { id, userId } });
+  async deleteTask(userId: string, id: string, db: Prisma.TransactionClient = prisma) {
+    await db.task.deleteMany({ where: { id, userId } });
   },
 
   async getTaskContent(userId: string, id: string) {
@@ -393,18 +399,31 @@ export const plannerService = {
     });
   },
 
-  async createTheme(userId: string, input: { name: string }) {
-    const last = await prisma.theme.aggregate({ where: { userId }, _max: { sortOrder: true } });
-    return prisma.theme.create({
+  async createTheme(
+    userId: string,
+    input: { name: string },
+    db: Prisma.TransactionClient = prisma
+  ) {
+    const last = await db.theme.aggregate({ where: { userId }, _max: { sortOrder: true } });
+    return db.theme.create({
       data: { userId, name: input.name, sortOrder: (last._max.sortOrder ?? -1) + 1 },
     });
   },
 
-  async updateTheme(userId: string, id: string, patch: ThemePatch) {
-    const result = await prisma.theme.updateMany({ where: { id, userId }, data: patch });
+  async updateTheme(
+    userId: string,
+    id: string,
+    patch: ThemePatch,
+    db: Prisma.TransactionClient = prisma
+  ) {
+    const result = await db.theme.updateMany({ where: { id, userId }, data: patch });
     if (!result.count) {
       throw new TRPCError({ code: 'NOT_FOUND' });
     }
+  },
+
+  async deleteTheme(userId: string, id: string, db: Prisma.TransactionClient = prisma) {
+    await db.theme.deleteMany({ where: { id, userId } });
   },
 
   async reorderThemes(userId: string, orderedIds: string[]) {

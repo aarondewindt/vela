@@ -23,10 +23,12 @@ export interface EmbeddingCollectionAdapter<Result> {
   stored(db: Prisma.TransactionClient, userId?: string): Promise<StoredEmbedding[]>;
   clear(db: Prisma.TransactionClient, userId?: string): Promise<void>;
   write(db: Prisma.TransactionClient, records: EmbeddingWrite[]): Promise<void>;
+  // Optional source IDs constrain task retrieval before ranking/limiting.
   search(
     db: Prisma.TransactionClient,
     userId: string,
     vector: number[],
-    limit: number
+    limit: number,
+    allowedIds?: string[]
   ): Promise<Result[]>;
 }

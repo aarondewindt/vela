@@ -1,3 +1,4 @@
+import { conversationRouter } from '@/lib/planner/conversation/router';
 import { homeAssistantRouter } from '@/lib/integrations/home-assistant/router';
 import { healthRouter } from '@/lib/health/router';
 import { proposalRouter } from '@/lib/planner/proposals/router';
@@ -12,6 +13,7 @@ import { router } from './server';
 
 export const appRouter = router({
   planner: plannerRouter,
+  plannerConversation: conversationRouter,
   taskReviews: taskReviewRouter,
   planningProposals: proposalRouter,
   settings: settingsRouter,

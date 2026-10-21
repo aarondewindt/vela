@@ -25,6 +25,8 @@ export const profileLabels: Record<ModelProfile, string> = {
 };
 export const modelFeatures = [
   'planner.dayPlan',
+  'planner.conversation',
+  'planner.planReview',
   'planner.taskReview',
   'nutrition.mealDraft',
   'nutrition.recipeAutofill',
@@ -33,6 +35,12 @@ export const modelFeatures = [
 ] as const;
 export type ModelFeature = (typeof modelFeatures)[number];
 export const featureDefinitions = {
+  'planner.conversation': {
+    label: 'Planner · Conversation',
+    profile: 'balanced',
+    capability: 'chat',
+  },
+  'planner.planReview': { label: 'Planner · Plan review', profile: 'balanced', capability: 'chat' },
   'planner.taskReview': { label: 'Planner · Task review', profile: 'balanced', capability: 'chat' },
   'planner.dayPlan': { label: 'Planner · Day planning', profile: 'balanced', capability: 'chat' },
   'nutrition.recipeAutofill': {

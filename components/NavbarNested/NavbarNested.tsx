@@ -21,6 +21,7 @@ const navbar_map = [
     links: [
       { label: 'Today', link: '/planner/today' },
       { label: 'Tasks', link: '/planner/tasks' },
+      { label: 'Conversation', link: '/planner/conversation' },
       { label: 'Fuzzy task search', link: '/planner/task-search' },
     ],
   },

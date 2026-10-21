@@ -15,6 +15,12 @@ jest.mock('./service', () => ({
     search: jest.fn(),
   },
 }));
+jest.mock('./retrieval', () => ({ retrievePlanningTasks: jest.fn() }));
+jest.mock('./queue', () => ({ enqueueTaskIndex: jest.fn() }));
+jest.mock('@/lib/prisma', () => ({ prisma: {} }));
+import { retrievePlanningTasks } from './retrieval';
+import { enqueueTaskIndex } from './queue';
+import { prisma } from '@/lib/prisma';
 import { taskSearchRouter } from './router';
 import { taskSearchService } from './service';
 import { TRPCError } from '@trpc/server';
@@ -26,6 +32,8 @@ beforeEach(() => jest.resetAllMocks());
 it('authenticates every endpoint', async () => {
   const caller = taskSearchRouter.createCaller({ userId: null });
   for (const operation of [
+    () => caller.retrieve({ query: 'test', date: '2030-01-07' }),
+    () => caller.retry(),
     () => caller.status(),
     () => caller.models(),
     () => caller.index(),
@@ -62,5 +70,26 @@ it('preserves maintainer denial and masks unexpected errors', async () => {
   (taskSearchService.search as jest.Mock).mockRejectedValue(new Error('private SQL'));
   await expect(caller.search({ query: 'test' })).rejects.toMatchObject({
     message: 'Task search is temporarily unavailable. Please retry.',
+  });
+});
+
+it('scopes shared retrieval and durable retries to the session and validates dates', async () => {
+  (retrievePlanningTasks as jest.Mock).mockResolvedValue({
+    ids: ['one'],
+    semantic: 'off',
+    warnings: [],
+  });
+  const caller = taskSearchRouter.createCaller({ userId: 'user-a' });
+  await caller.retrieve({ query: 'test', date: '2030-01-07', semantic: false });
+  await caller.retry();
+  expect(retrievePlanningTasks).toHaveBeenCalledWith('user-a', {
+    query: 'test',
+    date: '2030-01-07',
+    semantic: false,
+    limit: 30,
+  });
+  expect(enqueueTaskIndex).toHaveBeenCalledWith(prisma, 'user-a');
+  await expect(caller.retrieve({ query: 'test', date: '2030-02-30' })).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
   });
 });

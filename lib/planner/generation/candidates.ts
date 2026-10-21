@@ -1,4 +1,5 @@
 import type { Snapshot } from '../proposals/snapshot';
+import { wallInstant } from '../proposals/time';
 import { eligible } from '../proposals/validate';
 import { supportedRecurrence } from '../proposals/recurrence';
 import { classifyCandidate, defaultLeadTimeDays, sortTasksByPlanningPriority } from '../scheduling';
@@ -38,6 +39,9 @@ export function planningCandidates(s: Snapshot) {
     s.tasks.map((t) => ({ ...t, dueDate: dueDates.get(t.id) ?? null })),
     day
   )) {
+    if (task.earliestStartAt && task.earliestStartAt >= wallInstant(s.date, 1440, s.timezone)) {
+      continue;
+    }
     if (!['BACKLOG', 'IN_PROGRESS'].includes(task.status)) {
       continue;
     }

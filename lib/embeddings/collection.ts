@@ -244,7 +244,13 @@ export function createEmbeddingCollection<Result>(adapter: EmbeddingCollectionAd
       });
     },
 
-    async search(userId: string, query: string, limit: number, signal?: AbortSignal) {
+    async search(
+      userId: string,
+      query: string,
+      limit: number,
+      signal?: AbortSignal,
+      allowedIds?: string[]
+    ) {
       const row = await prisma.embeddingCollectionConfig.findUnique({
         where: { key: adapter.key },
       });
@@ -260,7 +266,7 @@ export function createEmbeddingCollection<Result>(adapter: EmbeddingCollectionAd
             'The collection changed during the search. Search again.'
           );
         }
-        return adapter.search(db, userId, vector, limit);
+        return adapter.search(db, userId, vector, limit, allowedIds);
       });
       return { results, configuration: config };
     },

@@ -23,7 +23,8 @@ export function TaskSearchView() {
   const status = trpc.taskSearch.status.useQuery(undefined, {
     retry: false,
     refetchOnMount: 'always',
-    refetchInterval: (query) => (query.state.data?.busy ? 2000 : false),
+    refetchInterval: (query) =>
+      query.state.data?.busy || query.state.data?.job?.pending ? 2000 : false,
   });
   const current = status.isFetchedAfterMount && !status.error ? status.data : undefined;
   const [query, setQuery] = useState('');
@@ -31,10 +32,10 @@ export function TaskSearchView() {
   const [notice, setNotice] = useState<string | null>(null);
   const search = trpc.taskSearch.search.useMutation({ retry: false, gcTime: 0 });
   const refresh = () => utils.taskSearch.status.invalidate();
-  const index = trpc.taskSearch.index.useMutation({
+  const index = trpc.taskSearch.retry.useMutation({
     retry: false,
-    onSuccess: async (result) => {
-      setNotice(`Indexed ${result.indexed} tasks; generated ${result.generated} embeddings.`);
+    onSuccess: async () => {
+      setNotice('Task index refresh queued. The background worker will process it.');
       search.reset();
       await refresh();
     },
@@ -49,7 +50,7 @@ export function TaskSearchView() {
         <div>
           <Title order={2}>Fuzzy task search</Title>
           <Text c="dimmed" mt={4}>
-            Search your tasks by meaning. This is an experimental test page with manual indexing.
+            Search your tasks by meaning. Task changes queue automatic background indexing.
           </Text>
         </div>
         {!current && !status.error && (
@@ -93,9 +94,17 @@ export function TaskSearchView() {
                   </Text>
                 )}
                 <Text size="sm" c="dimmed">
-                  New or edited tasks need manual indexing. Stale vectors are excluded from
+                  New or edited tasks queue a background refresh. Stale vectors are excluded from
                   searches. Your existing tasks are not modified.
                 </Text>
+                {current.job?.pending && (
+                  <Text size="sm" c="dimmed">
+                    {current.job.running
+                      ? 'Refreshing task index…'
+                      : 'Task index refresh queued; waiting for the worker.'}
+                  </Text>
+                )}
+                {current.job?.lastError && <Alert color="red">{current.job.lastError}</Alert>}
                 <Group>
                   <Button
                     disabled={!current.configuration || busy}
@@ -106,7 +115,7 @@ export function TaskSearchView() {
                       index.mutate();
                     }}
                   >
-                    Index my tasks
+                    Queue index refresh
                   </Button>
                   <Button
                     variant="default"

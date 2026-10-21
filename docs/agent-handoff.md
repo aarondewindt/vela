@@ -2,8 +2,62 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Scheduler #31, #33, #34 and remaining-day replanning #36 implemented; richer retrieval remains in #7
+**Status:** Planner conversation #37/#38 implemented (migration pending on daily-use database); earlier scheduler/search work preserved
 **Last updated:** 2026-10-20
+
+## Planner conversation (#37/#38) — 2026-10-20
+
+- Added authenticated **Planner → Conversation** with saved turns, reference/date/time
+  clarification, follow-up corrections and application-owned plan/record previews.
+  Shared proposal generation/review/edit/progress services handle plans. Task/theme
+  mutations reuse existing record services, with extracted shared patch schemas and
+  optional transaction clients. Theme deletion retains tasks with no theme.
+- Classification and interpretation use centralized `planner.conversation`; explicit
+  relative due dates resolve against the user's timezone. Pending creations retain
+  earlier fields during correction; pending plan additions can move/resize/replace
+  in place. Superseding/discarding previews does not apply changes.
+- Owner scope, stable message IDs, revisions, expiring generation tokens, source
+  fingerprints and durable acceptance receipts cover ambiguity, stale edits, retry
+  duplication and concurrent acceptance. Deletion requires a separate checkbox/button.
+  Short transactions share existing proposal table-lock ordering; model calls run
+  outside locks. See [Planner conversation](PLANNER_CONVERSATION.md) for supported
+  properties, bounds and concurrency costs.
+- Migration `20261020180000_planner_conversations` and DBML updates are included;
+  client generated. **Migration is not applied to the daily-use database.** Apply
+  through the documented backup/deploy procedure before using the new page there.
+  No public restart/build, existing-user mutation, commit or GitHub issue change.
+- Validation: all 748 Jest tests (105 suites), TypeScript, scoped new-code
+  lint/format, Prisma validation and an isolated Turbopack production build passed. Twenty synthetic PostgreSQL/
+  `qwen3:8b` assertions cover actual rollback on receipt failure, concurrent acceptance,
+  replay after deletion, stale rejection, timezone-aware creation and follow-up.
+  Desktop/390px production-browser checks passed task acceptance, regular Tasks view
+  refresh and shared plan preview/apply without runtime errors. Temporary databases,
+  servers and fixture users were removed. Full lint still fails on pre-existing
+  curly-brace/unused-import errors, including unchanged lines in planner/service.ts.
+
+## Semantic task search (#7) — 2026-10-20
+
+- Today now offers debounced hybrid task search with a semantic toggle, conventional
+  fallback and loading/empty/retry states. AI guidance uses shared
+  `retrievePlanningTasks`; future review/replacement consumers can use the same service.
+  Eligibility filters apply before semantic top-k; all important candidates bypass
+  match limits. Placement/acceptance still revalidate deterministic constraints.
+- Task insert/update triggers transactionally enqueue coalesced owner refresh jobs,
+  covering editor, review and planner writers. Cascading deletion removes vectors.
+  `yarn tasks:index` supplies renewable leases, revision fencing and retry/backoff;
+  Planner → Fuzzy task search queues retries and shows job status. Settings retains
+  published model configuration and maintainer controls.
+- Additive migration `20261020090000_task_index_jobs` applied after a private backup;
+  client generated. Eight synthetic PostgreSQL assertions passed in a rolled-back
+  transaction. Existing users’ task/plan records and published embedding configuration were
+  unchanged; no private queue was processed. Worker runtime setup and limits: [semantic task search](SEMANTIC_TASK_SEARCH.md).
+- Validation: all 692 tests (97 suites), TypeScript, scoped Oxlint/format, Prisma
+  validation, worker startup and an isolated default Turbopack production build passed.
+  Optional Webpack compilation fails on the Mantine schedule/rrule default export;
+  dependencies were unchanged. No live browser automation was run.
+- Worker is not started as a persistent process; deployment has no repository supervisor.
+  Queued refreshes persist until `yarn tasks:index` runs; conventional search remains available.
+  No public build/restart or GitHub mutation performed.
 
 ## Remaining-day replanning (#36) — 2026-10-20
 
@@ -324,3 +378,12 @@ User authorized implementing the reusable per-user Home Assistant connector and 
 - Setup remains account/operator work: configure `HOME_ASSISTANT_ALLOWED_ORIGINS` and stable `INTEGRATION_ENCRYPTION_KEY` in the app/worker runtime, save each user's HA URL/token, map actual sensors, and supervise the worker. No secrets were created or changed in local environment files. See [Health](HEALTH.md) for upstream setup, recovery limits, timestamp semantics, timezone assumptions and key backup.
 - Validation: full existing+new Jest run passed (451 tests, 72 suites); a subsequent first-save conflict test passed in the four-test connection-service suite. TypeScript, changed-code Oxlint/format, Stylelint, Prisma validation/schema diff and production build passed. Initial sandboxed production build stalled; it was stopped and rerun successfully outside the sandbox with `NODE_ENV=production`. A temporary HA REST/WebSocket simulator plus real PostgreSQL verified worker imports, unit conversion, daily-total deduplication, Nutrition balance/goal comparison, manual retries and cross-user isolation; synthetic users/data removed. Browser automation was unavailable; the Health goal UI was verified with React Testing Library.
 - Repository-wide `yarn lint` still fails on pre-existing errors in untouched planner/auth/UI files. Pre-existing deployment/auth edits and a concurrently modified `docs/NOTES.md` were preserved.
+
+## Day plan reviews — #35 — 2026-10-20
+
+- Implemented `lib/planner/review/`, protected `planningProposals.review` and the Today proposal workspace's **Review day plan** panel. Review current or selected pending plans; current owner/date/fingerprint/status checks protect proposal projection. Reviews are transient and do not write planning state.
+- Deterministic findings identify blocks/tasks for overlaps, busy calendar conflicts, invalid intervals, effective availability, category/leisure reservations, eligibility/hard prerequisites, earliest starts, excess allocations and session policy. The existing validator now exposes session-violation IDs so review uses the same break/finish-extension rules.
+- Optional `planner.planReview` AI setting inherits Balanced/default model selection. Bounded schema output resolves request-local references into advisory concerns. Guidance and recorded task context inform contextual assessment; invalid references and unavailable models retain verified findings with an explicit error.
+- Independently validated release/whole-remaining-effort replacement options preserve protected work and show displaced minutes, recorded deadlines and conservative deadline risk. Pending-plan accounting considers projected allocations, and corrections compose against original operations/reservations. Preview uses existing create/fingerprint/idempotency; explicit acceptance retains existing locking, revalidation and receipts. No schema migration or deployment was performed for #35. Existing semantic-search work and environment files were preserved.
+- Documentation: [Day plan review](PLAN_REVIEWS.md); proposal API and architecture notes updated. Limits: transient reviews, 100 occupied blocks for AI, three replacement options per adjustable block, no combined repair optimizer or deadline-completion prediction. Manual/fixed/started/calendar/history corrections remain in the explicit existing workflows.
+- Validation: full Jest run passed (709 tests / 100 suites). Two subsequent pending-projection/delegation tests also passed in the final focused review/router run (20 tests / three suites). TypeScript, scoped Oxlint/format, diff whitespace check and production build passed. The restricted build stalled; it was stopped, its stale generated build lock removed after confirming no build remained, and production compilation succeeded outside the sandbox. No live browser, actual model inference or new live PostgreSQL integration checks were run for #35; React/domain/service/router tests cover new behavior, and the full run includes existing proposal acceptance tests. Shared public server was not restarted.

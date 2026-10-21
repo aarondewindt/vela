@@ -1,3 +1,7 @@
+import { z } from 'zod';
+import { retrievePlanningTasks } from './retrieval';
+import { enqueueTaskIndex } from './queue';
+import { prisma } from '@/lib/prisma';
 import { TRPCError } from '@trpc/server';
 import { AiError } from '@/lib/ai';
 import { EmbeddingCollectionError } from '@/lib/embeddings/errors';
@@ -26,6 +30,27 @@ async function call<T>(operation: () => Promise<T>) {
 }
 
 export const taskSearchRouter = router({
+  retrieve: protectedProcedure
+    .input(
+      z.object({
+        query: z.string().trim().min(1).max(2000),
+        date: z.iso.date(),
+        limit: z.number().int().min(1).max(50).default(30),
+        semantic: z.boolean().default(true),
+      })
+    )
+    .query(({ ctx, input }) =>
+      call(async () => {
+        const result = await retrievePlanningTasks(ctx.userId, input);
+        return { ids: result.ids, semantic: result.semantic, warnings: result.warnings };
+      })
+    ),
+  retry: protectedProcedure.mutation(({ ctx }) =>
+    call(async () => {
+      await enqueueTaskIndex(prisma, ctx.userId);
+      return { queued: true };
+    })
+  ),
   status: protectedProcedure.query(({ ctx }) => call(() => taskSearchService.status(ctx.userId))),
   models: protectedProcedure.query(() => call(() => taskSearchService.models())),
   index: protectedProcedure.mutation(({ ctx }) =>

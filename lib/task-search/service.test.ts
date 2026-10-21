@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/prisma', () => ({ prisma: { taskIndexJob: { findUnique: jest.fn() } } }));
 jest.mock('@/lib/ai', () => ({ discoverModels: jest.fn() }));
 jest.mock('./adapter', () => ({ taskEmbeddingAdapter: {} }));
 jest.mock('@/lib/embeddings/collection', () => ({

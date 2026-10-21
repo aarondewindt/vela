@@ -430,3 +430,37 @@ Ref: checkins.planId > daily_plans.id [delete: set null, update: cascade]
 Ref: checkins.taskOccurrenceId > task_occurrences.id [delete: set null, update: cascade]
 Ref: checkins.blockId > daily_blocks.id [delete: set null, update: cascade]
 Ref: automation_runs.userId > user.id [delete: cascade, update: cascade]
+
+
+Table planner_conversations {
+  id uuid [pk, not null]
+  userId text [not null]
+  revision integer [not null, default: 0]
+  activeTurnId uuid
+  leaseExpiresAt timestamp(3)
+  createdAt timestamp(3) [not null, default: `CURRENT_TIMESTAMP`]
+  updatedAt timestamp(3) [not null]
+
+  Indexes {
+    (userId, updatedAt)
+  }
+}
+
+Table planner_conversation_turns {
+  id uuid [pk, not null]
+  conversationId uuid [not null]
+  revision integer [not null]
+  inputHash varchar(64) [not null]
+  text varchar(2000) [not null]
+  status varchar(20) [not null, default: 'GENERATING']
+  result jsonb
+  receipt jsonb
+  createdAt timestamp(3) [not null, default: `CURRENT_TIMESTAMP`]
+
+  Indexes {
+    (conversationId, revision) [unique]
+  }
+}
+
+Ref: planner_conversations.userId > user.id [delete: cascade, update: cascade]
+Ref: planner_conversation_turns.conversationId > planner_conversations.id [delete: cascade, update: cascade]

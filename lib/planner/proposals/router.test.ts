@@ -16,10 +16,12 @@ jest.mock('./service', () => ({
     discard: jest.fn(),
   },
 }));
+jest.mock('../review/service', () => ({ reviewDayPlan: jest.fn() }));
 jest.mock('../generation/service', () => ({ generateDayPlan: jest.fn() }));
 import { proposalRouter } from './router';
 import { proposalService } from './service';
 import { generateDayPlan } from '../generation/service';
+import { reviewDayPlan } from '../review/service';
 
 it('rejects anonymous proposal reads and acceptance', async () => {
   const caller = proposalRouter.createCaller({ userId: null });
@@ -81,5 +83,30 @@ it('authenticates and validates structured replanning before delegation', async 
     ...input,
     completeTask: false,
     pullForward: false,
+  });
+});
+
+it('authenticates plan review and validates its boundary inputs', async () => {
+  await expect(
+    proposalRouter.createCaller({ userId: null }).review({ date: '2030-01-07' })
+  ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+  const caller = proposalRouter.createCaller({ userId: 'owner' });
+  await expect(caller.review({ date: '2030-02-30' })).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+  });
+  await expect(caller.review({ date: '2030-01-07', proposalId: 'foreign' })).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+  });
+  await expect(
+    caller.review({ date: '2030-01-07', guidance: 'x'.repeat(2001) })
+  ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+});
+
+it('delegates a valid plan review with authenticated ownership and safe defaults', async () => {
+  await proposalRouter.createCaller({ userId: 'owner' }).review({ date: '2030-01-07' });
+  expect(reviewDayPlan).toHaveBeenCalledWith('owner', {
+    date: '2030-01-07',
+    mode: 'deterministic',
+    guidance: '',
   });
 });
