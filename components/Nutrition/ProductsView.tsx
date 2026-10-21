@@ -21,6 +21,7 @@ import {
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
+import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { trpc } from '@/lib/trpc/client';
 import { useNutritionProductsStore } from '@/store/nutrition_products_store';
 import { unitLabels } from '@/lib/nutrition/types';
@@ -283,10 +284,11 @@ export function ProductsView() {
                             ? product.referenceLabel
                             : unitLabels[product.referenceUnit]}
                         </Table.Td>
-                        <Table.Td>{product.calories} kcal</Table.Td>
+                        <Table.Td>{amount(product.calories)} kcal</Table.Td>
                         <Table.Td>
                           <Text size="sm">
-                            P {product.protein} · C {product.carbohydrates} · F {product.fat}
+                            P {amount(product.protein)} · C {amount(product.carbohydrates)} · F{' '}
+                            {amount(product.fat)}
                           </Text>
                         </Table.Td>
                         <Table.Td>{product.servings.length}</Table.Td>
@@ -357,26 +359,28 @@ export function ProductsView() {
                         : unitLabels[product.referenceUnit]}
                     </Text>
                     <Text size="xl" fw={700}>
-                      {product.calories} kcal
+                      {amount(product.calories)} kcal
                     </Text>
                     <SimpleGrid cols={3} spacing="xs">
                       <Text size="sm">
                         Protein
                         <br />
-                        <b>{product.protein} g</b>
+                        <b>{amount(product.protein)} g</b>
                       </Text>
                       <Text size="sm">
                         Carbs
                         <br />
-                        <b>{product.carbohydrates} g</b>
+                        <b>{amount(product.carbohydrates)} g</b>
                       </Text>
                       <Text size="sm">
                         Fat
                         <br />
-                        <b>{product.fat} g</b>
+                        <b>{amount(product.fat)} g</b>
                       </Text>
                     </SimpleGrid>
-                    {product.fiber !== null && <Text size="sm">Fiber: {product.fiber} g</Text>}
+                    {product.fiber !== null && (
+                      <Text size="sm">Fiber: {amount(product.fiber)} g</Text>
+                    )}
                     <Text size="xs" c="dimmed">
                       {product.servings.length} serving{product.servings.length === 1 ? '' : 's'}
                       {product.aliases.length ? ` · ${product.aliases.join(', ')}` : ''}

@@ -26,10 +26,10 @@ export function Property({ label, children }: { label: string; children: ReactNo
       <Text
         size="sm"
         c="dimmed"
-        w={96}
+        w={128}
         h={ROW_HEIGHT}
         lh={`${ROW_HEIGHT}px`}
-        style={{ flexShrink: 0 }}
+        style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
       >
         {label}
       </Text>

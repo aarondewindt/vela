@@ -118,6 +118,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                   dataKey="date"
                   series={[{ name: 'calories', label: 'Calories', color: 'teal.6' }]}
                   unit=" kcal"
+                  valueFormatter={(value) => formatNutritionAmount(String(value))}
                   connectNulls={false}
                   curveType="linear"
                   withDots
@@ -139,6 +140,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                     { name: 'fat', label: 'Fat', color: 'grape.6' },
                   ]}
                   unit=" g"
+                  valueFormatter={(value) => formatNutritionAmount(String(value))}
                   connectNulls={false}
                   curveType="linear"
                   withDots

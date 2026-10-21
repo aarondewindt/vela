@@ -23,6 +23,7 @@ import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { useNutritionProductsStore } from '@/store/nutrition_products_store';
+import { productFixture } from '@/lib/nutrition/test-fixtures';
 import { ProductsView } from './ProductsView';
 
 beforeEach(() => {
@@ -101,4 +102,29 @@ it('exposes recipe creation directly from the catalog', async () => {
   render(<ProductsView />);
   await userEvent.setup().click(screen.getByRole('button', { name: 'Create recipe' }));
   expect(screen.getByRole('dialog', { name: 'Recipe editor' })).toBeInTheDocument();
+});
+
+it('rounds recipe nutrients consistently in table and mobile cards without changing source values', () => {
+  const product = {
+    ...productFixture,
+    calculationMode: 'CALCULATED',
+    calories: '184.73913043',
+    protein: '11.48695652',
+    carbohydrates: '13.9173913',
+    fat: '5.10652174',
+    fiber: '0.12345678',
+  };
+  (trpc.nutrition.listProducts.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: { products: [product], total: 1 },
+  });
+  render(<ProductsView />);
+  expect(screen.getAllByText('184.7 kcal')).toHaveLength(2);
+  expect(screen.getByText('P 11.5 · C 13.9 · F 5.1')).toBeInTheDocument();
+  expect(screen.getByText('11.5 g')).toBeInTheDocument();
+  expect(screen.getByText('13.9 g')).toBeInTheDocument();
+  expect(screen.getByText('5.1 g')).toBeInTheDocument();
+  expect(screen.getByText('Fiber: 0.1 g')).toBeInTheDocument();
+  expect(product.calories).toBe('184.73913043');
 });
