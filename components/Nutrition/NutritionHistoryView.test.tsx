@@ -13,15 +13,18 @@ jest.mock('@mantine/charts', () => ({
     valueFormatter,
     referenceLines,
     referenceAreas,
+    yAxisProps,
   }: {
     data: unknown[];
     referenceLines: unknown[];
     referenceAreas: unknown[];
+    yAxisProps: { domain: unknown[] };
     connectNulls: boolean;
     valueFormatter: (value: number) => string;
   }) => (
     <div
       data-testid="chart"
+      data-domain={JSON.stringify(yAxisProps.domain)}
       data-lines={JSON.stringify(referenceLines)}
       data-areas={JSON.stringify(referenceAreas)}
       data-connect-nulls={String(connectNulls)}
@@ -59,6 +62,7 @@ it('renders missing days separately from logged zero and requests both chart per
   expect(screen.getByText('Unknown')).toBeInTheDocument();
   expect(screen.getAllByText('0 kcal').length).toBeGreaterThan(0);
   screen.getAllByTestId('chart').forEach((chart) => {
+    expect(chart).toHaveAttribute('data-domain', '["auto","auto"]');
     expect(chart).toHaveAttribute('data-connect-nulls', 'false');
     expect(chart).toHaveAttribute('data-formatted', '184.7');
   });
@@ -107,6 +111,7 @@ it('renders separate nutrient goals and ranges, including fiber, while preservin
   const charts = screen.getAllByTestId('chart');
   expect(charts).toHaveLength(5);
   for (const chart of charts) {
+    expect(chart).toHaveAttribute('data-domain', '["auto","auto"]');
     expect(chart.getAttribute('data-lines')).not.toContain('"label"');
     expect(chart.getAttribute('data-areas')).not.toContain('"label"');
   }

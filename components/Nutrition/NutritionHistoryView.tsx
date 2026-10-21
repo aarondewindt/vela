@@ -146,7 +146,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                   curveType="linear"
                   withDots
                   withLegend
-                  yAxisProps={{ domain: [0, 'auto'] }}
+                  yAxisProps={{ domain: ['auto', 'auto'] }}
                 />
               </Stack>
             </Paper>
@@ -176,7 +176,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                     curveType="linear"
                     withDots
                     withLegend
-                    yAxisProps={{ domain: [0, 'auto'] }}
+                    yAxisProps={{ domain: ['auto', 'auto'] }}
                   />
                 </Stack>
               </Paper>

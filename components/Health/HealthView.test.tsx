@@ -96,12 +96,14 @@ it('shows current metric and signed balance reference bands even with no observa
   query.mockReturnValue({ data });
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
+  expect(charts).toHaveLength(4);
   expect(charts[0].referenceAreas).toEqual([expect.objectContaining({ y1: 80, y2: 85 })]);
   expect(charts[1].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
   expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
   expect(charts[3].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
   expect(charts[0].data[0].weight).toBeNull();
   for (const chart of charts) {
+    expect(chart.yAxisProps.domain).toEqual(['auto', 'auto']);
     for (const reference of [...chart.referenceLines, ...chart.referenceAreas]) {
       expect(reference).not.toHaveProperty('label');
       expect(chart.series.map((series: { color: string }) => series.color)).not.toContain(

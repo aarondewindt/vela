@@ -307,6 +307,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     connectNulls={false}
                     curveType="linear"
                     withLegend
+                    yAxisProps={{ domain: ['auto', 'auto'] }}
                   />
                 </Paper>
               ))}
