@@ -23,9 +23,12 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 - See [meals](PLANNER_MEALS.md), [evaluation](PLANNER_EVALUATION.md) and
   [routine review](PLANNER_ROUTINES_REVIEW.md). Retain/revise #17 for overnight sleep;
   no generalized routines, Nutrition integration, #69/#70 or category migration.
-- Additive migration `20261022010000_planner_meals` tested by applying all migrations
-  to disposable databases; **not applied to the application database**. Prisma Client
-  regenerated. Apply migration before deploying; old previews may need regeneration.
+- Additive migration `20261022010000_planner_meals` applied to the application
+  database at the user's request on 2026-10-22, after a fresh private backup in
+  ignored `.local/backups`. Archive listing and a full restore into a temporary
+  database passed; the temporary database was removed and a private SHA-256 checksum
+  saved. All 32 migrations are applied, database-to-schema diff is empty and Prisma
+  Client regenerated. Old previews may need regeneration.
 - All 962 Jest tests / 132 suites, TypeScript, scoped lint/format, Stylelint and
   production build pass.
   Global lint/format retain baseline errors in untouched source portions.
@@ -36,8 +39,8 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   3–5 of five tasks received time; overload remainder explicit in every run.
 - Keep #41 open for broader daily-use/explanation review. Browser tooling is not
   installed; desktop/mobile interaction remains manual testing. Greedy ordering varies;
-  PTO/NO_WORK availability and existing REST semantics remain unchanged. Public app
-  and database were not restarted or migrated.
+  PTO/NO_WORK availability and existing REST semantics remain unchanged. Public application
+  server was not restarted. The application database migration is applied as noted above.
 
 ## Settings PR #65 feedback — 2026-10-21
 
