@@ -258,13 +258,16 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               {[
                 {
-                  title: 'Weight and lean mass',
+                  title: 'Weight',
                   metric: 'WEIGHT' as const,
                   unit: ' kg',
-                  series: [
-                    { name: 'weight', label: 'Weight', color: 'teal.6' },
-                    { name: 'lean', label: 'Lean mass', color: 'blue.6' },
-                  ],
+                  series: [{ name: 'weight', label: 'Weight', color: 'teal.6' }],
+                },
+                {
+                  title: 'Lean mass',
+                  metric: 'LEAN_MASS' as const,
+                  unit: ' kg',
+                  series: [{ name: 'lean', label: 'Lean mass', color: 'blue.6' }],
                 },
                 {
                   title: 'Body fat',
@@ -299,10 +302,12 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                           data.goal.calorieBalance?.toString() ?? null,
                           data.goal.semantics
                         )
-                      : goalChartReferences(
-                          data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
-                          data.goal.metricGoals?.[item.metric]?.semantics
-                        ))}
+                      : item.metric === 'LEAN_MASS'
+                        ? goalChartReferences(null)
+                        : goalChartReferences(
+                            data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
+                            data.goal.metricGoals?.[item.metric]?.semantics
+                          ))}
                     unit={item.unit}
                     connectNulls={false}
                     curveType="linear"

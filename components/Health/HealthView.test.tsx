@@ -96,11 +96,18 @@ it('shows current metric and signed balance reference bands even with no observa
   query.mockReturnValue({ data });
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
-  expect(charts).toHaveLength(4);
+  expect(charts).toHaveLength(5);
+  expect(screen.getByRole('heading', { name: 'Weight' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Lean mass' })).toBeInTheDocument();
+  expect(charts[0].series).toEqual([{ name: 'weight', label: 'Weight', color: 'teal.6' }]);
+  expect(charts[1].series).toEqual([{ name: 'lean', label: 'Lean mass', color: 'blue.6' }]);
+  expect(charts[1].unit).toBe(' kg');
+  expect(charts[1].referenceLines).toEqual([]);
+  expect(charts[1].referenceAreas).toEqual([]);
   expect(charts[0].referenceAreas).toEqual([expect.objectContaining({ y1: 80, y2: 85 })]);
-  expect(charts[1].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
-  expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
-  expect(charts[3].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
+  expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
+  expect(charts[3].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
+  expect(charts[4].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
   expect(charts[0].data[0].weight).toBeNull();
   for (const chart of charts) {
     expect(chart.yAxisProps.domain).toEqual(['auto', 'auto']);
@@ -111,8 +118,8 @@ it('shows current metric and signed balance reference bands even with no observa
       );
     }
   }
-  expect(charts[1].referenceLines[0].color).toBe('red.6');
-  expect(charts[2].referenceLines[0].color).toBe('yellow.6');
+  expect(charts[2].referenceLines[0].color).toBe('red.6');
+  expect(charts[3].referenceLines[0].color).toBe('yellow.6');
 });
 
 it('removes chart references when health targets are cleared', () => {
@@ -132,7 +139,7 @@ it('removes chart references when health targets are cleared', () => {
   data.goal = { calorieBalance: null, metricGoals: {} };
   query.mockReturnValue({ data });
   view.rerender(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
-  for (const [props] of charts.mock.calls.slice(-4)) {
+  for (const [props] of charts.mock.calls.slice(-5)) {
     expect(props.referenceAreas).toEqual([]);
     expect(props.referenceLines).toEqual([]);
   }
