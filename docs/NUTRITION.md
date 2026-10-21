@@ -1,6 +1,6 @@
 # Nutrition
 
-Phases 1–6 provide a food catalog, manual calorie/macronutrient tracker, hybrid food search, persistent conversational meal drafts, reusable recipes and historical charts. A subsequently authorized [NEVO upload/update workflow](NEVO.md) adds English primary names and Dutch aliases from user-supplied CSV files. Open **Nutrition → Diary** (`/nutrition`), **Food products** (`/nutrition/products`), **History** (`/nutrition/history`) or **Daily goals** (`/nutrition/settings`). The user explicitly approved these phases following the [architecture proposal](NUTRITION_PROPOSAL.md). The user subsequently authorized Phases 5 and 6 together on 2026-10-18.
+Phases 1–6 provide a food catalog, manual calorie/macronutrient tracker, hybrid food search, persistent conversational meal drafts, reusable recipes and historical charts. A subsequently authorized [NEVO upload/update workflow](NEVO.md) adds English primary names and Dutch aliases from user-supplied CSV files. Open **Nutrition → Diary** (`/nutrition`), **Food products** (`/nutrition/products`), **History** (`/nutrition/history`) or **Settings → Nutrition** (`/settings/nutrition`) for daily goals and related-food search setup. The user explicitly approved these phases following the [architecture proposal](NUTRITION_PROPOSAL.md). The user subsequently authorized Phases 5 and 6 together on 2026-10-18.
 
 ## Using the diary
 
@@ -31,7 +31,7 @@ New products always have manual provenance. Verification is independently editab
 ## Implementation
 
 - `app/nutrition/products/page.tsx`: explicit Better Auth session check and user-keyed view.
-- `app/nutrition/page.tsx`, `app/nutrition/settings/page.tsx`: authenticated diary/goals pages; timezone-derived initial day and validated URL dates.
+- `app/nutrition/page.tsx`, `app/settings/nutrition/page.tsx`: authenticated diary/goals pages; timezone-derived initial day and validated URL dates.
 - `components/Nutrition/`: responsive desktop table/mobile cards, editor, serving controls and saved-product calculator. TanStack Query manages server state; local React state manages form/filter/modal interactions.
 - `NutritionDiaryView`, `MealSection`, `LogEntryEditor`, `ProductPicker`, `DailyNutritionSummary` and `NutritionGoalsView` provide the Phase 2 manual diary, inline catalog creation, editable historical entries, summary and goals.
 - `lib/nutrition/router.ts`: protected Zod-validated procedures registered as `nutrition` in the root tRPC router. Owner identity always comes from the session; safe errors mask unexpected persistence details.
@@ -168,3 +168,35 @@ The recipe name input includes a sparkle ActionIcon to **Autofill recipe details
 Each saved meal message has a **Show debug details** control. New attempts retain bounded model output, error/validation causes, model attribution, finish reason, elapsed time and generation limits in the owner-scoped draft turn. This includes successful responses. Raw output is limited to 20,000 characters, with an explicit truncation marker; error chains retain up to four bounded messages. SDK request objects, headers and connection configuration are excluded. Diagnostics are private meal data and are deleted with the draft. Retrying replaces the prior attempt's diagnostics, and stale generations cannot overwrite a newer attempt. Older messages and interrupted attempts may have no captured output.
 
 Migration `20261019120000_meal_turn_diagnostics` adds the nullable JSONB field. A live `qwen3:8b` check reproduced quoted `"null"` for an unknown hummus quantity; explicit JSON-null guidance and a worked example produced schema-valid output while preserving the missing-amount clarification. Validation continues to reject invalid model output.
+
+
+## Dashboard and chart references (#27/#46/#23 follow-ups)
+
+The authenticated dashboard shows today's intake in the account's configured
+timezone as a compact widget: calories in the header, then four slim horizontal
+rows for protein, carbohydrates, fat and fiber. Each row shows intake, its goal
+and a marked bar, without the diary's individual nutrient cards. The highest goal
+marker starts at 75% of the track; overages expand the scale. Below-goal intake
+is blue, satisfied goals green and excess above an upper bound red. Configured
+minimum/preferred/excellent milestones retain their orange/green/cyan progression.
+Full goal types and milestones remain available in hover text and accessible bar
+labels. Unknown fiber keeps its marker with a neutral empty track and no numerical
+observation, plus an explicit partial-intake note. Unset targets show “No goal”.
+The widget links to the diary and Settings, and reports loading/failures with retry. Fiber remains
+nullable with no default amount; clearing a goal saves no goal. Unknown fiber is
+still distinct from zero.
+
+Nutrition history shows calories and each macro/fiber in separate charts with
+current user-goal reference lines and shaded ranges/tolerance bands, extending the
+axis to include goals. Geometry has no text labels; yellow denotes minimums,
+green targets/acceptable bands, red maximums and lime excellent milestones. These
+hues are distinct from the data series, with a key outside the plots. Separate
+plots keep overlapping nutrient thresholds clear.
+Missing-day gaps and unknown fiber remain visible; goals apply to all dates.
+
+Semantic food search starts enabled in the product picker and, for new browser
+preferences, the food catalog. Explicit saved catalog preferences remain honored;
+archived browsing stays conventional. Existing published index models and
+maintainer setup are retained: missing/offline/incompatible models or unconfigured
+indexes fall back to text matches with a notice. No models are silently selected,
+downloaded or used against vectors built with a different model.

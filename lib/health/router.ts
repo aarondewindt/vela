@@ -4,6 +4,7 @@ import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { goalSchema, manualMetricSchema, mappingSchema } from './schema';
 import { healthService } from './service';
 export const healthRouter = router({
+  getGoal: protectedProcedure.query(({ ctx }) => healthService.getGoal(ctx.userId)),
   diagnostics: protectedProcedure.query(({ ctx }) => healthService.diagnostics(ctx.userId)),
   history: protectedProcedure
     .input(historyInputSchema)

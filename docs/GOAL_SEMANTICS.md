@@ -51,6 +51,18 @@ Without a preferred milestone, reaching the minimum shows green. Labels include
 Other goal types retain teal inside bounds, orange below and red above.
 Accessible values report actual amounts, thresholds and status.
 
+The compact dashboard variant uses four horizontal rows and places its highest
+goal marker at 75% initially, retaining the same overage expansion. It uses blue
+below goal, green within bounds, red above an upper bound and the existing
+orange/green/cyan milestone colors. Unknown amounts keep a neutral track and
+markers with “Waiting for data”, without reporting a numeric value. The detailed
+Nutrition diary retains its existing cards, colors and 90% scale.
+
+History references use yellow for minimum thresholds, green for targets and
+acceptable finite bands, red for maximum bounds and lime for excellent milestones.
+These hues are distinct from the current Nutrition/Health data series. Reference
+geometry is unlabeled; explanatory keys sit outside the plotting areas.
+
 Unknown fiber remains unknown, with known partial intake shown separately. History
 includes fiber in the macro chart and daily table; unknown values and missing days
 remain gaps, while recorded zero remains zero. Signed Health goals show bounds,

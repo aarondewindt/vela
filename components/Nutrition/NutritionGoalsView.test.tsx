@@ -116,3 +116,15 @@ it('saves protein and fiber milestones alongside a preferred fat range', async (
     },
   });
 });
+
+it('leaves fiber empty by default and saves no goal when an entered value is cleared', async () => {
+  const user = userEvent.setup();
+  mutateAsync.mockResolvedValue({ ...initial, fiber: null, version: 1 });
+  render(<NutritionGoalsView />);
+  const fiber = screen.getByRole('textbox', { name: 'Fiber (g)' });
+  expect(fiber).toHaveValue('');
+  await user.type(fiber, '35');
+  await user.clear(fiber);
+  await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
+  expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ fiber: null }));
+});

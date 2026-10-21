@@ -68,3 +68,17 @@ it('marks the preferred target separately from the range bounds', () => {
   expect(scale.lower).toBeLessThan(scale.target);
   expect(scale.upper).toBeGreaterThan(scale.target);
 });
+
+it('places the compact dashboard goal at 75% and expands for overage', () => {
+  const initial = goalProgressScale('50', '100', { kind: 'target' }, 0.75)!;
+  expect(initial.target).toBeCloseTo(75);
+  expect(initial.fill).toBeCloseTo(37.5);
+  const over = goalProgressScale('200', '100', { kind: 'target' }, 0.75)!;
+  expect(over.maximum).toBeGreaterThan(initial.maximum);
+  expect(over.fill).toBeCloseTo(95);
+  expect(over.target).toBeCloseTo(47.5);
+  expect(over.color).toBe('red');
+  const range = goalProgressScale('60', '50', { kind: 'range', upperBound: '70' }, 0.75)!;
+  expect(range.upper).toBeCloseTo(75);
+  expect(range.lower).toBeLessThan(range.upper!);
+});

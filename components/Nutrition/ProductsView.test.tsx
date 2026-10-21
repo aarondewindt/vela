@@ -8,7 +8,6 @@ jest.mock('@/lib/trpc/client', () => ({
     },
   },
 }));
-jest.mock('./ProductSearchSettings', () => ({ ProductSearchSettings: () => null }));
 jest.mock('./ProductEditor', () => ({
   ProductEditor: ({ initialCalculationMode }: { initialCalculationMode?: string }) => (
     <div
@@ -28,7 +27,7 @@ import { ProductsView } from './ProductsView';
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useNutritionProductsStore.setState({ fuzzySearch: false });
+  useNutritionProductsStore.setState({ fuzzySearch: true });
   localStorage.clear();
   const result = { isFetchedAfterMount: true, error: null, isFetching: false };
   (trpc.nutrition.listProducts.useQuery as jest.Mock).mockReturnValue({
@@ -41,18 +40,19 @@ beforeEach(() => {
   });
 });
 
-it('enables embedding search and remembers both switch choices after a reload', async () => {
+it('defaults to embedding search and remembers both switch choices after a reload', async () => {
   const user = userEvent.setup();
   const view = render(<ProductsView />);
-  expect(screen.getByRole('switch', { name: /Fuzzy search/ })).not.toBeChecked();
+  expect(screen.getByRole('switch', { name: /Fuzzy search/ })).toBeChecked();
   await user.type(screen.getByLabelText('Search products'), 'crispy snack');
-  await user.click(screen.getByRole('switch', { name: /Fuzzy search/ }));
   await waitFor(() =>
     expect(trpc.nutrition.searchProducts.useQuery).toHaveBeenLastCalledWith(
       { query: 'crispy snack', limit: 50, semantic: true },
       expect.objectContaining({ enabled: true })
     )
   );
+  await user.click(screen.getByRole('switch', { name: /Fuzzy search/ }));
+  await user.click(screen.getByRole('switch', { name: /Fuzzy search/ }));
   const saved = localStorage.getItem('nutrition-products');
   expect(JSON.parse(saved!).state.fuzzySearch).toBe(true);
   view.unmount();

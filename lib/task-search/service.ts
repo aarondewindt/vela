@@ -1,4 +1,6 @@
 import 'server-only';
+import { AiError } from '@/lib/ai/errors';
+import { EmbeddingCollectionError } from '@/lib/embeddings/errors';
 import { prisma } from '@/lib/prisma';
 import { isEmbeddingMaintainer, requireEmbeddingMaintainer } from '@/lib/embeddings/maintenance';
 import { createEmbeddingCollection } from '@/lib/embeddings/collection';
@@ -8,6 +10,20 @@ import { taskEmbeddingAdapter } from './adapter';
 export const taskCollection = createEmbeddingCollection(taskEmbeddingAdapter);
 
 export const taskSearchService = {
+  async related(userId: string, query: string, limit: number) {
+    try {
+      const result = await taskCollection.search(userId, query, limit, AbortSignal.timeout(12000));
+      return { ids: result.results.map((match) => match.id), notice: null };
+    } catch (error) {
+      if (!(error instanceof AiError || error instanceof EmbeddingCollectionError)) {
+        throw error;
+      }
+      return {
+        ids: [] as string[],
+        notice: 'Semantic search is unavailable. Showing text matches.',
+      };
+    }
+  },
   async status(userId: string) {
     const [status, job] = await Promise.all([
       taskCollection.status(userId),

@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   Alert,
   Button,
-  Container,
   Group,
   Loader,
   SimpleGrid,
@@ -128,52 +127,49 @@ export function NutritionGoalsView({ returnDate }: { returnDate?: string }) {
   const [reload, setReload] = useState(0);
   const current = goals.isFetchedAfterMount && !goals.error ? goals.data : undefined;
   return (
-    <Container size="sm" py="xl">
-      <Stack gap="lg">
-        <Group justify="space-between">
-          <Title order={2}>Daily nutrition goals</Title>
-          <Button
-            component={Link}
-            href={returnDate ? `/nutrition?date=${returnDate}` : '/nutrition'}
-            variant="default"
-          >
-            Back to diary
-          </Button>
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Title order={3}>Daily nutrition goals</Title>
+        <Button
+          component={Link}
+          href={returnDate ? `/nutrition?date=${returnDate}` : '/nutrition'}
+          variant="default"
+        >
+          Back to diary
+        </Button>
+      </Group>
+      <Text c="dimmed">
+        Enter your own daily targets. Leave any goal empty to track that nutrient without a target.
+        For minimum and range goals, the first amount is the minimum; configure a preferred target
+        and maximum or excellent threshold below. Your current goals apply to every diary day.
+      </Text>
+      {!current && !goals.error && (
+        <Group role="status">
+          <Loader size="sm" />
+          <Text>Loading goals…</Text>
         </Group>
-        <Text c="dimmed">
-          Enter your own daily targets. Leave any goal empty to track that nutrient without a
-          target. For minimum and range goals, the first amount is the minimum; configure a
-          preferred target and maximum or excellent threshold below. Your current goals apply to
-          every diary day.
-        </Text>
-        {!current && !goals.error && (
-          <Group role="status">
-            <Loader size="sm" />
-            <Text>Loading goals…</Text>
-          </Group>
-        )}
-        {goals.error && (
-          <Alert color="red">
-            <Text>{goals.error.message}</Text>
-            <Button variant="light" onClick={() => void goals.refetch()}>
-              Retry loading goals
-            </Button>
-          </Alert>
-        )}
-        {current && (
-          <GoalsForm
-            key={reload}
-            initial={current}
-            onReload={() => {
-              void goals.refetch().then(() => setReload((value) => value + 1));
-            }}
-            onSaved={async () => {
-              await utils.nutrition.getGoals.invalidate();
-              await utils.nutrition.getDiary.invalidate();
-            }}
-          />
-        )}
-      </Stack>
-    </Container>
+      )}
+      {goals.error && (
+        <Alert color="red">
+          <Text>{goals.error.message}</Text>
+          <Button variant="light" onClick={() => void goals.refetch()}>
+            Retry loading goals
+          </Button>
+        </Alert>
+      )}
+      {current && (
+        <GoalsForm
+          key={reload}
+          initial={current}
+          onReload={() => {
+            void goals.refetch().then(() => setReload((value) => value + 1));
+          }}
+          onSaved={async () => {
+            await utils.nutrition.getGoals.invalidate();
+            await utils.nutrition.getDiary.invalidate();
+          }}
+        />
+      )}
+    </Stack>
   );
 }

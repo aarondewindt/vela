@@ -129,3 +129,15 @@ it('retains saved fiber for old callers and validates new thresholds against it'
   await nutritionGoals.save('owner', { ...input, version: 1 });
   expect(db.nutritionGoals.updateMany.mock.calls[0][0].data).not.toHaveProperty('fiber');
 });
+
+it('clears an existing fiber goal explicitly instead of restoring a default', async () => {
+  db.nutritionGoals.findUnique.mockResolvedValue({ fiber: new Decimal('35'), semantics: {} });
+  db.nutritionGoals.updateMany.mockResolvedValue({ count: 1 });
+  db.nutritionGoals.findUniqueOrThrow.mockResolvedValue({ fiber: null, version: 2 });
+  expect(await nutritionGoals.save('owner', { ...input, version: 1, fiber: null })).toMatchObject({
+    fiber: null,
+  });
+  expect(db.nutritionGoals.updateMany).toHaveBeenCalledWith(
+    expect.objectContaining({ data: expect.objectContaining({ fiber: null }) })
+  );
+});

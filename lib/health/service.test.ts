@@ -231,3 +231,48 @@ it('evaluates signed balance ranges without treating missing data as zero', asyn
     })
   );
 });
+
+it('loads only the owner goal for Settings and preserves saved goal semantics', async () => {
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue(null);
+  await expect(healthService.getGoal('alice')).resolves.toEqual({
+    version: 0,
+    calorieBalance: null,
+    semantics: { kind: 'target' },
+    metricGoals: {},
+  });
+  expect(prisma.healthGoal.findUnique).toHaveBeenCalledWith({ where: { userId: 'alice' } });
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue({
+    version: 4,
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200' },
+  });
+  await expect(healthService.getGoal('alice')).resolves.toEqual({
+    version: 4,
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200' },
+    metricGoals: {},
+  });
+});
+
+it('saves owner metric goals with version fencing and preserves them for older callers', async () => {
+  const metricGoals = {
+    WEIGHT: { target: 80, semantics: { kind: 'target' as const } },
+    SLEEP: { target: 8, semantics: { kind: 'minimum' as const } },
+  };
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue({ metricGoals });
+  (prisma.healthGoal.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+  await healthService.saveGoal('alice', { version: 3, calorieBalance: null, metricGoals });
+  expect(prisma.healthGoal.updateMany).toHaveBeenLastCalledWith({
+    where: { userId: 'alice', version: 3 },
+    data: expect.objectContaining({ metricGoals, version: { increment: 1 } }),
+  });
+  expect((await healthService.getGoal('alice')).metricGoals).toEqual(metricGoals);
+  await healthService.saveGoal('alice', { version: 3, calorieBalance: -300 });
+  expect((prisma.healthGoal.updateMany as jest.Mock).mock.calls.at(-1)[0].data).not.toHaveProperty(
+    'metricGoals'
+  );
+  await healthService.saveGoal('alice', { version: 3, calorieBalance: -300, metricGoals: {} });
+  expect((prisma.healthGoal.updateMany as jest.Mock).mock.calls.at(-1)[0].data.metricGoals).toEqual(
+    {}
+  );
+});

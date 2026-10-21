@@ -70,7 +70,7 @@ export function FeatureModelSelect({
       />
       {resolution.error && <Alert color="red">{resolution.error.message}</Alert>}
       <Text size="xs">
-        <Anchor component={Link} href="/settings#ai-models">
+        <Anchor component={Link} href="/settings/ai-models">
           AI &amp; model settings
         </Anchor>
       </Text>

@@ -20,21 +20,10 @@ import {
   Title,
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
-import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
-import {
-  defaultGoalOptions,
-  describeGoal,
-  goalStatusLabels,
-  type GoalOptions,
-} from '@/lib/goals/semantics';
+import { goalChartReferences } from '@/lib/goals/chart-references';
+import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
-import {
-  goalSchema,
-  metricKinds,
-  metricLabels,
-  metricUnits,
-  type MetricKind,
-} from '@/lib/health/schema';
+import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { dateInTimezone } from '@/lib/nutrition/dates';
 
@@ -42,70 +31,6 @@ const amount = (value: number | null | undefined, unit = '') =>
   value == null
     ? 'Not recorded'
     : `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(value)}${unit ? ` ${unit}` : ''}`;
-function GoalForm({
-  initial,
-}: {
-  initial: { calorieBalance: number | null; version: number; semantics?: GoalOptions };
-}) {
-  const utils = trpc.useUtils();
-  const [options, setOptions] = useState(initial.semantics ?? defaultGoalOptions);
-  const [error, setError] = useState<string | null>(null);
-  const [goal, setGoal] = useState<number | string>(initial.calorieBalance ?? '');
-  const save = trpc.health.saveGoal.useMutation({
-    onSuccess: () => utils.health.history.invalidate(),
-  });
-  return (
-    <Paper withBorder p="md">
-      <Stack>
-        <Title order={3}>Daily calorie balance goal</Title>
-        <Text size="sm">
-          Balance = logged intake − total calories burned. Use a negative goal for a deficit, zero
-          for maintenance, or a positive goal for a surplus. Your current goal is used for all dates
-          shown.
-        </Text>
-        <NumberInput
-          label="Goal (kcal per day)"
-          description="For example, −300 for a deficit or +200 for a surplus. Leave empty for no goal."
-          min={-10000}
-          max={10000}
-          decimalScale={0}
-          value={goal}
-          onChange={setGoal}
-        />
-        <GoalOptionsFields
-          label="Calorie balance"
-          value={options}
-          onChange={setOptions}
-          disabled={save.isPending}
-        />
-        <Text size="xs" c="dimmed">
-          For a range, use the goal amount as its minimum, then set the maximum and optional
-          preferred target. Bounds are inclusive.
-        </Text>
-        {error && <Alert color="red">{error}</Alert>}
-        {save.error && <Alert color="red">{save.error.message}</Alert>}
-        <Button
-          loading={save.isPending}
-          onClick={() => {
-            const parsed = goalSchema.safeParse({
-              calorieBalance: goal === '' ? null : Number(goal),
-              version: initial.version,
-              semantics: options,
-            });
-            if (!parsed.success) {
-              setError(parsed.error.issues[0].message);
-              return;
-            }
-            setError(null);
-            save.mutate(parsed.data);
-          }}
-        >
-          Save goal
-        </Button>
-      </Stack>
-    </Paper>
-  );
-}
 function ManualEntry({ date }: { date: string }) {
   const utils = trpc.useUtils();
   const [metric, setMetric] = useState<MetricKind>('WEIGHT');
@@ -185,18 +110,6 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
       fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
       balance: day.balance,
-      goal:
-        data.goal.semantics?.kind === 'range'
-          ? data.goal.semantics.preferredTarget === undefined
-            ? null
-            : Number(data.goal.semantics.preferredTarget)
-          : (data.goal.semantics?.kind ?? 'target') === 'target'
-            ? data.goal.calorieBalance
-            : null,
-      goalLower:
-        day.goalEvaluation?.lowerBound == null ? null : Number(day.goalEvaluation.lowerBound),
-      goalUpper:
-        day.goalEvaluation?.upperBound == null ? null : Number(day.goalEvaluation.upperBound),
     })) ?? [];
   return (
     <Container size="lg" py="xl">
@@ -338,46 +251,41 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 </Anchor>
               </Stack>
             </Paper>
+            <Text size="xs" c="dimmed">
+              Goal references: yellow minimum; green target or acceptable band; red maximum; lime
+              excellent. Current goals apply to all dates.
+            </Text>
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               {[
                 {
-                  title: 'Weight and lean mass',
+                  title: 'Weight',
+                  metric: 'WEIGHT' as const,
                   unit: ' kg',
-                  series: [
-                    { name: 'weight', label: 'Weight', color: 'teal.6' },
-                    { name: 'lean', label: 'Lean mass', color: 'blue.6' },
-                  ],
+                  series: [{ name: 'weight', label: 'Weight', color: 'teal.6' }],
+                },
+                {
+                  title: 'Lean mass',
+                  metric: 'LEAN_MASS' as const,
+                  unit: ' kg',
+                  series: [{ name: 'lean', label: 'Lean mass', color: 'blue.6' }],
                 },
                 {
                   title: 'Body fat',
+                  metric: 'BODY_FAT' as const,
                   unit: '%',
                   series: [{ name: 'fat', label: 'Body fat', color: 'grape.6' }],
                 },
                 {
                   title: 'Sleep',
+                  metric: 'SLEEP' as const,
                   unit: ' h',
                   series: [{ name: 'sleep', label: 'Sleep', color: 'indigo.6' }],
                 },
                 {
                   title: 'Calorie balance',
+                  metric: null,
                   unit: ' kcal',
-                  series: [
-                    ...(data.goal.semantics?.kind === 'range' &&
-                    data.goal.semantics.preferredTarget !== undefined
-                      ? [{ name: 'goal', label: 'Preferred target', color: 'green.6' }]
-                      : []),
-                    { name: 'balance', label: 'Balance', color: 'orange.6' },
-                    ...((data.goal.semantics?.kind ?? 'target') === 'target'
-                      ? [{ name: 'goal', label: 'Current target', color: 'gray.6' }]
-                      : [
-                          ...(data.goal.semantics.kind !== 'maximum'
-                            ? [{ name: 'goalLower', label: 'Goal lower bound', color: 'gray.6' }]
-                            : []),
-                          ...(data.goal.semantics.kind !== 'minimum'
-                            ? [{ name: 'goalUpper', label: 'Goal upper bound', color: 'gray.6' }]
-                            : []),
-                        ]),
-                  ],
+                  series: [{ name: 'balance', label: 'Balance', color: 'orange.6' }],
                 },
               ].map((item) => (
                 <Paper withBorder p="md" key={item.title}>
@@ -389,10 +297,22 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     data={chart}
                     dataKey="date"
                     series={item.series}
+                    {...(item.metric === null
+                      ? goalChartReferences(
+                          data.goal.calorieBalance?.toString() ?? null,
+                          data.goal.semantics
+                        )
+                      : item.metric === 'LEAN_MASS'
+                        ? goalChartReferences(null)
+                        : goalChartReferences(
+                            data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
+                            data.goal.metricGoals?.[item.metric]?.semantics
+                          ))}
                     unit={item.unit}
                     connectNulls={false}
                     curveType="linear"
                     withLegend
+                    yAxisProps={{ domain: ['auto', 'auto'] }}
                   />
                 </Paper>
               ))}
@@ -442,7 +362,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
-            <GoalForm key={data.goal.version} initial={data.goal} />
+            <Button component={Link} href="/settings/health" variant="default">
+              Edit health goals
+            </Button>
             <ManualEntry key={date} date={date} />
           </>
         )}

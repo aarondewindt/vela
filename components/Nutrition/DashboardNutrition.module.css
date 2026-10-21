@@ -1,0 +1,18 @@
+.widget {
+  width: 100%;
+  max-width: 34rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) 7rem;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.amount {
+  max-width: 10rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

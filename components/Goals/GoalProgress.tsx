@@ -11,31 +11,48 @@ export function GoalProgress({
   target,
   options,
   unit,
+  compact = false,
 }: {
   label: string;
   value: string | null;
   target: string | null;
   options: GoalOptions;
   unit: string;
+  compact?: boolean;
 }) {
-  const scale = goalProgressScale(value, target, options);
+  const scale = goalProgressScale(
+    value ?? (compact ? '0' : null),
+    target,
+    options,
+    compact ? 0.75 : 0.9
+  );
   if (!scale) {
     return null;
   }
+  const status = value === null ? 'unknown' : scale.status;
+  const color = !compact
+    ? scale.color
+    : value === null
+      ? 'gray'
+      : status === 'below'
+        ? 'blue'
+        : status === 'within'
+          ? 'green'
+          : scale.color;
   const description = `${describeGoal(target, options)} ${unit}`;
   return (
-    <Box className={classes.root} title={`${description}; ${goalStatusLabels[scale.status]}`}>
-      <Progress.Root size="md">
+    <Box className={classes.root} title={`${description}; ${goalStatusLabels[status]}`}>
+      <Progress.Root size={compact ? 'sm' : 'md'}>
         <Progress.Section
           value={scale.fill}
-          color={scale.color}
+          color={color}
           withAria={false}
           role="progressbar"
           aria-label={`${label} goal progress`}
           aria-valuemin={0}
           aria-valuemax={scale.maximum}
-          aria-valuenow={Number(value)}
-          aria-valuetext={`${value} ${unit}; ${description}; ${goalStatusLabels[scale.status]}`}
+          aria-valuenow={value === null ? undefined : Number(value)}
+          aria-valuetext={`${value === null ? 'Unknown' : value} ${unit}; ${description}; ${goalStatusLabels[status]}`}
         />
       </Progress.Root>
       {scale.lower !== null && scale.upper !== null && scale.lower < scale.upper && (

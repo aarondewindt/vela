@@ -4,6 +4,7 @@ jest.mock('superjson', () => ({ serialize: (v: unknown) => v, deserialize: (v: u
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('./service', () => ({
   healthService: {
+    getGoal: jest.fn(),
     history: jest.fn(),
     diagnostics: jest.fn(),
     saveGoal: jest.fn(),
@@ -35,6 +36,7 @@ it('requires authentication for health records and connection credentials', asyn
   const ha = homeAssistantRouter.createCaller({ userId: null });
   for (const call of [
     () => health.history({ endDate: '2026-01-10', days: 7 }),
+    () => health.getGoal(),
     () => health.mappings(),
     () => health.diagnostics(),
     () => health.saveGoal({ version: 0, calorieBalance: -300 }),
@@ -56,6 +58,8 @@ it('always obtains the owner from the session and validates balance goals', asyn
     version: 0,
     calorieBalance: -300,
   });
+  await health.getGoal();
+  expect(healthService.getGoal).toHaveBeenCalledWith('alice');
   await health.diagnostics();
   expect(healthService.diagnostics).toHaveBeenCalledWith('alice');
   await ha.get();

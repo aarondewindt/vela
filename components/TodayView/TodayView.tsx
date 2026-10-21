@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   ActionIcon,
   Alert,
@@ -10,7 +11,6 @@ import {
   Group,
   HoverCard,
   Modal,
-  NumberInput,
   Paper,
   Portal,
   Select,
@@ -43,14 +43,12 @@ import {
   useCreateManualCategoryBlockMutation,
   useRemoveCategorySlotMutation,
   useDayDataQuery,
-  useGeneratorSettingsQuery,
   useRemoveBlockFromDayMutation,
   useTasksQuery,
   useThemesQuery,
   useUnskipBlockMutation,
   useUpdateDayAvailabilityMutation,
   useUpdateBlockTimeMutation,
-  useSaveGeneratorSettingsMutation,
   useUpdateCategorySlotTimeMutation,
 } from '@/lib/planner/query';
 import { usePlannerStore } from '@/lib/planner/store';
@@ -60,7 +58,6 @@ import {
   type PlanningCategoryValue,
   type TaskRow,
 } from '@/lib/planner/tasks';
-import { DEFAULT_GENERATOR_OPTIONS, type GeneratorOptions } from '@/lib/planner/scheduling';
 import { useAppShellStore } from '@/store/app_shell_store';
 import { Property, PropertyPanel, ReadOnlyValue } from '../DataView/PropertyPanel';
 import { TaskView } from '../TasksView/TaskView';
@@ -175,8 +172,6 @@ export function TodayView() {
   const dayQuery = useDayDataQuery(selectedDate);
   const tasksQuery = useTasksQuery();
   const themesQuery = useThemesQuery();
-  const generatorSettingsQuery = useGeneratorSettingsQuery();
-  const saveGeneratorSettings = useSaveGeneratorSettingsMutation();
   const acceptDraft = useAcceptDraftMutation();
   const clearDayPlan = useClearDayPlanMutation();
   const applyStandardAvailability = useApplyStandardAvailabilityMutation();
@@ -213,16 +208,7 @@ export function TodayView() {
     startMinute: number;
     endMinute: number;
   } | null>(null);
-  const [generatorOpen, setGeneratorOpen] = useState(false);
   const [clearPlanOpen, setClearPlanOpen] = useState(false);
-  const [generatorDraft, setGeneratorDraft] = useState<GeneratorOptions>(DEFAULT_GENERATOR_OPTIONS);
-
-  useEffect(() => {
-    if (generatorSettingsQuery.data) {
-      setGeneratorDraft(generatorSettingsQuery.data);
-    }
-  }, [generatorSettingsQuery.data]);
-
   const dayData = dayQuery.data;
   const plan = dayData?.plan;
   const timezone = dayData?.timezone ?? 'Europe/Amsterdam';
@@ -242,22 +228,6 @@ export function TodayView() {
     ? tasks.find((task) => task.id === selectedBlock.taskOccurrence?.taskId)
     : undefined;
   const hasAvailability = (dayData?.availability.length ?? 0) > 0;
-  const generatorDraftError =
-    generatorDraft.workSessionMinutes < 15 ||
-    generatorDraft.workSessionMinutes > 240 ||
-    generatorDraft.workSessionMinutes % 15 !== 0 ||
-    generatorDraft.shortBreakMinutes < 5 ||
-    generatorDraft.shortBreakMinutes > 60 ||
-    generatorDraft.shortBreakMinutes % 5 !== 0 ||
-    generatorDraft.leisureMinutes < 0 ||
-    generatorDraft.leisureMinutes > 240 ||
-    generatorDraft.leisureMinutes % 15 !== 0 ||
-    generatorDraft.shortLeisureBlockMinutes < 15 ||
-    generatorDraft.shortLeisureBlockMinutes > 120 ||
-    generatorDraft.shortLeisureBlockMinutes % 15 !== 0 ||
-    generatorDraft.maxLeisureBlockMinutes < generatorDraft.shortLeisureBlockMinutes ||
-    generatorDraft.maxLeisureBlockMinutes > 240 ||
-    generatorDraft.maxLeisureBlockMinutes % 15 !== 0;
   const busyEvents = (dayData?.events ?? []).filter((event) => event.isBusy);
   const legendItems =
     colorBy === 'category'
@@ -353,8 +323,6 @@ export function TodayView() {
   const error =
     dayQuery.error ??
     tasksQuery.error ??
-    generatorSettingsQuery.error ??
-    saveGeneratorSettings.error ??
     acceptDraft.error ??
     clearDayPlan.error ??
     applyStandardAvailability.error ??
@@ -375,14 +343,6 @@ export function TodayView() {
 
   const changeSelectedDate = (date: string) => {
     setSelectedDate(date);
-  };
-
-  const updateGeneratorDraft = (field: keyof GeneratorOptions, value: number | string) => {
-    const parsed = Number(value);
-    setGeneratorDraft((current) => ({
-      ...current,
-      [field]: Number.isFinite(parsed) ? parsed : 0,
-    }));
   };
 
   const addTaskAt = (taskId: string, startsAt: string) => {
@@ -768,7 +728,7 @@ export function TodayView() {
               </Button>
               <PlanningProposals date={selectedDate} label="Generate plan" />
               <PlanningProposals date={selectedDate} label="Adjust remaining day" />
-              <Button size="xs" variant="default" onClick={() => setGeneratorOpen(true)}>
+              <Button size="xs" variant="default" component={Link} href="/settings/planner">
                 Planning settings
               </Button>
               {plan?.status === 'DRAFT' && (
@@ -1120,82 +1080,6 @@ export function TodayView() {
             >
               Add to plan
             </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal
-        opened={generatorOpen}
-        onClose={() => setGeneratorOpen(false)}
-        title="Planning settings"
-        centered
-        size="sm"
-      >
-        <Stack>
-          <NumberInput
-            label="Work session target"
-            suffix=" min"
-            min={15}
-            max={240}
-            step={15}
-            allowDecimal={false}
-            value={generatorDraft.workSessionMinutes}
-            onChange={(value) => updateGeneratorDraft('workSessionMinutes', value)}
-          />
-          <NumberInput
-            label="Short break"
-            suffix=" min"
-            min={5}
-            max={60}
-            step={5}
-            allowDecimal={false}
-            value={generatorDraft.shortBreakMinutes}
-            onChange={(value) => updateGeneratorDraft('shortBreakMinutes', value)}
-          />
-          <NumberInput
-            label="Leisure time"
-            suffix=" min"
-            min={0}
-            max={240}
-            step={15}
-            allowDecimal={false}
-            value={generatorDraft.leisureMinutes}
-            onChange={(value) => updateGeneratorDraft('leisureMinutes', value)}
-          />
-          <NumberInput
-            label="Short leisure block"
-            suffix=" min"
-            min={15}
-            max={120}
-            step={15}
-            allowDecimal={false}
-            value={generatorDraft.shortLeisureBlockMinutes}
-            onChange={(value) => updateGeneratorDraft('shortLeisureBlockMinutes', value)}
-          />
-          <NumberInput
-            label="Maximum leisure block"
-            suffix=" min"
-            min={15}
-            max={240}
-            step={15}
-            allowDecimal={false}
-            value={generatorDraft.maxLeisureBlockMinutes}
-            onChange={(value) => updateGeneratorDraft('maxLeisureBlockMinutes', value)}
-          />
-          <Group justify="space-between">
-            <Button
-              variant="default"
-              loading={saveGeneratorSettings.isPending}
-              disabled={generatorDraftError}
-              onClick={() => saveGeneratorSettings.mutate(generatorDraft)}
-            >
-              Save as default
-            </Button>
-            <Group gap="xs">
-              <Button variant="subtle" onClick={() => setGeneratorOpen(false)}>
-                Close
-              </Button>
-            </Group>
           </Group>
         </Stack>
       </Modal>

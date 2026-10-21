@@ -8,9 +8,6 @@ jest.mock('@/lib/trpc/client', () => ({
     },
   },
 }));
-jest.mock('./SharedIndexSettings', () => ({
-  SharedIndexSettings: () => <div>Shared index controls</div>,
-}));
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';

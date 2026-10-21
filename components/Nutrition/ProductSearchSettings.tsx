@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { Accordion, Alert, Button, Group, Stack, Text } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
 
@@ -60,9 +59,6 @@ export function ProductSearchSettings() {
                     Retry search refresh
                   </Button>
                 </Group>
-                <Button component={Link} href="/settings#ai-models" variant="subtle">
-                  Manage search models in Settings
-                </Button>
               </>
             )}
             {error && <Alert color="red">{error.message}</Alert>}

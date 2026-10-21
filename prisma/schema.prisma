@@ -989,6 +989,7 @@ model HealthMetric {
 }
 
 model HealthGoal {
+  metricGoals   Json     @default("{}")
   semantics     Json     @default("{}")
   userId         String   @id
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)

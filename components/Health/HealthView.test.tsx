@@ -13,7 +13,6 @@ jest.mock('@/lib/trpc/client', () => ({
 }));
 import { LineChart } from '@mantine/charts';
 import { screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { HealthView } from './HealthView';
@@ -51,28 +50,15 @@ beforeEach(() => {
     (mutation as jest.Mock).mockReturnValue({ mutate: save });
   }
 });
-it('shows missing data explicitly and persists a user-selected deficit goal', async () => {
-  const user = userEvent.setup();
+it('shows missing data and links to the single Health settings editor', () => {
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
   expect(screen.getAllByText('Not recorded').length).toBeGreaterThan(0);
-  const goal = screen.getByRole('textbox', { name: 'Goal (kcal per day)' });
-  expect(goal).toHaveValue('');
-  await user.type(goal, '-300');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenCalledWith({
-    version: 0,
-    calorieBalance: -300,
-    semantics: { kind: 'target' },
-  });
-  await user.clear(goal);
-  await user.type(goal, '0');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenLastCalledWith({
-    version: 0,
-    calorieBalance: 0,
-    semantics: { kind: 'target' },
-  });
+  expect(screen.getByRole('link', { name: 'Edit health goals' })).toHaveAttribute(
+    'href',
+    '/settings/health'
+  );
+  expect(screen.queryByRole('button', { name: 'Save goal' })).not.toBeInTheDocument();
 });
 
 it('labels carried readings and offers deletion only on their original measurement date', () => {
@@ -95,27 +81,66 @@ it('labels carried readings and offers deletion only on their original measureme
   expect(screen.queryByRole('button', { name: 'Delete manual reading' })).not.toBeInTheDocument();
 });
 
-it('configures a signed balance range and validates its inclusive bounds', async () => {
-  const user = userEvent.setup();
-  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
-  await user.type(screen.getByRole('textbox', { name: 'Goal (kcal per day)' }), '-400');
-  await user.click(screen.getByRole('combobox', { name: 'Calorie balance goal type' }));
-  await user.click(screen.getByRole('option', { name: 'Range' }));
-  const upper = screen.getByRole('textbox', { name: 'Calorie balance upper bound' });
-  await user.type(upper, '-500');
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(screen.getByText(/Use an ordered range/)).toBeInTheDocument();
-  expect(save).not.toHaveBeenCalled();
-  await user.clear(upper);
-  await user.type(upper, '-200');
-  await user.type(
-    screen.getByRole('textbox', { name: 'Calorie balance preferred target' }),
-    '-300'
-  );
-  await user.click(screen.getByRole('button', { name: 'Save goal' }));
-  expect(save).toHaveBeenCalledWith({
-    version: 0,
+it('shows current metric and signed balance reference bands even with no observations', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.goal = {
     calorieBalance: -400,
-    semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
-  });
+    semantics: { kind: 'range', upperBound: '-200' },
+    metricGoals: {
+      WEIGHT: { target: 80, semantics: { kind: 'range', upperBound: '85' } },
+      BODY_FAT: { target: 20, semantics: { kind: 'maximum' } },
+      SLEEP: { target: 8, semantics: { kind: 'minimum' } },
+    },
+  };
+  query.mockReturnValue({ data });
+  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
+  expect(charts).toHaveLength(5);
+  expect(screen.getByRole('heading', { name: 'Weight' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Lean mass' })).toBeInTheDocument();
+  expect(charts[0].series).toEqual([{ name: 'weight', label: 'Weight', color: 'teal.6' }]);
+  expect(charts[1].series).toEqual([{ name: 'lean', label: 'Lean mass', color: 'blue.6' }]);
+  expect(charts[1].unit).toBe(' kg');
+  expect(charts[1].referenceLines).toEqual([]);
+  expect(charts[1].referenceAreas).toEqual([]);
+  expect(charts[0].referenceAreas).toEqual([expect.objectContaining({ y1: 80, y2: 85 })]);
+  expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
+  expect(charts[3].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
+  expect(charts[4].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
+  expect(charts[0].data[0].weight).toBeNull();
+  for (const chart of charts) {
+    expect(chart.yAxisProps.domain).toEqual(['auto', 'auto']);
+    for (const reference of [...chart.referenceLines, ...chart.referenceAreas]) {
+      expect(reference).not.toHaveProperty('label');
+      expect(chart.series.map((series: { color: string }) => series.color)).not.toContain(
+        reference.color
+      );
+    }
+  }
+  expect(charts[2].referenceLines[0].color).toBe('red.6');
+  expect(charts[3].referenceLines[0].color).toBe('yellow.6');
+});
+
+it('removes chart references when health targets are cleared', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.goal = {
+    calorieBalance: 0,
+    semantics: { kind: 'target', tolerance: '100' },
+    metricGoals: { SLEEP: { target: 8, semantics: { kind: 'range', upperBound: '9' } } },
+  };
+  query.mockReturnValue({ data });
+  const view = render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  const charts = LineChart as unknown as jest.Mock;
+  expect(charts.mock.calls.at(-1)[0].referenceAreas).toEqual([
+    expect.objectContaining({ y1: -100, y2: 100 }),
+  ]);
+  data.goal = { calorieBalance: null, metricGoals: {} };
+  query.mockReturnValue({ data });
+  view.rerender(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  for (const [props] of charts.mock.calls.slice(-5)) {
+    expect(props.referenceAreas).toEqual([]);
+    expect(props.referenceLines).toEqual([]);
+  }
 });

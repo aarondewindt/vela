@@ -4,7 +4,6 @@ import Link from 'next/link';
 import {
   Alert,
   Button,
-  Container,
   Group,
   Loader,
   PasswordInput,
@@ -168,48 +167,46 @@ export function HomeAssistantSettings() {
   const connection = trpc.homeAssistant.get.useQuery(undefined, { refetchInterval: 15000 });
   const mappings = trpc.health.mappings.useQuery();
   return (
-    <Container size="md" py="xl">
-      <Stack gap="lg">
-        <Group justify="space-between">
-          <Title order={2}>Home Assistant</Title>
-          <Button component={Link} href="/health" variant="default">
-            Health
-          </Button>
-        </Group>
-        <Text>
-          Your connection and imported data are private to your Vela account. This connection can
-          also serve other Vela apps.
-        </Text>
-        {connection.isPending && <Loader />}
-        {connection.error && <Alert color="red">{connection.error.message}</Alert>}
-        {connection.isSuccess && (
-          <>
-            <ConnectionForm key={connection.data?.revision ?? 0} initial={connection.data} />
-            {connection.data && (
-              <>
-                <Paper withBorder p="md">
-                  <Stack gap="xs">
-                    <Text fw={600}>{connection.data.status}</Text>
-                    <Text size="sm">
-                      Last reconciliation:{' '}
-                      {connection.data.lastSyncedAt?.toLocaleString() ?? 'Not yet synced'}
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      Live synchronization requires the Home Assistant worker. An old reconciliation
-                      time means the connection may be stale.
-                    </Text>
-                  </Stack>
-                </Paper>
-                <SensorDiagnostics />
-                {mappings.error && <Alert color="red">{mappings.error.message}</Alert>}
-                {mappings.data && (
-                  <MappingsForm key={JSON.stringify(mappings.data)} initial={mappings.data} />
-                )}
-              </>
-            )}
-          </>
-        )}
-      </Stack>
-    </Container>
+    <Stack gap="lg">
+      <Group justify="space-between">
+        <Title order={3}>Home Assistant</Title>
+        <Button component={Link} href="/health" variant="default">
+          Health
+        </Button>
+      </Group>
+      <Text>
+        Your connection and imported data are private to your Vela account. This connection can also
+        serve other Vela apps.
+      </Text>
+      {connection.isPending && <Loader />}
+      {connection.error && <Alert color="red">{connection.error.message}</Alert>}
+      {connection.isSuccess && (
+        <>
+          <ConnectionForm key={connection.data?.revision ?? 0} initial={connection.data} />
+          {connection.data && (
+            <>
+              <Paper withBorder p="md">
+                <Stack gap="xs">
+                  <Text fw={600}>{connection.data.status}</Text>
+                  <Text size="sm">
+                    Last reconciliation:{' '}
+                    {connection.data.lastSyncedAt?.toLocaleString() ?? 'Not yet synced'}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    Live synchronization requires the Home Assistant worker. An old reconciliation
+                    time means the connection may be stale.
+                  </Text>
+                </Stack>
+              </Paper>
+              <SensorDiagnostics />
+              {mappings.error && <Alert color="red">{mappings.error.message}</Alert>}
+              {mappings.data && (
+                <MappingsForm key={JSON.stringify(mappings.data)} initial={mappings.data} />
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Stack>
   );
 }

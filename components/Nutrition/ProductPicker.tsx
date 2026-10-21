@@ -25,7 +25,7 @@ export function ProductPicker({
   const [search, setSearch] = useState('');
   const [query] = useDebouncedValue(search, 200);
   const [create, setCreate] = useState(false);
-  const [related, setRelated] = useState(false);
+  const [related, setRelated] = useState(true);
   const products = trpc.nutrition.searchProducts.useQuery(
     { query, semantic: related, limit: 30 },
     { retry: false, refetchOnMount: 'always' }
