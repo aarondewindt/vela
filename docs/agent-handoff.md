@@ -2,8 +2,42 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Health, recurrence, goal and shell improvements ready for review; all 29 database migrations applied. Earlier deployment notes retained.
+**Status:** Health, recurrence, goal and shell improvements ready for review; all 30 database migrations applied. Earlier deployment notes retained.
 **Last updated:** 2026-10-21
+
+## Compact task recurrence settings (#51 follow-up) — 2026-10-21
+
+- Task View's Recurrence row now shows a short saved cadence/weekday summary and
+  an Edit button; disabled recurrence leaves the summary blank. Settings open in
+  a modal using the existing validated editor, including enabled state, rule,
+  anchor and timezone preference behavior.
+- Cancel discards local edits, save failures remain visible, cancellation is locked
+  during saving, and successful saves close the modal. Refetching updated task
+  timestamps does not remount the editor before its completion callback.
+- Validation: all 31 Task View tests (7 suites), TypeScript, scoped Oxlint/format
+  and whitespace checks passed. No migration or application restart is required.
+
+## Goal milestones and fiber (#47 follow-up) — 2026-10-21
+
+- Added shared optional preferred targets inside ranges (fat and signed calorie
+  balance), and minimum/preferred/excellent milestones (protein and fiber).
+  Decimal boundary validation checks ordering; bars/labels use red below minimum,
+  orange after minimum, green at preferred, and cyan at excellent, with expanding
+  scales and marked thresholds. Minimum goals have no overage failure.
+- Fiber now has a nullable persisted goal, settings, daily summary card, macro
+  history series and daily history column. Unknown fiber stays unknown; partial
+  known intake remains separately labelled. No dietary amounts are prescribed.
+- Migration `20261021230000_goal_thresholds_fiber` adds fiber and converts legacy
+  protein exact goals without tolerance to minimum semantics, retaining amounts
+  and advancing optimistic versions. Explicit ranges/maxima/nonzero tolerance
+  bands remain intact. Older callers retain saved fiber and semantic options.
+- A fresh private backup was created and its archive verified. Migration SQL passed
+  fixture checks on temporary tables in a rolled-back transaction, then was applied
+  locally. All 30 migrations are applied and database-to-schema diff is empty.
+  Prisma Client regenerated; no application process was restarted.
+- Validation: full Jest suite passed (852 tests / 116 suites), then the final
+  milestone/range persistence additions passed focused UI/service tests. TypeScript,
+  Prisma validation, scoped Oxlint/format and whitespace checks passed.
 
 ## Health, recurrence, goals and shell (#48/#51/#47/#9/#5) — 2026-10-21
 
@@ -52,7 +86,7 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   after a fresh verified backup; the live database-to-schema diff is empty.
   Latest validation: all 839 tests (116 suites), TypeScript, Prisma validation,
   scoped lint/format and whitespace checks passed.
-- Dynamic goals, non-daily periods, fiber goals and recurrence occurrence reconciliation
+- Dynamic goals, non-daily periods and recurrence occurrence reconciliation
   are follow-ups. No deployment/restart or automatic merge is part of this batch.
 
 ## Planner conversation (#37/#38) — 2026-10-20

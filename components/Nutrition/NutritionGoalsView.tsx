@@ -28,7 +28,10 @@ function GoalsForm({
   onSaved: () => Promise<void>;
   onReload: () => void;
 }) {
-  const [value, setValue] = useState(initial);
+  const [value, setValue] = useState<GoalsInput>({
+    ...initial,
+    semantics: { protein: { kind: 'minimum' }, fiber: { kind: 'minimum' }, ...initial.semantics },
+  });
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const save = trpc.nutrition.saveGoals.useMutation({ retry: false });
@@ -37,6 +40,7 @@ function GoalsForm({
     protein: 'Protein (g)',
     carbohydrates: 'Carbohydrates (g)',
     fat: 'Fat (g)',
+    fiber: 'Fiber (g)',
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -67,6 +71,12 @@ function GoalsForm({
             <Stack key={key} gap="xs">
               <TextInput
                 label={labels[key]}
+                description={
+                  value.semantics?.[key]?.kind === 'range' ||
+                  value.semantics?.[key]?.kind === 'minimum'
+                    ? 'Minimum amount'
+                    : undefined
+                }
                 inputMode="decimal"
                 placeholder="No goal"
                 disabled={save.isPending}
@@ -132,7 +142,8 @@ export function NutritionGoalsView({ returnDate }: { returnDate?: string }) {
         </Group>
         <Text c="dimmed">
           Enter your own daily targets. Leave any goal empty to track that nutrient without a
-          target. For a range, enter its lower bound as the target. Your current goals apply to
+          target. For minimum and range goals, the first amount is the minimum; configure a
+          preferred target and maximum or excellent threshold below. Your current goals apply to
           every diary day.
         </Text>
         {!current && !goals.error && (

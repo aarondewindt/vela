@@ -1,13 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
 import { useUpdateTaskMutation } from '@/lib/planner/query';
 import { taskRecurrenceSchema } from '@/lib/planner/record-schema';
 import type { TaskRow } from '@/lib/planner/tasks';
 
-export function TaskRecurrence({ task }: { task: TaskRow }) {
+export function TaskRecurrence({
+  task,
+  onSaved,
+  onPendingChange,
+}: {
+  task: TaskRow;
+  onSaved?: () => void;
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const [enabled, setEnabled] = useState(task.isRecurring ?? false);
   const [rule, setRule] = useState(task.recurrenceRule ?? 'FREQ=DAILY');
   const [anchorDate, setAnchorDate] = useState(
@@ -21,6 +29,9 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
   const timezone = timezoneOverride ?? preferences.data?.timezone ?? '';
   const [error, setError] = useState<string | null>(null);
   const update = useUpdateTaskMutation();
+  useEffect(() => {
+    onPendingChange?.(Boolean(update.isPending));
+  }, [update.isPending, onPendingChange]);
   return (
     <Stack gap="xs">
       <Switch
@@ -84,7 +95,10 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
             return;
           }
           setError(null);
-          update.mutate({ id: task.id, patch: { recurrence: parsed.data } });
+          update.mutate(
+            { id: task.id, patch: { recurrence: parsed.data } },
+            { onSuccess: () => onSaved?.() }
+          );
         }}
       >
         Save recurrence

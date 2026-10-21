@@ -35,6 +35,7 @@ export const nutritionGoalOptionsSchema = z
     protein: goalOptionsSchema.optional(),
     carbohydrates: goalOptionsSchema.optional(),
     fat: goalOptionsSchema.optional(),
+    fiber: goalOptionsSchema.optional(),
   })
   .strict();
 export const goalsInputSchema = z
@@ -45,20 +46,27 @@ export const goalsInputSchema = z
     protein: positiveDecimalSchema.nullable(),
     carbohydrates: positiveDecimalSchema.nullable(),
     fat: positiveDecimalSchema.nullable(),
+    fiber: positiveDecimalSchema.nullable().optional(),
   })
   .superRefine((input, ctx) => {
     for (const key of goalKeys) {
       const options = input.semantics?.[key];
       if (
         options &&
-        (!validateGoalBounds(input[key], options) ||
-          (options.kind === 'range' &&
-            !positiveDecimalSchema.safeParse(options.upperBound).success))
+        (!validateGoalBounds(input[key] ?? null, options) ||
+          ((options.kind === 'range' || options.kind === 'minimum') &&
+            [
+              options.preferredTarget,
+              options.kind === 'range' ? options.upperBound : options.excellent,
+            ].some(
+              (value) => value !== undefined && !positiveDecimalSchema.safeParse(value).success
+            )))
       ) {
         ctx.addIssue({
           code: 'custom',
           path: ['semantics', key],
-          message: 'Range upper bound must be positive and at least the target.',
+          message:
+            'Range upper bound and thresholds must be positive and ordered: minimum ≤ preferred target ≤ maximum or excellent.',
         });
       }
     }

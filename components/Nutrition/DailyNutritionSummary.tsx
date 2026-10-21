@@ -15,6 +15,7 @@ const labels = {
   protein: 'Protein',
   carbohydrates: 'Carbohydrates',
   fat: 'Fat',
+  fiber: 'Fiber',
 };
 
 export function DailyNutritionSummary({
@@ -25,7 +26,7 @@ export function DailyNutritionSummary({
   return (
     <Stack gap="xs">
       <NevoAttribution sources={day.entries.flatMap((entry) => snapshotSources(entry.snapshot))} />
-      <SimpleGrid cols={{ base: 2, md: 4 }}>
+      <SimpleGrid cols={{ base: 2, md: 5 }}>
         {goalKeys.map((key) => {
           const progress = day.progress[key];
           const unit = key === 'calories' ? 'kcal' : 'g';
@@ -36,7 +37,7 @@ export function DailyNutritionSummary({
                   {labels[key]}
                 </Text>
                 <Text fw={700} size="xl" style={{ overflowWrap: 'anywhere' }}>
-                  {amount(progress.consumed)}{' '}
+                  {progress.consumed === null ? 'Unknown' : amount(progress.consumed)}{' '}
                   <Text component="span" size="sm" c="dimmed">
                     {unit}
                   </Text>

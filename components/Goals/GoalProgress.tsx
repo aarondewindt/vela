@@ -13,7 +13,7 @@ export function GoalProgress({
   unit,
 }: {
   label: string;
-  value: string;
+  value: string | null;
   target: string | null;
   options: GoalOptions;
   unit: string;
@@ -45,16 +45,19 @@ export function GoalProgress({
           style={{ left: `${scale.lower}%`, width: `${scale.upper - scale.lower}%` }}
         />
       )}
-      {(options.kind === 'range' ? [scale.lower, scale.upper] : [scale.target]).map(
-        (position, index) => (
-          <span
-            key={index}
-            aria-hidden="true"
-            className={classes.marker}
-            style={{ left: `${position}%` }}
-          />
-        )
-      )}
+      {(options.kind === 'range' || options.kind === 'minimum'
+        ? [scale.lower, scale.target, scale.upper, scale.excellent].filter(
+            (position) => position !== null
+          )
+        : [scale.target]
+      ).map((position, index) => (
+        <span
+          key={index}
+          aria-hidden="true"
+          className={classes.marker}
+          style={{ left: `${position}%` }}
+        />
+      ))}
     </Box>
   );
 }

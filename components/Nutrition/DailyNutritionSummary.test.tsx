@@ -11,6 +11,7 @@ it('shows minimum and maximum success, and range failure with marked progress ba
     { calories: '2300', protein: '180', carbohydrates: '250', fat: '50', fiber: null },
   ]);
   const goals = {
+    fiber: null,
     version: 1,
     calories: '2000',
     protein: '160',
@@ -33,10 +34,11 @@ it('shows minimum and maximum success, and range failure with marked progress ba
       }}
     />
   );
-  expect(screen.getAllByText('Within goal')).toHaveLength(2);
+  expect(screen.getByText('Within goal')).toBeInTheDocument();
+  expect(screen.getByText('Goal reached!')).toBeInTheDocument();
   expect(screen.getByText('Above goal')).toBeInTheDocument();
-  expect(screen.getByText('No goal set')).toBeInTheDocument();
-  expect(screen.getByText('At least 160 g')).toBeInTheDocument();
+  expect(screen.getAllByText('No goal set')).toHaveLength(2);
+  expect(screen.getByText('Minimum 160 g')).toBeInTheDocument();
   expect(screen.getByText('At most 70 g')).toBeInTheDocument();
   expect(screen.getByText('2000 to 2200 kcal')).toBeInTheDocument();
   expect(screen.getAllByRole('progressbar')).toHaveLength(3);

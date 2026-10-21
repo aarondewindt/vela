@@ -43,6 +43,30 @@ export function GoalOptionsFields({
           onChange={(event) => onChange({ ...value, upperBound: event.currentTarget.value })}
         />
       )}
+      {(value.kind === 'minimum' || value.kind === 'range') && (
+        <TextInput
+          label={`${label} preferred target`}
+          description="Optional; must be at least the minimum and within any maximum."
+          inputMode="decimal"
+          value={value.preferredTarget ?? ''}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ ...value, preferredTarget: event.currentTarget.value || undefined })
+          }
+        />
+      )}
+      {value.kind === 'minimum' && (
+        <TextInput
+          label={`${label} excellent threshold`}
+          description="Optional; requires a preferred target and must be at least that target."
+          inputMode="decimal"
+          value={value.excellent ?? ''}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ ...value, excellent: event.currentTarget.value || undefined })
+          }
+        />
+      )}
       {value.kind === 'target' && (
         <TextInput
           label={`${label} tolerance`}

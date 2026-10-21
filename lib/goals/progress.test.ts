@@ -14,12 +14,12 @@ it('expands the scale with an overage while keeping the target visible', () => {
   expect(over.fill).toBeCloseTo(95);
   expect(over.target).toBeCloseTo(47.5);
   expect(over.target).toBeLessThan(over.fill);
-  expect(over.color).toBe('teal');
+  expect(over.color).toBe('green');
 });
 it.each([
-  ['minimum', '50', 'orange'],
-  ['minimum', '100', 'teal'],
-  ['minimum', '200', 'teal'],
+  ['minimum', '50', 'red'],
+  ['minimum', '100', 'green'],
+  ['minimum', '200', 'green'],
   ['maximum', '0', 'teal'],
   ['maximum', '50', 'teal'],
   ['maximum', '100', 'teal'],
@@ -44,4 +44,27 @@ it('does not invent percentage progress for unset, zero, signed or invalid amoun
   expect(goalProgressScale('0', '0', { kind: 'target' })).toBeNull();
   expect(goalProgressScale('-300', '-400', { kind: 'target' })).toBeNull();
   expect(goalProgressScale('NaN', '100', { kind: 'minimum' })).toBeNull();
+});
+
+it('scales and marks all minimum milestones while allowing unlimited successful overage', () => {
+  const options = { kind: 'minimum' as const, preferredTarget: '150', excellent: '180' };
+  const initial = goalProgressScale('100', '100', options)!;
+  expect(initial.lower).toBeCloseTo(50);
+  expect(initial.target).toBeCloseTo(75);
+  expect(initial.excellent).toBeCloseTo(90);
+  expect(initial.color).toBe('orange');
+  const over = goalProgressScale('500', '100', options)!;
+  expect(over.fill).toBeCloseTo(95);
+  expect(over.color).toBe('cyan');
+  expect(over.excellent).toBeLessThan(over.fill);
+  expect(goalProgressScale(null, '25', options)).toBeNull();
+});
+it('marks the preferred target separately from the range bounds', () => {
+  const scale = goalProgressScale('60', '50', {
+    kind: 'range',
+    preferredTarget: '60',
+    upperBound: '70',
+  })!;
+  expect(scale.lower).toBeLessThan(scale.target);
+  expect(scale.upper).toBeGreaterThan(scale.target);
 });

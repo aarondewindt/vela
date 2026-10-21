@@ -7,7 +7,13 @@ const decimal = z
   .max(32)
   .regex(/^-?\d{1,12}(\.\d{1,8})?$/, 'Enter a decimal number.');
 export const goalOptionsSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('minimum') }).strict(),
+  z
+    .object({
+      kind: z.literal('minimum'),
+      preferredTarget: decimal.optional(),
+      excellent: decimal.optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal('maximum') }).strict(),
   z
     .object({
@@ -17,7 +23,9 @@ export const goalOptionsSchema = z.discriminatedUnion('kind', [
         .optional(),
     })
     .strict(),
-  z.object({ kind: z.literal('range'), upperBound: decimal }).strict(),
+  z
+    .object({ kind: z.literal('range'), upperBound: decimal, preferredTarget: decimal.optional() })
+    .strict(),
 ]);
 export type GoalOptions = z.infer<typeof goalOptionsSchema>;
 export const defaultGoalOptions: GoalOptions = { kind: 'target' };
@@ -27,6 +35,9 @@ export const goalStatusLabels = {
   below: 'Below goal',
   within: 'Within goal',
   above: 'Above goal',
+  minimum: 'Minimum reached — keep going!',
+  reached: 'Goal reached!',
+  excellent: 'Excellent goal reached!',
 } as const;
 
 // Consumers resolve configured or future calculated targets before calling this pure evaluator.
@@ -47,7 +58,7 @@ export function evaluateGoal(
         ? new GoalDecimal(options.upperBound)
         : amount.plus(tolerance);
   const current = value === null ? null : new GoalDecimal(value);
-  const status: keyof typeof goalStatusLabels =
+  let status: keyof typeof goalStatusLabels =
     amount === null
       ? 'unset'
       : current === null
@@ -57,19 +68,66 @@ export function evaluateGoal(
           : upper !== null && current.gt(upper)
             ? 'above'
             : 'within';
+  if (status === 'within' && options.kind === 'minimum') {
+    status =
+      options.excellent !== undefined && current!.gte(options.excellent)
+        ? 'excellent'
+        : options.preferredTarget === undefined || current!.gte(options.preferredTarget)
+          ? 'reached'
+          : 'minimum';
+  }
+  const preferred =
+    options.kind === 'minimum' || options.kind === 'range' ? options.preferredTarget : undefined;
   return {
     status,
-    satisfied: status === 'unset' || status === 'unknown' ? null : status === 'within',
+    color:
+      status === 'below'
+        ? options.kind === 'minimum'
+          ? 'red'
+          : 'orange'
+        : status === 'above'
+          ? 'red'
+          : status === 'minimum'
+            ? 'orange'
+            : status === 'excellent'
+              ? 'cyan'
+              : status === 'reached'
+                ? 'green'
+                : status === 'within'
+                  ? 'teal'
+                  : 'dimmed',
+    satisfied:
+      status === 'unset' || status === 'unknown'
+        ? null
+        : ['within', 'minimum', 'reached', 'excellent'].includes(status),
     lowerBound: lower?.toFixed() ?? null,
     upperBound: upper?.toFixed() ?? null,
-    difference: current === null || amount === null ? null : current.minus(amount).toFixed(),
+    difference:
+      current === null || amount === null ? null : current.minus(preferred ?? amount).toFixed(),
   };
 }
 
 export function validateGoalBounds(target: string | null, options: GoalOptions) {
-  return (
-    target === null || options.kind !== 'range' || new GoalDecimal(options.upperBound).gte(target)
-  );
+  if (target === null) {
+    return true;
+  }
+  const base = new GoalDecimal(target);
+  if (options.kind === 'range' || options.kind === 'minimum') {
+    const preferred =
+      options.preferredTarget === undefined ? base : new GoalDecimal(options.preferredTarget);
+    if (preferred.lt(base)) {
+      return false;
+    }
+    if (options.kind === 'range') {
+      return new GoalDecimal(options.upperBound).gte(preferred);
+    }
+    if (options.excellent !== undefined) {
+      return (
+        options.preferredTarget !== undefined && new GoalDecimal(options.excellent).gte(preferred)
+      );
+    }
+  }
+  return true;
 }
 
 export function describeGoal(target: string | null, options: GoalOptions = defaultGoalOptions) {
@@ -78,11 +136,11 @@ export function describeGoal(target: string | null, options: GoalOptions = defau
   }
   switch (options.kind) {
     case 'minimum':
-      return `At least ${target}`;
+      return `Minimum ${target}${options.preferredTarget ? ` · target ${options.preferredTarget}` : ''}${options.excellent ? ` · excellent ${options.excellent}` : ''}`;
     case 'maximum':
       return `At most ${target}`;
     case 'range':
-      return `${target} to ${options.upperBound}`;
+      return `${target} to ${options.upperBound}${options.preferredTarget ? ` · preferred ${options.preferredTarget}` : ''}`;
     case 'target':
       return options.tolerance && new GoalDecimal(options.tolerance).gt(0)
         ? `${target} ± ${options.tolerance}`

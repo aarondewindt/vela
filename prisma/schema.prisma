@@ -689,6 +689,7 @@ model NutritionGoals {
   protein       Decimal? @db.Decimal(20, 8)
   carbohydrates Decimal? @db.Decimal(20, 8)
   fat           Decimal? @db.Decimal(20, 8)
+  fiber         Decimal? @db.Decimal(20, 8)
   version       Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

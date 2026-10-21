@@ -38,6 +38,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
       protein: day.nutrients ? Number(day.nutrients.protein) : null,
       carbohydrates: day.nutrients ? Number(day.nutrients.carbohydrates) : null,
       fat: day.nutrients ? Number(day.nutrients.fat) : null,
+      fiber: day.nutrients?.fiber == null ? null : Number(day.nutrients.fiber),
     })) ?? [];
   return (
     <Container size="lg" py="xl">
@@ -138,6 +139,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                     { name: 'protein', label: 'Protein', color: 'blue.6' },
                     { name: 'carbohydrates', label: 'Carbohydrates', color: 'orange.6' },
                     { name: 'fat', label: 'Fat', color: 'grape.6' },
+                    { name: 'fiber', label: 'Fiber', color: 'cyan.6' },
                   ]}
                   unit=" g"
                   valueFormatter={(value) => formatNutritionAmount(String(value))}
@@ -161,6 +163,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                     <Table.Th>Protein</Table.Th>
                     <Table.Th>Carbs</Table.Th>
                     <Table.Th>Fat</Table.Th>
+                    <Table.Th>Fiber</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -171,13 +174,17 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                           {day.date}
                         </Anchor>
                       </Table.Td>
-                      {(['calories', 'protein', 'carbohydrates', 'fat'] as const).map((key) => (
-                        <Table.Td key={key}>
-                          {day.nutrients
-                            ? `${formatNutritionAmount(day.nutrients[key])}${key === 'calories' ? ' kcal' : ' g'}`
-                            : 'Not logged'}
-                        </Table.Td>
-                      ))}
+                      {(['calories', 'protein', 'carbohydrates', 'fat', 'fiber'] as const).map(
+                        (key) => (
+                          <Table.Td key={key}>
+                            {day.nutrients === null
+                              ? 'Not logged'
+                              : day.nutrients[key] == null
+                                ? 'Unknown'
+                                : `${formatNutritionAmount(day.nutrients[key])}${key === 'calories' ? ' kcal' : ' g'}`}
+                          </Table.Td>
+                        )
+                      )}
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

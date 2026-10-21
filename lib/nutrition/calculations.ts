@@ -40,13 +40,17 @@ export function sumNutrition(entries: Nutrients[]) {
 
 export function nutritionGoalProgress(
   totals: Nutrients,
-  goals: Record<GoalKey, string | null> & { semantics?: Partial<Record<GoalKey, GoalOptions>> }
+  goals: Record<Exclude<GoalKey, 'fiber'>, string | null> & { fiber?: string | null } & {
+    semantics?: Partial<Record<GoalKey, GoalOptions>>;
+  }
 ) {
   return Object.fromEntries(
     goalKeys.map((key) => {
-      const target = goals[key];
-      const consumed = new NutritionDecimal(totals[key]);
-      const options = goals.semantics?.[key] ?? defaultGoalOptions;
+      const target = goals[key] ?? null;
+      const consumed = totals[key] == null ? null : new NutritionDecimal(totals[key]);
+      const options =
+        goals.semantics?.[key] ??
+        (key === 'protein' || key === 'fiber' ? { kind: 'minimum' as const } : defaultGoalOptions);
       const evaluation = evaluateGoal(totals[key], target, options);
       return [
         key,
@@ -57,12 +61,12 @@ export function nutritionGoalProgress(
           goal: target,
           // Scalar distance/ratio remain compatible; evaluation owns goal success.
           remaining:
-            target === null
+            target === null || consumed === null
               ? null
               : NutritionDecimal.max(new NutritionDecimal(target).minus(consumed), 0).toFixed(),
           exceeded: evaluation.status === 'above',
           percent:
-            target === null
+            target === null || consumed === null
               ? null
               : NutritionDecimal.min(consumed.dividedBy(target).times(100), 100)
                   .toDecimalPlaces(1)
@@ -73,7 +77,7 @@ export function nutritionGoalProgress(
   ) as Record<
     GoalKey,
     {
-      consumed: string;
+      consumed: string | null;
       options: GoalOptions;
       evaluation: ReturnType<typeof evaluateGoal>;
       goal: string | null;

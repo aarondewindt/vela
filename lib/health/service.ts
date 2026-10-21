@@ -135,7 +135,14 @@ export const healthService = {
           metrics,
           intake,
           burned,
-          ...calorieBalance(intake, burned, goal?.calorieBalance ?? null),
+          ...calorieBalance(
+            intake,
+            burned,
+            (goalOptions.kind === 'range' || goalOptions.kind === 'minimum') &&
+              goalOptions.preferredTarget !== undefined
+              ? Number(goalOptions.preferredTarget)
+              : (goal?.calorieBalance ?? null)
+          ),
           goalEvaluation: evaluateGoal(
             calorieBalance(intake, burned, null).balance?.toString() ?? null,
             goal?.calorieBalance?.toString() ?? null,

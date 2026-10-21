@@ -31,6 +31,7 @@ it('does not prescribe goals for a user without settings', async () => {
   (prisma.nutritionGoals.findUnique as jest.Mock).mockResolvedValue(null);
   expect(await nutritionGoals.get('owner')).toEqual({
     semantics: {},
+    fiber: null,
     calories: null,
     protein: null,
     carbohydrates: null,
@@ -95,4 +96,36 @@ it('persists semantic options with existing amounts and preserves them for legac
   await expect(
     nutritionGoals.save('owner', { ...input, calories: '2700', version: 1 })
   ).rejects.toThrow();
+});
+
+it('persists fiber and all milestones under the optimistic owner version', async () => {
+  const semantics = { fiber: { kind: 'minimum' as const, preferredTarget: '30', excellent: '40' } };
+  db.nutritionGoals.updateMany.mockResolvedValue({ count: 1 });
+  db.nutritionGoals.findUniqueOrThrow.mockResolvedValue({
+    fiber: new Decimal('25'),
+    semantics,
+    version: 2,
+  });
+  expect(
+    await nutritionGoals.save('owner', { ...input, version: 1, fiber: '25', semantics })
+  ).toMatchObject({ fiber: '25', semantics, version: 2 });
+  expect(db.nutritionGoals.updateMany).toHaveBeenCalledWith({
+    where: { userId: 'owner', version: 1 },
+    data: expect.objectContaining({ fiber: '25', semantics, version: { increment: 1 } }),
+  });
+});
+
+it('retains saved fiber for old callers and validates new thresholds against it', async () => {
+  db.nutritionGoals.findUnique.mockResolvedValue({ fiber: new Decimal('25'), semantics: {} });
+  db.nutritionGoals.updateMany.mockResolvedValue({ count: 1 });
+  await expect(
+    nutritionGoals.save('owner', {
+      ...input,
+      version: 1,
+      semantics: { fiber: { kind: 'minimum', preferredTarget: '20' } },
+    })
+  ).rejects.toThrow();
+  expect(db.nutritionGoals.updateMany).not.toHaveBeenCalled();
+  await nutritionGoals.save('owner', { ...input, version: 1 });
+  expect(db.nutritionGoals.updateMany.mock.calls[0][0].data).not.toHaveProperty('fiber');
 });

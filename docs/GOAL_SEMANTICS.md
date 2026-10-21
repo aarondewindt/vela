@@ -2,50 +2,62 @@
 
 Nutrition and Health share `lib/goals/semantics.ts`: a pure decimal evaluator with
 inclusive minimum, maximum, exact target (optional ± tolerance), and range bounds.
-A range uses the existing target amount as its lower bound. A minimum has no upper
-bound; a maximum has no lower bound. Exceeding a minimum or staying below a maximum
-satisfies the goal. Results distinguish below, within and above bounds, unset goals,
-and unknown observations. Signed and zero Health targets never use percentage math.
+The existing scalar amount is the minimum for minimum/range goals. Ranges accept
+an upper bound and an optional preferred target inside the range. Minimum goals
+accept optional preferred and excellent milestones, ordered as
+minimum ≤ preferred ≤ excellent. An excellent milestone requires a preferred target.
+A minimum has no upper limit, so exceeding any milestone remains successful.
+
+Results distinguish unset goals, unknown observations, below/within/above bounds,
+and minimum/preferred/excellent milestones. Difference is measured from the
+preferred target when configured, otherwise from the scalar amount. Signed and
+zero Health targets never use percentage math. Validation and persistence remain
+application-owned; AI does not set or evaluate these goals.
 
 ## Persistence and compatibility
 
 The additive migration `20261021210000_goal_semantics` adds JSONB `semantics` columns
-to `nutrition_goals` and `health_goals`. Existing scalar amounts, ownership, versions
-and history remain intact. Empty metadata resolves to exact target semantics, so
-no existing protein target is silently reinterpreted as a minimum. Users can select
-minimum explicitly. Nutrition stores per-nutrient options; Health stores one set
-of options for its signed balance goal. Both boundaries validate the options and
-ordered bounds; updates retain optimistic version checks. Older callers omitting
-options retain the saved options and must still satisfy their bounds.
+to `nutrition_goals` and `health_goals`. `20261021230000_goal_thresholds_fiber` adds a
+nullable fiber amount to Nutrition goals; new thresholds use the same metadata.
+Existing ownership, optimistic versions and diary snapshots remain intact.
+Protein goals with absent options or an exact target without tolerance are converted
+to minimum semantics, retaining their amount and incrementing their version.
+Explicit ranges, maxima, nonzero tolerance bands and existing minimum milestones
+are retained. No preferred/excellent values or dietary bounds are prescribed.
+
+Nutrition settings default new protein/fiber goals to minimum semantics. Other
+absent options still resolve to exact target semantics. Fat and calorie balance can
+use the shared range controls for minimum, maximum and preferred target. Older
+callers omitting fiber retain its saved amount. Callers omitting options retain saved
+options; services validate the combined saved/new values before writing.
 
 The choice of additive metadata avoids duplicating target amounts in JSON or moving
-two existing owner-scoped settings models into a new cross-module table. A separate
-goal table would become useful with multiple active goals, effective dates or new
-evaluation periods; those are not implemented here. The shared evaluator accepts
-resolved values and targets independently of persistence, so future dynamic target
-resolvers can supply explicit calculated targets and provenance before evaluation.
-Dynamic calculations, weekly periods, soft/hard limits, fiber goals and effective
-historical goal versions remain future work.
+two owner-scoped settings models into a new cross-module table. A separate goal
+table would become useful with multiple active goals, effective dates or new
+periods. The evaluator accepts resolved values independently of persistence, so
+future dynamic target resolvers can supply calculated targets and provenance.
+Dynamic calculations, weekly periods, soft/hard limits and effective historical
+goal versions remain future work.
 
 ## UI and interpretation
 
-Nutrition and Health use the same goal-type controls and status labels. Nutrition
-shows marked bars for all configured positive nutrient goals. The desired upper
-edge initially sits at 90% of the track (the target itself for minimum/maximum
-and exact goals without tolerance). Ranges and tolerances show a shaded desired
-interval. When the amount exceeds the initial scale, the scale expands to leave
-5% headroom, keeping the target marker visible and distinguishing the overage.
-Bars are teal inside the desired bounds, orange below a minimum/target/range,
-and red above a maximum/target/range; exceeding a minimum remains teal. Accessible
-values report actual amounts, bounds and status rather than percent completion.
-Signed or zero Health goals still use bounds/status without a percentage bar. Health keeps
-the balance difference from the configured amount, alongside its evaluated status.
-These daily results describe logged data; they cannot establish complete food
-logging or finalized device totals. Health explicitly labels its comparison as
-provisional. Current settings still apply to every date shown.
+Nutrition uses marked bars for configured positive goals, including fiber. The
+highest desired edge initially sits at 90% of the track. Ranges/tolerances show a
+shaded interval; minimum, preferred and excellent values have markers. Overage
+expands the scale with 5% headroom. Minimum goals are red below minimum, orange
+from minimum to preferred, green at/above preferred, and cyan at/above excellent.
+Without a preferred milestone, reaching the minimum shows green. Labels include
+“Minimum reached — keep going!”, “Goal reached!” and “Excellent goal reached!”.
+Other goal types retain teal inside bounds, orange below and red above.
+Accessible values report actual amounts, thresholds and status.
 
-Generate Prisma Client and apply the reviewed migration through the normal
-backup/deploy procedure before running this version against an existing database.
-The migration has been checked against Prisma's schema diff and tested on temporary
-PostgreSQL tables inside a rolled-back transaction. Local deployment status is recorded in the
+Unknown fiber remains unknown, with known partial intake shown separately. History
+includes fiber in the macro chart and daily table; unknown values and missing days
+remain gaps, while recorded zero remains zero. Signed Health goals show bounds,
+preferred-target history and status, with difference measured from the preferred
+target. Health comparisons remain provisional. These daily views cannot establish
+complete food logging or finalized device totals. Current goals apply to all dates.
+
+Apply migrations through the normal backup/deploy procedure and regenerate Prisma
+Client before running against an existing database. Local status is recorded in the
 [shared handoff](agent-handoff.md).

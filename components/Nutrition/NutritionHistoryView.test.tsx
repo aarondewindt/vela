@@ -44,7 +44,8 @@ it('renders missing days separately from logged zero and requests both chart per
     },
   });
   render(<NutritionHistoryView initialDate="2026-10-18" />);
-  expect(screen.getAllByText('Not logged')).toHaveLength(4);
+  expect(screen.getAllByText('Not logged')).toHaveLength(5);
+  expect(screen.getByText('Unknown')).toBeInTheDocument();
   expect(screen.getAllByText('0 kcal').length).toBeGreaterThan(0);
   screen.getAllByTestId('chart').forEach((chart) => {
     expect(chart).toHaveAttribute('data-connect-nulls', 'false');
