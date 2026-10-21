@@ -300,6 +300,8 @@ model Theme {
 }
 
 model PlannerGenerationSettings {
+  mealPreferences    Json?    @db.JsonB
+  mealVersion        Int      @default(0)
   userId             String   @id
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   workSessionMinutes Int      @default(90)
@@ -769,6 +771,7 @@ model DailyPlan {
 }
 
 model DailyBlock {
+  mealKind         String?         @db.VarChar(16)
   id               String          @id @default(uuid()) @db.Uuid
   userId           String
   user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -799,6 +802,7 @@ model DailyBlock {
   @@index([taskOccurrenceId])
   @@index([calendarEventId])
   @@index([userId, startsAt])
+  @@unique([planId, mealKind])
   @@index([planId, position])
   @@index([planId, startsAt])
   @@map("daily_blocks")

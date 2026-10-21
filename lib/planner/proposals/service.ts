@@ -152,12 +152,12 @@ export const proposalService = {
         candidates,
         blocks: existingBlocks(s).map((b) => ({
           ...blockPreview(b)!,
+          ...(b.mealKind ? { mealKind: b.mealKind } : {}),
           adjustable: ['PLANNED', 'IN_PROGRESS'].includes(b.status) && !b.calendarEventId,
           status: b.status,
           editable:
             b.status === 'PLANNED' &&
-            !b.isFixed &&
-            b.source !== 'MANUAL' &&
+            (Boolean(b.mealKind) || (!b.isFixed && b.source !== 'MANUAL')) &&
             !b.calendarEventId &&
             b.startsAt >= new Date(),
         })),
@@ -202,7 +202,9 @@ export const proposalService = {
     if (!document.operations.length) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: 'No changes are needed for the remaining day.',
+        message: document.replan?.warnings.length
+          ? document.replan.warnings.join(' ')
+          : 'No changes are needed for the remaining day.',
       });
     }
     return this.create(userId, {
@@ -259,6 +261,9 @@ export const proposalService = {
       throw stale();
     }
     const explanation = input.explanation;
+    const mealPermission = context.blocks.find((b) => b.id === input.blockId)?.mealKind
+      ? { explicit: true as const }
+      : {};
     if (input.type === 'remove') {
       if (!input.blockId) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose a block.' });
@@ -269,7 +274,7 @@ export const proposalService = {
         baseHash: input.baseHash,
         document: {
           schemaVersion: 1,
-          operations: [{ type: 'remove', blockId: input.blockId, explanation }],
+          operations: [{ type: 'remove', blockId: input.blockId, explanation, ...mealPermission }],
         },
       });
     }
@@ -293,7 +298,14 @@ export const proposalService = {
       if (!input.blockId) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose a block.' });
       }
-      operation = { type: input.type, blockId: input.blockId, startsAt, endsAt, explanation };
+      operation = {
+        type: input.type,
+        blockId: input.blockId,
+        startsAt,
+        endsAt,
+        explanation,
+        ...mealPermission,
+      };
     } else {
       const candidate = context.candidates.find((c) => c.id === input.candidateId);
       if (input.kind === 'TASK' && !candidate) {
@@ -313,7 +325,13 @@ export const proposalService = {
         if (!input.blockId) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose a block.' });
         }
-        operation = { type: 'replace', blockId: input.blockId, block, explanation };
+        operation = {
+          type: 'replace',
+          blockId: input.blockId,
+          block,
+          explanation,
+          ...mealPermission,
+        };
       } else {
         operation = { type: 'add', block, explanation };
       }
@@ -456,6 +474,7 @@ export const proposalService = {
               startsAt: after.startsAt,
               endsAt: after.endsAt,
               durationMinutes: after.durationMinutes,
+              ...(after.mealKind ? { isFixed: after.isFixed } : {}),
               status: after.status as 'PLANNED' | 'IN_PROGRESS' | 'DONE' | 'SKIPPED',
               ...(change.type === 'finish' ? { completedAt: after.endsAt } : {}),
             },
@@ -490,6 +509,7 @@ export const proposalService = {
             userId,
             planId: plan.id,
             title: after.title,
+            mealKind: after.mealKind ?? null,
             category: after.category,
             startsAt: after.startsAt,
             endsAt: after.endsAt,

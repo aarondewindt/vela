@@ -23,7 +23,14 @@ export type ProgressPreset = {
 type Context = {
   timezone: string;
   baseHash: string;
-  blocks: { id: string; title: string; startsAt: string; status: string; adjustable: boolean }[];
+  blocks: {
+    id: string;
+    title: string;
+    startsAt: string;
+    status: string;
+    adjustable: boolean;
+    mealKind?: string;
+  }[];
   candidates: { id: string; title: string }[];
 };
 export function ReplanningControls({
@@ -43,6 +50,7 @@ export function ReplanningControls({
 }) {
   const [action, setAction] = useState<ReplanInput['action']>(preset?.action ?? 'replan');
   const [blockId, setBlockId] = useState<string | null>(preset?.blockId ?? null);
+  const isMeal = Boolean(context?.blocks.find((b) => b.id === blockId)?.mealKind);
   const [candidateId, setCandidateId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState(() =>
@@ -79,8 +87,14 @@ export function ReplanningControls({
           { value: 'extend', label: 'Extend started work' },
           { value: 'finish', label: 'Finish a block' },
           { value: 'postpone', label: 'Postpone to later today' },
-          { value: 'skip', label: 'Skip scheduled block · keep task' },
-          { value: 'cancel', label: 'Cancel scheduled block · keep task' },
+          {
+            value: 'skip',
+            label: isMeal ? 'Skip meal for this day' : 'Skip scheduled block · keep task',
+          },
+          {
+            value: 'cancel',
+            label: isMeal ? 'Cancel meal for this day' : 'Cancel scheduled block · keep task',
+          },
           { value: 'replace', label: 'Replace scheduled work · keep original task' },
         ]}
         onChange={(value) => {
@@ -102,6 +116,8 @@ export function ReplanningControls({
           }
           onChange={(value) => {
             setBlockId(value);
+            setCompleteTask(false);
+            setEstimate('');
             setRequestId(null);
           }}
         />
@@ -124,7 +140,7 @@ export function ReplanningControls({
           onChange={(e) => setEndTime(e.currentTarget.value)}
         />
       )}
-      {action === 'extend' && (
+      {action === 'extend' && !isMeal && (
         <NumberInput
           label="New total task estimate (optional, minutes)"
           description="An explicit estimate increase is needed if the overrun exceeds remaining effort. This changes the task estimate only after acceptance."
@@ -139,7 +155,7 @@ export function ReplanningControls({
           }}
         />
       )}
-      {action === 'finish' && (
+      {action === 'finish' && !isMeal && (
         <Checkbox
           label="Also complete the task (only this occurrence for recurring work)"
           description="Leave unchecked to record this block’s work and keep the task open."
@@ -192,10 +208,10 @@ export function ReplanningControls({
               startTime: action === 'postpone' ? startTime : undefined,
               endTime: action === 'finish' || action === 'extend' ? endTime : undefined,
               estimatedMinutes:
-                action === 'extend' && typeof estimatedMinutes === 'number'
+                action === 'extend' && !isMeal && typeof estimatedMinutes === 'number'
                   ? estimatedMinutes
                   : undefined,
-              completeTask: action === 'finish' && completeTask,
+              completeTask: action === 'finish' && !isMeal && completeTask,
               pullForward,
               explanation,
             });

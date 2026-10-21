@@ -1,4 +1,5 @@
 'use client';
+import { MealSettings } from './MealSettings';
 import { Alert, Select, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { PlanningDefaultsSettings } from './PlanningDefaultsSettings';
@@ -48,6 +49,7 @@ export function PlannerSettings() {
       {user && (
         <>
           <PlanningDefaultsSettings />
+          <MealSettings />
           <TaskIndexSettings />
         </>
       )}

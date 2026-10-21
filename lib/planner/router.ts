@@ -1,3 +1,5 @@
+import { mealService } from './meal-service';
+import { saveMealPreferencesSchema } from './meals';
 import { z } from 'zod';
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import { viewConfigSchema } from '@/lib/views/types';
@@ -19,6 +21,10 @@ const generatorOptions = z.object({
 });
 
 export const plannerRouter = router({
+  getMealPreferences: protectedProcedure.query(({ ctx }) => mealService.get(ctx.userId)),
+  saveMealPreferences: protectedProcedure
+    .input(saveMealPreferencesSchema)
+    .mutation(({ ctx, input }) => mealService.save(ctx.userId, input)),
   listTasks: protectedProcedure.query(({ ctx }) => plannerService.listTasks(ctx.userId)),
   createTask: protectedProcedure
     .input(

@@ -256,3 +256,28 @@ it('does not offer apply or discard for an applied proposal', async () => {
   expect(screen.queryByRole('button', { name: 'Apply changes' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Discard proposal' })).not.toBeInTheDocument();
 });
+
+it('shows scheduled and unmet recurring meal requirements separately from task outcomes', async () => {
+  preview.generation = {
+    ...generationFixture(),
+    meals: [
+      {
+        mealKind: 'BREAKFAST',
+        status: 'scheduled',
+        reason: 'Breakfast: 30 minutes within the preferred window.',
+      },
+      {
+        mealKind: 'DINNER',
+        status: 'unmet',
+        reason: 'Dinner: no continuous 60-minute block fits. Adjust availability.',
+      },
+    ],
+    diagnostics: { elapsedMs: 1250, candidateCount: 2, operationCount: 3 },
+  };
+  render(<ProposalWorkspace date={date} />);
+  await selectProposal();
+  expect(screen.getByText('Daily meals')).toBeInTheDocument();
+  expect(screen.getByText(/Breakfast: 30 minutes/)).toBeInTheDocument();
+  expect(screen.getByText(/Dinner: no continuous/)).toBeInTheDocument();
+  expect(screen.getByText(/Planning took 1.3 s/)).toBeInTheDocument();
+});

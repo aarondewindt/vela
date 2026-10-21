@@ -72,7 +72,11 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
     override,
     events,
     blocks,
-    settings: settings ?? DEFAULT_GENERATOR_OPTIONS,
+    settings: {
+      ...DEFAULT_GENERATOR_OPTIONS,
+      ...settings,
+      mealPreferences: settings?.mealPreferences ?? null,
+    },
   };
   return { ...snapshot, hash: fingerprint(snapshot), timezone: plan?.timezone ?? user.timezone };
 }

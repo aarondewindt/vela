@@ -1,3 +1,5 @@
+import { placeMeals, mealPreferences } from '../generation/meals';
+import { mealTitles } from '../meals';
 import type { Snapshot } from './snapshot';
 import type { ProposalDocument, ProposalOperation, ReplanInput } from './schema';
 import { availability, existingBlocks, validateProposal } from './validate';
@@ -99,6 +101,7 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
   if (flexible.length > 98) {
     throw new Error('Too many remaining blocks for one proposal. Replan a smaller remainder.');
   }
+  flexible.sort((a, b) => Number(Boolean(b.mealKind)) - Number(Boolean(a.mealKind)));
   const removals = new Map<string, ProposalOperation>(
     flexible.map((b) => [
       b.id,
@@ -114,12 +117,21 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
     operations: [],
     replan: { requestHash, warnings: [] },
   };
+  const mealAdditions: ProposalOperation[] = [];
   const assemble = () => {
-    document.operations = [...(action ? [action] : []), ...removals.values()];
+    document.operations = [...(action ? [action] : []), ...removals.values(), ...mealAdditions];
   };
   assemble();
   // Prove the explicit request is legal before searching for downstream placements.
   validateProposal(s, document, now);
+  const mealOutcomes = placeMeals(s, document, now);
+  mealAdditions.push(...document.operations.filter((op) => op.type === 'add'));
+  document.replan!.warnings.push(
+    ...mealOutcomes
+      .filter((m) => m.status === 'unmet' && !flexible.some((b) => b.mealKind === m.mealKind))
+      .map((m) => m.reason)
+  );
+  assemble();
   let trials = 0;
   let cursor = Math.ceil(now.getTime() / MINUTE) * MINUTE;
   for (const block of flexible) {
@@ -138,6 +150,8 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
       continue;
     }
     const removed = removals.get(block.id)!;
+    const preference = block.mealKind ? mealPreferences(s)[block.mealKind] : null;
+    const blockCursor = block.mealKind ? Math.ceil(now.getTime() / MINUTE) * MINUTE : cursor;
     const accepts = (op: ProposalOperation | null) => {
       if (++trials > 10_000) {
         throw new Error(
@@ -161,7 +175,7 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
     };
     if (
       !input.pullForward &&
-      block.startsAt.getTime() >= cursor &&
+      block.startsAt.getTime() >= blockCursor &&
       accepts({
         type: 'move',
         blockId: block.id,
@@ -171,20 +185,27 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
       }) &&
       accepts(null)
     ) {
-      cursor = block.endsAt.getTime();
+      if (!block.mealKind) {
+        cursor = block.endsAt.getTime();
+      }
       continue;
     }
     let placed = false;
     for (const window of availability(s)) {
       const first = Math.max(
-        cursor,
+        blockCursor,
         cutoff,
+        ...(preference ? [wallInstant(s.date, preference.startMinute, s.timezone).getTime()] : []),
         window.startsAt.getTime(),
         input.pullForward ? cutoff : block.startsAt.getTime()
       );
       for (
         let start = first;
-        start + block.durationMinutes * MINUTE <= window.endsAt.getTime();
+        start + block.durationMinutes * MINUTE <=
+        Math.min(
+          window.endsAt.getTime(),
+          preference ? wallInstant(s.date, preference.endMinute, s.timezone).getTime() : Infinity
+        );
         start += MINUTE
       ) {
         const end = start + block.durationMinutes * MINUTE;
@@ -197,7 +218,9 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
             explanation: `${explanation} Preserve this block’s duration and move it within the remaining availability.`,
           })
         ) {
-          cursor = end;
+          if (!block.mealKind) {
+            cursor = end;
+          }
           placed = true;
           break;
         }
@@ -208,7 +231,9 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
     }
     if (!placed) {
       document.replan!.warnings.push(
-        `${block.title}: ${block.durationMinutes} scheduled minutes no longer fit. The task and unfinished work are kept.`
+        block.mealKind
+          ? `${mealTitles[block.mealKind]} requirement unmet: ${block.durationMinutes} minutes no longer fit. Adjust meal preferences or availability.`
+          : `${block.title}: ${block.durationMinutes} scheduled minutes no longer fit. The task and unfinished work are kept.`
       );
     }
   }

@@ -134,6 +134,16 @@ toward the target; shortfall is reported. Task selections may fit only partially
 or fail placement; the application reports this instead of overbooking. This is
 a bounded greedy scheduler, not a guarantee of a globally optimal packing.
 
+## Daily meal requirements and default
+
+AI is the default for both Today and omitted API modes. The existing deterministic
+option remains the model-free rollback through the same proposal workflow.
+Enabled [daily meals](PLANNER_MEALS.md) reserve continuous blocks before optional
+work/leisure and remain independent of the model's task budget or omissions.
+Previews report each scheduled/preserved/skipped/unmet meal and bounded timing/count
+diagnostics. See [evaluation and limits](PLANNER_EVALUATION.md) for test evidence,
+real-model measurements and remaining manual review under #41.
+
 ## Verification
 
 Colocated tests cover candidate eligibility/deadline propagation, model-free

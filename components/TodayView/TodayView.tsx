@@ -549,6 +549,12 @@ export function TodayView() {
         actions={selectedBlockActions}
       >
         <Title order={3}>{selectedBlock.title}</Title>
+        {selectedBlock.mealKind && (
+          <Text size="sm" c="dimmed">
+            Daily meal · preparation, eating and cleanup. Individual time edits are preserved during
+            replanning.
+          </Text>
+        )}
         {selectedBlock.brief && <Text size="sm">{selectedBlock.brief}</Text>}
         <Property label="Category">
           <ReadOnlyValue>
