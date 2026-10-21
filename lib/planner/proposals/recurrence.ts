@@ -1,4 +1,4 @@
-import { recurrenceMatchesDate } from '../recurrence';
+import { recurrenceMatchesDate, recurrenceStartDate } from '../recurrence';
 
 // Reject syntax the legacy subset silently ignores instead of inventing occurrences.
 export function supportedRecurrence(rule: string | null) {
@@ -21,12 +21,15 @@ export function supportedRecurrence(rule: string | null) {
   );
 }
 
-export function occursOn(task: { recurrenceRule: string | null; createdAt: Date }, date: string) {
+export function occursOn(
+  task: { recurrenceRule: string | null; createdAt: Date; recurrenceAnchorDate?: Date | null },
+  date: string
+) {
   return (
     supportedRecurrence(task.recurrenceRule) &&
     recurrenceMatchesDate(
       task.recurrenceRule!,
-      new Date(task.createdAt.toISOString().slice(0, 10)),
+      recurrenceStartDate(task),
       new Date(`${date}T00:00:00Z`)
     )
   );

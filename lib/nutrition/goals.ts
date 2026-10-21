@@ -1,12 +1,13 @@
 import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { prisma } from '@/lib/prisma';
-import { goalsInputSchema, type GoalsInput } from './diary-schema';
+import { goalsInputSchema, nutritionGoalOptionsSchema, type GoalsInput } from './diary-schema';
 
 export const nutritionGoals = {
   async get(userId: string) {
     const goals = await prisma.nutritionGoals.findUnique({ where: { userId } });
     return {
+      semantics: nutritionGoalOptionsSchema.parse(goals?.semantics ?? {}),
       calories: goals?.calories?.toFixed() ?? null,
       protein: goals?.protein?.toFixed() ?? null,
       carbohydrates: goals?.carbohydrates?.toFixed() ?? null,
@@ -16,10 +17,28 @@ export const nutritionGoals = {
   },
 
   async save(userId: string, rawInput: GoalsInput) {
-    const { version, ...data } = goalsInputSchema.parse(rawInput);
+    const { version, semantics, ...amounts } = goalsInputSchema.parse(rawInput);
     return prisma.$transaction(async (db) => {
+      const options =
+        semantics ??
+        nutritionGoalOptionsSchema.parse(
+          (version === 0 ? null : await db.nutritionGoals.findUnique({ where: { userId } }))
+            ?.semantics ?? {}
+        );
+      goalsInputSchema.parse({ ...amounts, version, semantics: options });
+      const data = { ...amounts, semantics: options };
       if (version === 0) {
-        await db.nutritionGoals.create({ data: { ...data, userId } });
+        try {
+          await db.nutritionGoals.create({ data: { ...data, userId } });
+        } catch (error) {
+          if ((error as { code?: string }).code !== 'P2002') {
+            throw error;
+          }
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: 'Your goals changed. Reload them before saving again.',
+          });
+        }
       } else {
         const result = await db.nutritionGoals.updateMany({
           where: { userId, version },
@@ -34,6 +53,7 @@ export const nutritionGoals = {
       }
       const saved = await db.nutritionGoals.findUniqueOrThrow({ where: { userId } });
       return {
+        semantics: nutritionGoalOptionsSchema.parse(saved.semantics ?? {}),
         calories: saved.calories?.toFixed() ?? null,
         protein: saved.protein?.toFixed() ?? null,
         carbohydrates: saved.carbohydrates?.toFixed() ?? null,

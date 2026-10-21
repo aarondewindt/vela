@@ -23,6 +23,7 @@ import {
   TextProperty,
 } from '../DataView/properties';
 import { formatDate, formatDateTime } from './format';
+import { TaskRecurrence } from './TaskRecurrence';
 import { TaskReview } from './TaskReview';
 import { TaskContentEditor } from './TaskContentEditor';
 
@@ -141,6 +142,7 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
           </>
         }
       >
+        {update.error && <Alert color="red">{update.error.message}</Alert>}
         <TitleField value={task.title} onSave={(title) => save({ title })} />
 
         <SelectProperty
@@ -190,6 +192,15 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
           label="Due date"
           value={task.dueDate}
           onSave={(dueDate) => save({ dueDate })}
+        />
+        <Property label="Recurrence">
+          <TaskRecurrence key={`${task.id}:${task.updatedAt.toISOString()}`} task={task} />
+        </Property>
+        <NumberProperty
+          label="Lead time"
+          suffix=" days"
+          value={task.leadTimeDays}
+          onSave={(leadTimeDays) => save({ leadTimeDays })}
         />
         <Property label="Scheduled">
           <ReadOnlyValue>{formatDate(task.scheduledDate)}</ReadOnlyValue>

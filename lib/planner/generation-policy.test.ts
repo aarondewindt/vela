@@ -297,6 +297,23 @@ describe('current generator policy baseline (#31)', () => {
     expect(data[7].occurrenceDate).toEqual(new Date('2026-10-26T00:00:00Z'));
   });
 
+  it('materializes interval recurrence from the selected anchor rather than creation', async () => {
+    db.task.findMany.mockResolvedValueOnce([
+      {
+        id: 'recurring',
+        recurrenceRule: 'FREQ=DAILY;INTERVAL=3',
+        createdAt: new Date('2026-10-01T20:00:00Z'),
+        recurrenceAnchorDate: new Date('2026-10-20'),
+      },
+    ]);
+    await plannerService.generateDraft('owner', date, options);
+    expect(
+      db.taskOccurrence.createMany.mock.calls[0][0].data.map((row: { occurrenceDate: Date }) =>
+        row.occurrenceDate.toISOString().slice(0, 10)
+      )
+    ).toEqual(['2026-10-20', '2026-10-23', '2026-10-26']);
+  });
+
   it('records legacy generation replacing the current plan before acceptance', async () => {
     db.task.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([task('task')]);
     await plannerService.generateDraft('owner', date, options);

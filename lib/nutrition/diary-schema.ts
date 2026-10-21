@@ -1,7 +1,8 @@
+import { goalOptionsSchema, validateGoalBounds } from '@/lib/goals/semantics';
 import { z } from 'zod';
 import { diaryDateSchema } from './dates';
 import { positiveDecimalSchema, quantityInputSchema, productInputSchema } from './schema';
-import { mealCategories, sourceTypes } from './types';
+import { goalKeys, mealCategories, sourceTypes } from './types';
 
 export const diaryDaySchema = z.object({ date: diaryDateSchema });
 export const createLogEntrySchema = z.object({
@@ -28,13 +29,40 @@ export const deleteLogEntrySchema = z.object({
   version: z.number().int().positive(),
 });
 export const previewLogEntrySchema = z.object({ id: z.uuid(), input: quantityInputSchema });
-export const goalsInputSchema = z.object({
-  version: z.number().int().nonnegative(),
-  calories: positiveDecimalSchema.nullable(),
-  protein: positiveDecimalSchema.nullable(),
-  carbohydrates: positiveDecimalSchema.nullable(),
-  fat: positiveDecimalSchema.nullable(),
-});
+export const nutritionGoalOptionsSchema = z
+  .object({
+    calories: goalOptionsSchema.optional(),
+    protein: goalOptionsSchema.optional(),
+    carbohydrates: goalOptionsSchema.optional(),
+    fat: goalOptionsSchema.optional(),
+  })
+  .strict();
+export const goalsInputSchema = z
+  .object({
+    semantics: nutritionGoalOptionsSchema.optional(),
+    version: z.number().int().nonnegative(),
+    calories: positiveDecimalSchema.nullable(),
+    protein: positiveDecimalSchema.nullable(),
+    carbohydrates: positiveDecimalSchema.nullable(),
+    fat: positiveDecimalSchema.nullable(),
+  })
+  .superRefine((input, ctx) => {
+    for (const key of goalKeys) {
+      const options = input.semantics?.[key];
+      if (
+        options &&
+        (!validateGoalBounds(input[key], options) ||
+          (options.kind === 'range' &&
+            !positiveDecimalSchema.safeParse(options.upperBound).success))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['semantics', key],
+          message: 'Range upper bound must be positive and at least the target.',
+        });
+      }
+    }
+  });
 
 // Reuse catalog validation so a saved snapshot has the same unit and decimal contract.
 const directSnapshotSchema = z.object({

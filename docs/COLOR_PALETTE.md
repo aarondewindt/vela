@@ -51,3 +51,11 @@ Supported roles map to Mantine shade indexes as follows:
 | `accentHover` | 7 | 3 |
 
 These are shade indexes, not fixed hex values. For the `dark` hue they resolve through Vela's configured `theme.colors.dark` shades. Keep presentation choices in the semantic role rather than storing a role or shade in the database. For example, a filled chip can use `background` and `foreground`, while a small marker can use `accent`.
+
+## Dark text hierarchy
+
+Mantine's global body and dimmed text variables resolve to `dark[0]` and
+`dark[2]`. Primary text uses `#C9CDD3`, secondary text `#AFB3BA`, and dimmed text
+`#9399A3`. This softens primary text while maintaining at least 4.5:1 contrast
+for these roles on the configured dark surfaces (shades 5–9). Placeholder and
+disabled roles remain separate. Contrast and hierarchy are covered by `theme.test.ts`.

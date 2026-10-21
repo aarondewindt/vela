@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
 import { goalsInputSchema, type GoalsInput } from '@/lib/nutrition/diary-schema';
+import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
 import { goalKeys } from '@/lib/nutrition/types';
 
 function GoalsForm({
@@ -44,7 +45,7 @@ function GoalsForm({
     }
     const parsed = goalsInputSchema.safeParse(value);
     if (!parsed.success) {
-      setError('Enter a positive decimal for each goal, or leave it empty.');
+      setError(parsed.error.issues[0].message);
       return;
     }
     setError(null);
@@ -63,18 +64,28 @@ function GoalsForm({
       <Stack>
         <SimpleGrid cols={{ base: 1, xs: 2 }}>
           {goalKeys.map((key) => (
-            <TextInput
-              key={key}
-              label={labels[key]}
-              inputMode="decimal"
-              placeholder="No goal"
-              disabled={save.isPending}
-              value={value[key] ?? ''}
-              onChange={(event) => {
-                setSaved(false);
-                setValue({ ...value, [key]: event.currentTarget.value || null });
-              }}
-            />
+            <Stack key={key} gap="xs">
+              <TextInput
+                label={labels[key]}
+                inputMode="decimal"
+                placeholder="No goal"
+                disabled={save.isPending}
+                value={value[key] ?? ''}
+                onChange={(event) => {
+                  setSaved(false);
+                  setValue({ ...value, [key]: event.currentTarget.value || null });
+                }}
+              />
+              <GoalOptionsFields
+                label={labels[key]}
+                value={value.semantics?.[key]}
+                disabled={save.isPending}
+                onChange={(options) => {
+                  setSaved(false);
+                  setValue({ ...value, semantics: { ...value.semantics, [key]: options } });
+                }}
+              />
+            </Stack>
           ))}
         </SimpleGrid>
         {error && <Alert color="red">{error}</Alert>}
@@ -121,7 +132,8 @@ export function NutritionGoalsView({ returnDate }: { returnDate?: string }) {
         </Group>
         <Text c="dimmed">
           Enter your own daily targets. Leave any goal empty to track that nutrient without a
-          target. Your current goals apply to every diary day.
+          target. For a range, enter its lower bound as the target. Your current goals apply to
+          every diary day.
         </Text>
         {!current && !goals.error && (
           <Group role="status">

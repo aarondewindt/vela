@@ -373,6 +373,7 @@ model Task {
   leadTimeDays     Int?
   isRecurring      Boolean    @default(false)
   recurrenceRule   String?
+  recurrenceAnchorDate DateTime? @db.Date
   recurrenceTz     String?    @db.VarChar(64)
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
@@ -681,6 +682,7 @@ model NutritionMealCopy {
 }
 
 model NutritionGoals {
+  semantics     Json     @default("{}")
   userId        String   @id
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   calories      Decimal? @db.Decimal(20, 8)
@@ -986,6 +988,7 @@ model HealthMetric {
 }
 
 model HealthGoal {
+  semantics     Json     @default("{}")
   userId         String   @id
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   calorieBalance Int?
@@ -1039,7 +1042,7 @@ model TaskReview {
 
 model TaskIndexJob {
   userId            String    @id
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   revision          Int       @default(1)
   completedRevision Int       @default(0)
   attempts          Int       @default(0)
@@ -1047,7 +1050,8 @@ model TaskIndexJob {
   leaseId           String?   @db.Uuid
   leaseExpiresAt    DateTime?
   lastError         String?   @db.VarChar(500)
-  updatedAt         DateTime  @updatedAt
+  // Task triggers insert only userId and rely on this database default.
+  updatedAt         DateTime  @default(now()) @updatedAt
 
   @@index([runAfter])
   @@map("task_index_jobs")

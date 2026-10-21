@@ -205,6 +205,7 @@ Table tasks {
 	estimatedMinutes integer
 	isRecurring boolean [not null, default: false]
 	recurrenceRule text
+	recurrenceAnchorDate date
 	recurrenceTz varchar(64)
 	createdAt timestamp(3) [not null, default: `CURRENT_TIMESTAMP`]
 	updatedAt timestamp(3) [not null]

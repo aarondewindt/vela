@@ -384,3 +384,18 @@ it('keeps mandatory due work in the candidate pool and propagates dependent dead
   ]);
   expect(result.warnings.join()).toMatch(/prerequisite/);
 });
+
+it('uses the adjustable recurrence anchor for virtual candidates and proposal validation', () => {
+  const s = fixture([30]);
+  s.tasks[0].isRecurring = true;
+  s.tasks[0].recurrenceRule = 'FREQ=DAILY;INTERVAL=3';
+  s.tasks[0].recurrenceAnchorDate = new Date('2030-01-06');
+  expect(planningCandidates(s).candidates).toEqual([]);
+  s.tasks[0].recurrenceAnchorDate = new Date('2030-01-07');
+  const result = run(s);
+  expect(result.document.operations).toHaveLength(1);
+  expect(() => validateProposal(s, result.document)).not.toThrow();
+  s.tasks[0].recurrenceAnchorDate = new Date('2030-01-08');
+  expect(planningCandidates(s).candidates).toEqual([]);
+  expect(() => validateProposal(s, result.document)).toThrow();
+});

@@ -64,6 +64,10 @@ export type TaskRow = {
   scheduledDate: Date | null;
   estimatedMinutes: number | null;
   leadTimeDays: number | null;
+  isRecurring: boolean;
+  recurrenceRule: string | null;
+  recurrenceAnchorDate: Date | null;
+  recurrenceTz: string | null;
   themeId: string | null;
   category: PlanningCategoryValue | null;
   tags: string[];

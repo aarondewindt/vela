@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { AppShell, Box, Burger, Group, Stack, Title, useAppShellResize } from '@mantine/core';
+import { AppShell, useAppShellResize } from '@mantine/core';
 import { useAppShellStore } from '@/store/app_shell_store';
-import { ParallelogramIcon } from '@phosphor-icons/react';
-import CurrentUserBadge from '@/components/CurrentUserBadge';
 import { NavbarNested } from '../NavbarNested/NavbarNested';
 import ApplicationShellHeader from './ApplicationShellHeader';
-
 
 export default function ApplicationShell({ children }: { children: React.ReactNode }) {
   const { navbar_opened, aside_opened, sizes, set_sizes } = useAppShellStore();
@@ -22,35 +19,34 @@ export default function ApplicationShell({ children }: { children: React.ReactNo
   });
 
   return (
-    <AppShell padding="md"
-              resize={resize}
-              header={{ 
-                height: 32,
-              }}
-              navbar={{
-                width: 300,
-                breakpoint: 'sm',
-                collapsed: { mobile: !navbar_opened },
-              }}
-              aside={{
-                width: 380,
-                breakpoint: 'md',
-                collapsed: { desktop: !aside_opened, mobile: !aside_opened },
-              }}>
-      
-      <ApplicationShellHeader/>
+    <AppShell
+      padding="md"
+      resize={resize}
+      header={{
+        height: { base: 32, sm: 0 },
+      }}
+      navbar={{
+        width: 300,
+        breakpoint: 'sm',
+        collapsed: { mobile: !navbar_opened },
+      }}
+      aside={{
+        width: 380,
+        breakpoint: 'md',
+        collapsed: { desktop: !aside_opened, mobile: !aside_opened },
+      }}
+    >
+      <ApplicationShellHeader />
 
       <AppShell.Navbar>
-        <NavbarNested/>
+        <NavbarNested />
       </AppShell.Navbar>
 
       <AppShell.Aside>
         <div id="app-aside" style={{ height: '100%' }} />
       </AppShell.Aside>
 
-      <AppShell.Main>
-        { children }
-      </AppShell.Main>
+      <AppShell.Main>{children}</AppShell.Main>
     </AppShell>
   );
 }

@@ -1,3 +1,4 @@
+import { defaultGoalOptions, evaluateGoal, type GoalOptions } from '@/lib/goals/semantics';
 import { Decimal } from '@prisma/client/runtime/client';
 import { positiveDecimalSchema, quantityInputSchema } from './schema';
 import {
@@ -37,21 +38,29 @@ export function sumNutrition(entries: Nutrients[]) {
   };
 }
 
-export function nutritionGoalProgress(totals: Nutrients, goals: Record<GoalKey, string | null>) {
+export function nutritionGoalProgress(
+  totals: Nutrients,
+  goals: Record<GoalKey, string | null> & { semantics?: Partial<Record<GoalKey, GoalOptions>> }
+) {
   return Object.fromEntries(
     goalKeys.map((key) => {
       const target = goals[key];
       const consumed = new NutritionDecimal(totals[key]);
+      const options = goals.semantics?.[key] ?? defaultGoalOptions;
+      const evaluation = evaluateGoal(totals[key], target, options);
       return [
         key,
         {
           consumed: totals[key],
+          options,
+          evaluation,
           goal: target,
+          // Scalar distance/ratio remain compatible; evaluation owns goal success.
           remaining:
             target === null
               ? null
               : NutritionDecimal.max(new NutritionDecimal(target).minus(consumed), 0).toFixed(),
-          exceeded: target !== null && consumed.greaterThan(target),
+          exceeded: evaluation.status === 'above',
           percent:
             target === null
               ? null
@@ -65,6 +74,8 @@ export function nutritionGoalProgress(totals: Nutrients, goals: Record<GoalKey, 
     GoalKey,
     {
       consumed: string;
+      options: GoalOptions;
+      evaluation: ReturnType<typeof evaluateGoal>;
       goal: string | null;
       remaining: string | null;
       exceeded: boolean;

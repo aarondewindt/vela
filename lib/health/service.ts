@@ -1,3 +1,4 @@
+import { evaluateGoal, readGoalOptions } from '@/lib/goals/semantics';
 import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
@@ -65,28 +66,50 @@ export const healthService = {
     const nutrition = await nutritionHistory.get(userId, input);
     const [records, goal] = await Promise.all([
       prisma.$queryRaw<HealthMetric[]>(Prisma.sql`
-        SELECT DISTINCT ON ("date", metric) * FROM health_metrics
+        (SELECT DISTINCT ON ("date", metric) * FROM health_metrics
         WHERE "userId" = ${userId} AND "date" >= ${diaryDate(nutrition.startDate)}
           AND "date" <= ${diaryDate(input.endDate)}
-        ORDER BY "date", metric, "observedAt" DESC, "receivedAt" DESC, id DESC
+        ORDER BY "date", metric, "observedAt" DESC, "receivedAt" DESC, id DESC)
+        UNION ALL
+        (SELECT DISTINCT ON (metric) * FROM health_metrics
+        WHERE "userId" = ${userId} AND "date" < ${diaryDate(nutrition.startDate)}
+          AND metric IN ('WEIGHT', 'BODY_FAT', 'LEAN_MASS')
+        ORDER BY metric, "date" DESC, "observedAt" DESC, "receivedAt" DESC, id DESC)
       `),
       prisma.healthGoal.findUnique({ where: { userId } }),
     ]);
+    const goalOptions = readGoalOptions(goal?.semantics);
     return {
-      goal: { calorieBalance: goal?.calorieBalance ?? null, version: goal?.version ?? 0 },
+      goal: {
+        semantics: goalOptions,
+        calorieBalance: goal?.calorieBalance ?? null,
+        version: goal?.version ?? 0,
+      },
       days: nutrition.days.map((day) => {
         const entries = records.filter((x) => x.date.toISOString().slice(0, 10) === day.date);
         const metrics = Object.fromEntries(
           metricKinds.map((metric) => {
-            const record = entries.find((x) => x.metric === metric);
+            const measured = entries.find((x) => x.metric === metric);
+            const record =
+              measured ??
+              (['WEIGHT', 'BODY_FAT', 'LEAN_MASS'].includes(metric)
+                ? records
+                    .filter(
+                      (x) => x.metric === metric && x.date.toISOString().slice(0, 10) < day.date
+                    )
+                    .sort((a, b) => b.date.getTime() - a.date.getTime())[0]
+                : undefined);
             return [
               metric,
               record
                 ? {
                     id: record.id,
                     value: Number(record.value),
+                    measurementDate: record.date.toISOString().slice(0, 10),
+                    carriedForward: !measured,
                     observedAt: record.observedAt,
                     source: record.source,
+                    entityId: record.entityId,
                     timestampBasis: record.timestampBasis,
                   }
                 : null,
@@ -97,8 +120,11 @@ export const healthService = {
           {
             id: string;
             value: number;
+            measurementDate: string;
+            carriedForward: boolean;
             observedAt: Date;
             source: string;
+            entityId: string | null;
             timestampBasis: string;
           } | null
         >;
@@ -110,15 +136,30 @@ export const healthService = {
           intake,
           burned,
           ...calorieBalance(intake, burned, goal?.calorieBalance ?? null),
+          goalEvaluation: evaluateGoal(
+            calorieBalance(intake, burned, null).balance?.toString() ?? null,
+            goal?.calorieBalance?.toString() ?? null,
+            goalOptions
+          ),
         };
       }),
     };
   },
   async saveGoal(userId: string, input: z.infer<typeof goalSchema>) {
-    const { version, calorieBalance: balance } = goalSchema.parse(input);
+    const { version, calorieBalance: balance, semantics } = goalSchema.parse(input);
+    const options =
+      semantics ??
+      readGoalOptions(
+        version === 0
+          ? null
+          : (await prisma.healthGoal.findUnique({ where: { userId } }))?.semantics
+      );
+    goalSchema.parse({ version, calorieBalance: balance, semantics: options });
     if (!version) {
       try {
-        return await prisma.healthGoal.create({ data: { userId, calorieBalance: balance } });
+        return await prisma.healthGoal.create({
+          data: { userId, calorieBalance: balance, semantics: options },
+        });
       } catch (error) {
         if ((error as { code?: string }).code !== 'P2002') {
           throw error;
@@ -128,7 +169,7 @@ export const healthService = {
     }
     const result = await prisma.healthGoal.updateMany({
       where: { userId, version },
-      data: { calorieBalance: balance, version: { increment: 1 } },
+      data: { calorieBalance: balance, semantics: options, version: { increment: 1 } },
     });
     if (!result.count) {
       throw new TRPCError({ code: 'CONFLICT', message: 'Goal changed. Reload before saving.' });

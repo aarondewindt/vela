@@ -154,3 +154,80 @@ it('sanitizes diagnostic failures instead of exposing credentials or remote bodi
       'Could not inspect mapped sensors. Check the connection configuration and Home Assistant response format.',
   });
 });
+
+it('carries only body composition from before the window, retaining provenance and replacing it on measurement dates', async () => {
+  (nutritionHistory.get as jest.Mock).mockResolvedValue({
+    startDate: '2026-01-01',
+    days: ['2026-01-01', '2026-01-02', '2026-01-03'].map((date) => ({ date, nutrients: null })),
+  });
+  const record = (id: string, metric: string, date: string, value: string) => ({
+    id,
+    metric,
+    date: new Date(date),
+    value,
+    observedAt: new Date(`${date}T23:00:00Z`),
+    source: 'home_assistant',
+    timestampBasis: 'sensor_state',
+  });
+  (prisma.$queryRaw as jest.Mock).mockResolvedValue([
+    record('old', 'WEIGHT', '2025-12-01', '80'),
+    record('fat', 'BODY_FAT', '2025-12-30', '20'),
+    record('new', 'WEIGHT', '2026-01-02', '79'),
+    record('sleep', 'SLEEP', '2026-01-01', '8'),
+    record('burn', 'TOTAL_CALORIES', '2026-01-01', '2500'),
+    record('future', 'LEAN_MASS', '2026-01-03', '60'),
+  ]);
+  const { days } = await healthService.history('alice', { endDate: '2026-01-03', days: 7 });
+  expect(days[0].metrics.WEIGHT).toMatchObject({
+    id: 'old',
+    value: 80,
+    measurementDate: '2025-12-01',
+    carriedForward: true,
+    observedAt: new Date('2025-12-01T23:00:00Z'),
+    source: 'home_assistant',
+    timestampBasis: 'sensor_state',
+  });
+  expect(days[1].metrics.WEIGHT).toMatchObject({ id: 'new', value: 79, carriedForward: false });
+  expect(days[2].metrics.WEIGHT).toMatchObject({ id: 'new', value: 79, carriedForward: true });
+  expect(days[1].metrics.BODY_FAT).toMatchObject({ id: 'fat', carriedForward: true });
+  expect(days[0].metrics.LEAN_MASS).toBeNull();
+  expect(days[1].metrics.SLEEP).toBeNull();
+  expect(days[1].metrics.TOTAL_CALORIES).toBeNull();
+  expect(days[1].balance).toBeNull();
+});
+
+it('evaluates signed balance ranges without treating missing data as zero', async () => {
+  (nutritionHistory.get as jest.Mock).mockResolvedValue({
+    startDate: '2026-01-01',
+    days: [
+      { date: '2026-01-01', nutrients: { calories: '2100' } },
+      { date: '2026-01-02', nutrients: null },
+    ],
+  });
+  (prisma.$queryRaw as jest.Mock).mockResolvedValue([
+    {
+      id: 'burn',
+      metric: 'TOTAL_CALORIES',
+      date: new Date('2026-01-01'),
+      observedAt: new Date('2026-01-01T23:00:00Z'),
+      value: '2500',
+      source: 'home_assistant',
+      timestampBasis: 'sensor_state',
+    },
+  ]);
+  (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue({
+    calorieBalance: -400,
+    version: 1,
+    semantics: { kind: 'range', upperBound: '-200' },
+  });
+  const result = await healthService.history('alice', { endDate: '2026-01-07', days: 7 });
+  expect(result.days[0].goalEvaluation).toMatchObject({ status: 'within', satisfied: true });
+  expect(result.days[1].goalEvaluation).toMatchObject({ status: 'unknown', satisfied: null });
+  (prisma.healthGoal.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
+  await healthService.saveGoal('alice', { version: 1, calorieBalance: -400 });
+  expect(prisma.healthGoal.updateMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ semantics: { kind: 'range', upperBound: '-200' } }),
+    })
+  );
+});

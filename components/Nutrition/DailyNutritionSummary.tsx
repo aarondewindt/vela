@@ -1,7 +1,10 @@
 'use client';
 
-import { Paper, Progress, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import type { nutritionDiary } from '@/lib/nutrition/diary';
+import { GoalProgress } from '@/components/Goals/GoalProgress';
+import { goalProgressScale } from '@/lib/goals/progress';
+import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
 import { goalKeys } from '@/lib/nutrition/types';
 import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import { NevoAttribution } from './NevoAttribution';
@@ -35,27 +38,32 @@ export function DailyNutritionSummary({
                 <Text fw={700} size="xl" style={{ overflowWrap: 'anywhere' }}>
                   {amount(progress.consumed)}{' '}
                   <Text component="span" size="sm" c="dimmed">
-                    {progress.goal ? `/ ${amount(progress.goal)} ` : ''}
                     {unit}
                   </Text>
                 </Text>
-                {progress.percent !== null ? (
+                <Text size="xs" c="dimmed">
+                  {describeGoal(progress.goal, progress.options)}
+                  {progress.goal !== null ? ` ${unit}` : ''}
+                </Text>
+                {progress.goal !== null && (
                   <>
-                    <Progress
-                      value={progress.percent}
-                      color={progress.exceeded ? 'orange' : 'teal'}
-                      aria-label={`${labels[key]} goal progress`}
+                    <GoalProgress
+                      label={labels[key]}
+                      value={progress.consumed}
+                      target={progress.goal}
+                      options={progress.options}
+                      unit={unit}
                     />
-                    <Text size="xs" c="dimmed">
-                      {progress.exceeded
-                        ? 'Above goal'
-                        : `${amount(progress.remaining!)} ${unit} remaining`}
+                    <Text
+                      size="xs"
+                      c={
+                        goalProgressScale(progress.consumed, progress.goal, progress.options)
+                          ?.color ?? 'dimmed'
+                      }
+                    >
+                      {goalStatusLabels[progress.evaluation.status]}
                     </Text>
                   </>
-                ) : (
-                  <Text size="xs" c="dimmed">
-                    No goal set
-                  </Text>
                 )}
               </Stack>
             </Paper>

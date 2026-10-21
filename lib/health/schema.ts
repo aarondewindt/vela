@@ -1,3 +1,4 @@
+import { goalOptionsSchema, validateGoalBounds } from '@/lib/goals/semantics';
 import { z } from 'zod';
 import { diaryDateSchema } from '@/lib/nutrition/dates';
 export const metricKinds = ['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP', 'TOTAL_CALORIES'] as const;
@@ -16,10 +17,29 @@ export const metricUnits: Record<MetricKind, string> = {
   SLEEP: 'hours',
   TOTAL_CALORIES: 'kcal',
 };
-export const goalSchema = z.object({
-  version: z.number().int().nonnegative(),
-  calorieBalance: z.number().int().min(-10000).max(10000).nullable(),
-});
+export const goalSchema = z
+  .object({
+    semantics: goalOptionsSchema.optional(),
+    version: z.number().int().nonnegative(),
+    calorieBalance: z.number().int().min(-10000).max(10000).nullable(),
+  })
+  .superRefine((input, ctx) => {
+    const options = input.semantics;
+    if (!options) {
+      return;
+    }
+    if (
+      !validateGoalBounds(input.calorieBalance?.toString() ?? null, options) ||
+      (options.kind === 'range' && Math.abs(Number(options.upperBound)) > 10000) ||
+      (options.kind === 'target' && Number(options.tolerance ?? 0) > 20000)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['semantics'],
+        message: 'Use an ordered range within −10000 to 10000 kcal and tolerance up to 20000 kcal.',
+      });
+    }
+  });
 export const mappingSchema = z
   .array(
     z.object({

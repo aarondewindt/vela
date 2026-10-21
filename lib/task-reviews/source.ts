@@ -24,6 +24,7 @@ const taskSelect = {
   earliestStartAt: true,
   isRecurring: true,
   recurrenceRule: true,
+  recurrenceAnchorDate: true,
   recurrenceTz: true,
   leadTimeDays: true,
   updatedAt: true,

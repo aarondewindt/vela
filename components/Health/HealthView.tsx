@@ -20,8 +20,21 @@ import {
   Title,
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
+import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
+import {
+  defaultGoalOptions,
+  describeGoal,
+  goalStatusLabels,
+  type GoalOptions,
+} from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
-import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
+import {
+  goalSchema,
+  metricKinds,
+  metricLabels,
+  metricUnits,
+  type MetricKind,
+} from '@/lib/health/schema';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { dateInTimezone } from '@/lib/nutrition/dates';
 
@@ -29,8 +42,14 @@ const amount = (value: number | null | undefined, unit = '') =>
   value == null
     ? 'Not recorded'
     : `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(value)}${unit ? ` ${unit}` : ''}`;
-function GoalForm({ initial }: { initial: { calorieBalance: number | null; version: number } }) {
+function GoalForm({
+  initial,
+}: {
+  initial: { calorieBalance: number | null; version: number; semantics?: GoalOptions };
+}) {
   const utils = trpc.useUtils();
+  const [options, setOptions] = useState(initial.semantics ?? defaultGoalOptions);
+  const [error, setError] = useState<string | null>(null);
   const [goal, setGoal] = useState<number | string>(initial.calorieBalance ?? '');
   const save = trpc.health.saveGoal.useMutation({
     onSuccess: () => utils.health.history.invalidate(),
@@ -53,15 +72,32 @@ function GoalForm({ initial }: { initial: { calorieBalance: number | null; versi
           value={goal}
           onChange={setGoal}
         />
+        <GoalOptionsFields
+          label="Calorie balance"
+          value={options}
+          onChange={setOptions}
+          disabled={save.isPending}
+        />
+        <Text size="xs" c="dimmed">
+          For a range, use the goal amount as its lower bound. Bounds are inclusive.
+        </Text>
+        {error && <Alert color="red">{error}</Alert>}
         {save.error && <Alert color="red">{save.error.message}</Alert>}
         <Button
           loading={save.isPending}
-          onClick={() =>
-            save.mutate({
+          onClick={() => {
+            const parsed = goalSchema.safeParse({
               calorieBalance: goal === '' ? null : Number(goal),
               version: initial.version,
-            })
-          }
+              semantics: options,
+            });
+            if (!parsed.success) {
+              setError(parsed.error.issues[0].message);
+              return;
+            }
+            setError(null);
+            save.mutate(parsed.data);
+          }}
         >
           Save goal
         </Button>
@@ -143,12 +179,16 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
   const chart =
     data?.days.map((day) => ({
       date: day.date.slice(5),
-      weight: day.metrics.WEIGHT?.value ?? null,
-      lean: day.metrics.LEAN_MASS?.value ?? null,
-      fat: day.metrics.BODY_FAT?.value ?? null,
+      weight: day.metrics.WEIGHT?.carriedForward ? null : (day.metrics.WEIGHT?.value ?? null),
+      lean: day.metrics.LEAN_MASS?.carriedForward ? null : (day.metrics.LEAN_MASS?.value ?? null),
+      fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
       balance: day.balance,
-      goal: data.goal.calorieBalance,
+      goal: (data.goal.semantics?.kind ?? 'target') === 'target' ? data.goal.calorieBalance : null,
+      goalLower:
+        day.goalEvaluation?.lowerBound == null ? null : Number(day.goalEvaluation.lowerBound),
+      goalUpper:
+        day.goalEvaluation?.upperBound == null ? null : Number(day.goalEvaluation.upperBound),
     })) ?? [];
   return (
     <Container size="lg" py="xl">
@@ -161,7 +201,8 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
         </Group>
         <Text c="dimmed">
           Track body composition, sleep and calorie balance. Dates use {timezone}. Gaps mean no data
-          was recorded.
+          was recorded. Body composition cards and the table use the latest known reading; charts
+          show actual readings only.
         </Text>
         {connection.error && (
           <Alert color="red">Could not load connection status: {connection.error.message}</Alert>
@@ -219,13 +260,17 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                       </Text>
                       {record && (
                         <>
+                          {record.carriedForward && (
+                            <Text size="xs">Carried forward from {record.measurementDate}</Text>
+                          )}
                           <Text size="xs" c="dimmed">
                             {record.source === 'manual'
                               ? 'Manual reading'
                               : 'Home Assistant · sensor state time'}{' '}
                             · {record.observedAt.toLocaleString()}
+                            {record.entityId ? ` · ${record.entityId}` : ''}
                           </Text>
-                          {record.source === 'manual' && (
+                          {record.source === 'manual' && !record.carriedForward && (
                             <Button
                               size="compact-xs"
                               variant="subtle"
@@ -255,9 +300,25 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     : `${amount(Math.abs(selected.balance), 'kcal')} ${selected.balance < 0 ? 'deficit' : selected.balance > 0 ? 'surplus' : 'balance'}`}
                 </Text>
                 <Text>
-                  Daily goal: {amount(data.goal.calorieBalance, 'kcal')} · Difference from goal:{' '}
+                  Daily goal:{' '}
+                  {describeGoal(data.goal.calorieBalance?.toString() ?? null, data.goal.semantics)}{' '}
+                  {data.goal.calorieBalance !== null ? 'kcal' : ''} · Difference from goal:{' '}
                   {amount(selected.differenceFromGoal, 'kcal')}
                 </Text>
+                {selected.goalEvaluation && (
+                  <Text
+                    c={
+                      selected.goalEvaluation.satisfied === null
+                        ? 'dimmed'
+                        : selected.goalEvaluation.satisfied
+                          ? 'teal'
+                          : 'orange'
+                    }
+                  >
+                    {goalStatusLabels[selected.goalEvaluation.status]} · provisional comparison of
+                    recorded data
+                  </Text>
+                )}
                 <Text size="sm" c="dimmed">
                   Based on recorded data; missing food or delayed sensor updates make the balance
                   incomplete. Total burn includes basal metabolism. An unfinished day is not a final
@@ -302,7 +363,16 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   unit: ' kcal',
                   series: [
                     { name: 'balance', label: 'Balance', color: 'orange.6' },
-                    { name: 'goal', label: 'Current goal', color: 'gray.6' },
+                    ...((data.goal.semantics?.kind ?? 'target') === 'target'
+                      ? [{ name: 'goal', label: 'Current target', color: 'gray.6' }]
+                      : [
+                          ...(data.goal.semantics.kind !== 'maximum'
+                            ? [{ name: 'goalLower', label: 'Goal lower bound', color: 'gray.6' }]
+                            : []),
+                          ...(data.goal.semantics.kind !== 'minimum'
+                            ? [{ name: 'goalUpper', label: 'Goal upper bound', color: 'gray.6' }]
+                            : []),
+                        ]),
                   ],
                 },
               ].map((item) => (
@@ -326,8 +396,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
             <Table.ScrollContainer minWidth={800}>
               <Table>
                 <Table.Caption>
-                  Latest reading for each day. Sensor times may differ from measurement times; sleep
-                  is grouped by the sensor update date.
+                  Latest known body composition (carried values labeled). Sleep and burn are
+                  date-specific. Sensor times may differ from measurement times; sleep is grouped by
+                  the sensor update date.
                 </Table.Caption>
                 <Table.Thead>
                   <Table.Tr>
@@ -352,6 +423,11 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                       {(['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP'] as const).map((metric) => (
                         <Table.Td key={metric}>
                           {amount(day.metrics[metric]?.value, metricUnits[metric])}
+                          {day.metrics[metric]?.carriedForward && (
+                            <Text size="xs" c="dimmed">
+                              Carried forward from {day.metrics[metric]!.measurementDate}
+                            </Text>
+                          )}
                         </Table.Td>
                       ))}
                       <Table.Td>{amount(day.intake)}</Table.Td>
