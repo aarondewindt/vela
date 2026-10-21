@@ -103,12 +103,31 @@ it('renders separate nutrient goals and ranges, including fiber, while preservin
       days: [{ date: '2026-10-18', nutrients: null }],
     },
   });
-  render(<NutritionHistoryView initialDate="2026-10-18" />);
+  const view = render(<NutritionHistoryView initialDate="2026-10-18" />);
   const charts = screen.getAllByTestId('chart');
   expect(charts).toHaveLength(5);
-  expect(charts[1]).toHaveAttribute('data-lines', expect.stringContaining('Protein target'));
+  for (const chart of charts) {
+    expect(chart.getAttribute('data-lines')).not.toContain('"label"');
+    expect(chart.getAttribute('data-areas')).not.toContain('"label"');
+  }
+  expect(charts[1]).toHaveAttribute('data-lines', expect.stringContaining('green.6'));
   expect(charts[2]).toHaveAttribute('data-lines', '[]');
   expect(charts[3]).toHaveAttribute('data-areas', expect.stringContaining('"y2":70'));
-  expect(charts[4]).toHaveAttribute('data-lines', expect.stringContaining('Fiber minimum'));
+  expect(charts[4]).toHaveAttribute('data-lines', expect.stringContaining('yellow.6'));
   expect(charts[4]).toHaveTextContent('"fiber":null');
+  (trpc.nutrition.getGoals.useQuery as jest.Mock).mockReturnValue({
+    data: {
+      calories: null,
+      protein: null,
+      fat: null,
+      carbohydrates: null,
+      fiber: null,
+      semantics: {},
+    },
+  });
+  view.rerender(<NutritionHistoryView initialDate="2026-10-18" />);
+  for (const chart of screen.getAllByTestId('chart')) {
+    expect(chart).toHaveAttribute('data-lines', '[]');
+    expect(chart).toHaveAttribute('data-areas', '[]');
+  }
 });

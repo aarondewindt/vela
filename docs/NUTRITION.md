@@ -172,15 +172,26 @@ Migration `20261019120000_meal_turn_diagnostics` adds the nullable JSONB field. 
 
 ## Dashboard and chart references (#27/#46/#23 follow-ups)
 
-The authenticated dashboard shows today's live diary summary in the account's
-configured timezone, including fiber and the existing marked goal bars. It links
-to the diary and Settings, and reports loading/failures with retry. Fiber remains
+The authenticated dashboard shows today's intake in the account's configured
+timezone as a compact widget: calories in the header, then four slim horizontal
+rows for protein, carbohydrates, fat and fiber. Each row shows intake, its goal
+and a marked bar, without the diary's individual nutrient cards. The highest goal
+marker starts at 75% of the track; overages expand the scale. Below-goal intake
+is blue, satisfied goals green and excess above an upper bound red. Configured
+minimum/preferred/excellent milestones retain their orange/green/cyan progression.
+Full goal types and milestones remain available in hover text and accessible bar
+labels. Unknown fiber keeps its marker with a neutral empty track and no numerical
+observation, plus an explicit partial-intake note. Unset targets show “No goal”.
+The widget links to the diary and Settings, and reports loading/failures with retry. Fiber remains
 nullable with no default amount; clearing a goal saves no goal. Unknown fiber is
 still distinct from zero.
 
 Nutrition history shows calories and each macro/fiber in separate charts with
 current user-goal reference lines and shaded ranges/tolerance bands, extending the
-axis to include goals. Separate plots keep overlapping nutrient thresholds clear.
+axis to include goals. Geometry has no text labels; yellow denotes minimums,
+green targets/acceptable bands, red maximums and lime excellent milestones. These
+hues are distinct from the data series, with a key outside the plots. Separate
+plots keep overlapping nutrient thresholds clear.
 Missing-day gaps and unknown fiber remain visible; goals apply to all dates.
 
 Semantic food search starts enabled in the product picker and, for new browser

@@ -159,7 +159,10 @@ against the metric's supported limits. Empty amounts mean no goal; no health
 thresholds are prescribed. Current goals apply to every displayed date.
 
 Health history uses Mantine reference lines for targets, bounds and milestones,
-and shaded reference areas for finite ranges/tolerance bands. These remain visible
+and shaded reference areas for finite ranges/tolerance bands. Geometry has no text
+labels. References use semantic hues distinct from the observation series: yellow
+minimum, green target/acceptable band, red maximum and lime excellent. A short
+key appears outside the plots. These remain visible
 when observations are missing and extend the chart domain when needed. Actual
 reading gaps and carried-forward labels retain their existing meaning. Lean mass
 remains an observed series without goals; calculated lean mass is tracked in #67.

@@ -101,4 +101,37 @@ it('shows current metric and signed balance reference bands even with no observa
   expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
   expect(charts[3].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
   expect(charts[0].data[0].weight).toBeNull();
+  for (const chart of charts) {
+    for (const reference of [...chart.referenceLines, ...chart.referenceAreas]) {
+      expect(reference).not.toHaveProperty('label');
+      expect(chart.series.map((series: { color: string }) => series.color)).not.toContain(
+        reference.color
+      );
+    }
+  }
+  expect(charts[1].referenceLines[0].color).toBe('red.6');
+  expect(charts[2].referenceLines[0].color).toBe('yellow.6');
+});
+
+it('removes chart references when health targets are cleared', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.goal = {
+    calorieBalance: 0,
+    semantics: { kind: 'target', tolerance: '100' },
+    metricGoals: { SLEEP: { target: 8, semantics: { kind: 'range', upperBound: '9' } } },
+  };
+  query.mockReturnValue({ data });
+  const view = render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  const charts = LineChart as unknown as jest.Mock;
+  expect(charts.mock.calls.at(-1)[0].referenceAreas).toEqual([
+    expect.objectContaining({ y1: -100, y2: 100 }),
+  ]);
+  data.goal = { calorieBalance: null, metricGoals: {} };
+  query.mockReturnValue({ data });
+  view.rerender(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  for (const [props] of charts.mock.calls.slice(-4)) {
+    expect(props.referenceAreas).toEqual([]);
+    expect(props.referenceLines).toEqual([]);
+  }
 });

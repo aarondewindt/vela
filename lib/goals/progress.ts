@@ -1,11 +1,12 @@
 import { evaluateGoal, type GoalOptions } from './semantics';
 
 // Presentation scale for nonnegative amounts. Evaluation remains decimal-based.
-// Leave 10% beyond the desired upper edge initially, and 5% beyond an overage.
+// The desired upper edge starts at the selected position; overage retains 5% headroom.
 export function goalProgressScale(
   value: string | null,
   target: string | null,
-  options: GoalOptions
+  options: GoalOptions,
+  goalPosition: 0.75 | 0.9 = 0.9
 ) {
   if (value === null) {
     return null;
@@ -33,7 +34,7 @@ export function goalProgressScale(
       ? Number(options.excellent)
       : null;
   const desiredEdge = excellent ?? upper ?? preferred;
-  const maximum = Math.max(desiredEdge / 0.9, current / 0.95);
+  const maximum = Math.max(desiredEdge / goalPosition, current / 0.95);
   const position = (amount: number) => Math.max(0, Math.min(100, (amount / maximum) * 100));
   return {
     maximum,

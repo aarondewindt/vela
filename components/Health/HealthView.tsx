@@ -251,6 +251,10 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 </Anchor>
               </Stack>
             </Paper>
+            <Text size="xs" c="dimmed">
+              Goal references: yellow minimum; green target or acceptable band; red maximum; lime
+              excellent. Current goals apply to all dates.
+            </Text>
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               {[
                 {
@@ -293,13 +297,11 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     {...(item.metric === null
                       ? goalChartReferences(
                           data.goal.calorieBalance?.toString() ?? null,
-                          data.goal.semantics,
-                          'Balance'
+                          data.goal.semantics
                         )
                       : goalChartReferences(
                           data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
-                          data.goal.metricGoals?.[item.metric]?.semantics,
-                          metricLabels[item.metric]
+                          data.goal.metricGoals?.[item.metric]?.semantics
                         ))}
                     unit={item.unit}
                     connectNulls={false}

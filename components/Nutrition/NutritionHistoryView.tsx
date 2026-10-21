@@ -116,7 +116,8 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
           Edit nutrition goals
         </Anchor>
         <Text size="sm" c="dimmed">
-          Reference lines and shaded bands show your current goals for all dates.
+          Reference lines and shaded bands show your current goals for all dates. Yellow: minimum;
+          green: target or acceptable band; red: maximum; lime: excellent.
         </Text>
         {data && (
           <>
@@ -137,8 +138,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                   series={[{ name: 'calories', label: 'Calories', color: 'teal.6' }]}
                   {...goalChartReferences(
                     currentGoals?.calories ?? null,
-                    currentGoals?.semantics.calories,
-                    'Calories'
+                    currentGoals?.semantics.calories
                   )}
                   unit=" kcal"
                   valueFormatter={(value) => formatNutritionAmount(String(value))}
@@ -168,9 +168,7 @@ export function NutritionHistoryView({ initialDate }: { initialDate: string }) {
                     series={[{ name: key, label, color }]}
                     {...goalChartReferences(
                       currentGoals?.[key] ?? null,
-                      currentGoals?.semantics[key],
-                      label,
-                      color
+                      currentGoals?.semantics[key]
                     )}
                     unit=" g"
                     valueFormatter={(value) => formatNutritionAmount(String(value))}
