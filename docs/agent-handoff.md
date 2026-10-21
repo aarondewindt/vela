@@ -7,6 +7,9 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 
 ## Planner meals, AI default and routine review — 2026-10-22
 
+- Review PR: [#72](https://github.com/aarondewindt/vela/pull/72), unmerged.
+  #55/#41 received implementation/evaluation comments; #17 was revised directly
+  to overnight sleep and routine boundaries. All three issues remain open.
 - Dedicated branch `feat/planner-meals-ai-default`, based on master after merged
   PR #65. Implements #55 with opt-in versioned breakfast/lunch/dinner preferences
   on existing PlannerGenerationSettings and unique per-plan DailyBlock.mealKind.
