@@ -119,3 +119,22 @@ it('configures a signed balance range and validates its inclusive bounds', async
     semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
   });
 });
+
+it('shows configured ranges even when every observed balance is unknown and leaves other metrics unshaded', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.goal = {
+    version: 1,
+    calorieBalance: -400,
+    semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
+  };
+  query.mockReturnValue({ data });
+  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
+  for (const chart of charts.slice(0, 3)) {
+    expect(chart.referenceAreas).toBeUndefined();
+  }
+  expect(charts[3].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
+  expect(charts[3].referenceLines.map((line: { y: number }) => line.y)).toEqual([-400, -200, -300]);
+  expect(charts[3].data[0].balance).toBeNull();
+});

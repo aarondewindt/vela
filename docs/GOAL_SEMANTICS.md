@@ -23,9 +23,9 @@ Existing ownership, optimistic versions and diary snapshots remain intact.
 Protein goals with absent options or an exact target without tolerance are converted
 to minimum semantics, retaining their amount and incrementing their version.
 Explicit ranges, maxima, nonzero tolerance bands and existing minimum milestones
-are retained. No preferred/excellent values or dietary bounds are prescribed.
+are retained. No preferred/excellent milestones are prescribed. Accounts without saved Nutrition goals default to a daily fiber minimum of 35 g; existing saved preferences, including null, are retained.
 
-Nutrition settings default new protein/fiber goals to minimum semantics. Other
+Nutrition settings at `/settings/nutrition` default new protein/fiber goals to minimum semantics. Other
 absent options still resolve to exact target semantics. Fat and calorie balance can
 use the shared range controls for minimum, maximum and preferred target. Older
 callers omitting fiber retain its saved amount. Callers omitting options retain saved
@@ -40,6 +40,10 @@ Dynamic calculations, weekly periods, soft/hard limits and effective historical
 goal versions remain future work.
 
 ## UI and interpretation
+
+The Dashboard reuses these bars with a compact 75% desired-edge scale and
+blue/green/red colors for below/within/above bounds. The diary keeps the detailed
+milestone colors and 90% scale described below.
 
 Nutrition uses marked bars for configured positive goals, including fiber. The
 highest desired edge initially sits at 90% of the track. Ranges/tolerances show a

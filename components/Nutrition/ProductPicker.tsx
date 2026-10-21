@@ -14,20 +14,27 @@ export function ProductPicker({
   onChange,
   allowCreate = true,
   showSuggestions = true,
+  relatedByDefault = false,
 }: {
   value: NutritionProduct | null;
   disabled: boolean;
   onChange: (product: NutritionProduct) => void;
   allowCreate?: boolean;
   showSuggestions?: boolean;
+  relatedByDefault?: boolean;
 }) {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState('');
   const [query] = useDebouncedValue(search, 200);
   const [create, setCreate] = useState(false);
-  const [related, setRelated] = useState(false);
+  const [related, setRelated] = useState(relatedByDefault);
   const products = trpc.nutrition.searchProducts.useQuery(
-    { query, semantic: related, limit: 30 },
+    {
+      query,
+      semantic: related,
+      ranking: relatedByDefault ? 'related-first' : 'text-first',
+      limit: 30,
+    },
     { retry: false, refetchOnMount: 'always' }
   );
   const current =

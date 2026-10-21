@@ -14,6 +14,7 @@ import {
   Title,
   useMantineColorScheme,
 } from '@mantine/core';
+import Link from 'next/link';
 import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/auth';
@@ -113,6 +114,18 @@ export function SettingsView() {
         </Stack>
 
         <Divider />
+
+        {user && (
+          <Stack gap="sm">
+            <Title order={4}>Nutrition</Title>
+            <Text size="sm" c="dimmed">
+              Configure daily nutrient goals and their target types.
+            </Text>
+            <Button component={Link} href="/settings/nutrition" variant="default" maw="fit-content">
+              Daily nutrition goals
+            </Button>
+          </Stack>
+        )}
 
         {user && <AiModelSettings />}
 

@@ -68,3 +68,14 @@ it('marks the preferred target separately from the range bounds', () => {
   expect(scale.lower).toBeLessThan(scale.target);
   expect(scale.upper).toBeGreaterThan(scale.target);
 });
+
+it('supports the compact dashboard scale with the desired edge at three quarters', () => {
+  const initial = goalProgressScale('50', '100', { kind: 'minimum' }, 0.75)!;
+  expect(initial.target).toBeCloseTo(75);
+  expect(initial.fill).toBeCloseTo(37.5);
+  const over = goalProgressScale('200', '100', { kind: 'minimum' }, 0.75)!;
+  expect(over.fill).toBeCloseTo(95);
+  expect(over.target).toBeCloseTo(47.5);
+  const range = goalProgressScale('110', '100', { kind: 'range', upperBound: '120' }, 0.75)!;
+  expect(range.upper).toBeCloseTo(75);
+});

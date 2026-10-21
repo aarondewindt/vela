@@ -27,11 +27,11 @@ beforeEach(() => {
     version: 1,
   });
 });
-it('does not prescribe goals for a user without settings', async () => {
+it('defaults fiber to a 35 g minimum for a user without saved settings', async () => {
   (prisma.nutritionGoals.findUnique as jest.Mock).mockResolvedValue(null);
   expect(await nutritionGoals.get('owner')).toEqual({
-    semantics: {},
-    fiber: null,
+    semantics: { fiber: { kind: 'minimum' } },
+    fiber: '35',
     calories: null,
     protein: null,
     carbohydrates: null,
@@ -47,7 +47,8 @@ it('creates only the authenticated owner’s explicit goals', async () => {
   });
   expect(db.nutritionGoals.create).toHaveBeenCalledWith({
     data: {
-      semantics: {},
+      semantics: { fiber: { kind: 'minimum' } },
+      fiber: '35',
       userId: 'owner',
       calories: '2400',
       protein: '160',
@@ -81,7 +82,8 @@ it('persists semantic options with existing amounts and preserves them for legac
       carbohydrates: null,
       fat: null,
       userId: 'owner',
-      semantics,
+      fiber: '35',
+      semantics: { ...semantics, fiber: { kind: 'minimum' } },
     },
   });
   db.nutritionGoals.findUnique.mockResolvedValue({ semantics });
@@ -128,4 +130,26 @@ it('retains saved fiber for old callers and validates new thresholds against it'
   expect(db.nutritionGoals.updateMany).not.toHaveBeenCalled();
   await nutritionGoals.save('owner', { ...input, version: 1 });
   expect(db.nutritionGoals.updateMany.mock.calls[0][0].data).not.toHaveProperty('fiber');
+});
+
+it.each([null, '28', '40'])(
+  'preserves saved fiber preferences including an empty goal: %s',
+  async (fiber) => {
+    (prisma.nutritionGoals.findUnique as jest.Mock).mockResolvedValue({
+      fiber: fiber === null ? null : new Decimal(fiber),
+      semantics: { fiber: { kind: 'maximum' } },
+      version: 3,
+    });
+    expect(await nutritionGoals.get('owner')).toMatchObject({
+      fiber,
+      semantics: { fiber: { kind: 'maximum' } },
+      version: 3,
+    });
+  }
+);
+it('honors an explicitly empty new fiber goal', async () => {
+  await nutritionGoals.save('owner', { ...input, fiber: null });
+  expect(db.nutritionGoals.create).toHaveBeenCalledWith({
+    data: expect.objectContaining({ fiber: null, semantics: {} }),
+  });
 });

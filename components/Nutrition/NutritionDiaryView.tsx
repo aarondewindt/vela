@@ -93,7 +93,7 @@ export function NutritionDiaryView({
             <Button component={Link} href={`/nutrition/history?date=${date}`} variant="light">
               History
             </Button>
-            <Button component={Link} href={`/nutrition/settings?date=${date}`} variant="default">
+            <Button component={Link} href={`/settings/nutrition?date=${date}`} variant="default">
               Daily goals
             </Button>
           </Group>

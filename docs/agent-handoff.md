@@ -2,8 +2,35 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Health, recurrence, goal and shell improvements ready for review; all 30 database migrations applied. Earlier deployment notes retained.
+**Status:** Nutrition/Health usability batch ready for review on `feat/nutrition-health-usability`; all 30 existing database migrations remain applied. This batch adds no migration. Earlier deployment notes retained.
 **Last updated:** 2026-10-21
+
+## Nutrition/Health usability (#44, #46, #27, #23, #21) — 2026-10-21
+
+- Inspected issues, PRs #60/#61 and the subsequent merged fiber/milestone changes
+  before implementation. Fiber tracking, evaluation, settings and history already
+  existed; added only the 35 g minimum default for accounts without saved goals.
+  Existing saved amounts and null preferences are preserved, including legacy saves.
+- Recipe ingredient pickers enable existing related-first hybrid retrieval by
+  default. Exact names/aliases remain first; the existing opt-out and conventional
+  fallback notice remain available. No new model, index or dependency.
+- The previously empty Dashboard now has a three-macro Nutrition widget using the
+  owner-scoped diary query and shared goal bars. Desired edge starts at 75%; overage
+  expands the scale. Blue/green/red reflect below/within/above bounds; minimum
+  overages and maximum undershoots succeed. Saved timezone follows midnight;
+  empty logging, missing goals, loading and retryable failures are explicit.
+- Health calorie-balance charts shade configured goal bounds and mark thresholds
+  independently of observations. Signed/zero targets, tolerance, ranges and open
+  minimum/maximum bounds work. Other metrics have no configured ranges and remain
+  unshaded; no medical ranges are inferred.
+- Goal settings moved to `/settings/nutrition`, linked from Settings/diary/Dashboard.
+  Old URLs redirect while retaining valid diary return dates; one editor remains.
+- Validation: 887 Jest tests across 122 suites, route type generation, TypeScript,
+  Stylelint, changed-file Oxlint/format and whitespace checks passed. Full lint and
+  format checks retain existing failures only in untouched files (22 format files).
+  Next.js runtime diagnostics reported no config/session errors. Browser automation
+  was unavailable; no browser visual check or production build was performed.
+- No migration, existing-account backfill, deployment, app restart or merge.
 
 ## Compact task recurrence settings (#51 follow-up) — 2026-10-21
 

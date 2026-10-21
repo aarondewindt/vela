@@ -7,12 +7,14 @@ export const nutritionGoals = {
   async get(userId: string) {
     const goals = await prisma.nutritionGoals.findUnique({ where: { userId } });
     return {
-      semantics: nutritionGoalOptionsSchema.parse(goals?.semantics ?? {}),
+      semantics: nutritionGoalOptionsSchema.parse(
+        goals ? (goals.semantics ?? {}) : { fiber: { kind: 'minimum' } }
+      ),
       calories: goals?.calories?.toFixed() ?? null,
       protein: goals?.protein?.toFixed() ?? null,
       carbohydrates: goals?.carbohydrates?.toFixed() ?? null,
       fat: goals?.fat?.toFixed() ?? null,
-      fiber: goals?.fiber?.toFixed() ?? null,
+      fiber: goals ? (goals.fiber?.toFixed() ?? null) : '35',
       version: goals?.version ?? 0,
     };
   },
@@ -22,7 +24,14 @@ export const nutritionGoals = {
     return prisma.$transaction(async (db) => {
       const current =
         version === 0 ? null : await db.nutritionGoals.findUnique({ where: { userId } });
+      // Only accounts without saved goals receive the default. Explicit null is a preference.
+      if (version === 0 && amounts.fiber === undefined) {
+        amounts.fiber = '35';
+      }
       const options = semantics ?? nutritionGoalOptionsSchema.parse(current?.semantics ?? {});
+      if (version === 0 && amounts.fiber !== null && options.fiber === undefined) {
+        options.fiber = { kind: 'minimum' };
+      }
       goalsInputSchema.parse({
         ...amounts,
         fiber: amounts.fiber === undefined ? (current?.fiber?.toFixed() ?? null) : amounts.fiber,

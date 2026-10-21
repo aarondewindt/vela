@@ -132,13 +132,18 @@ export function NutritionGoalsView({ returnDate }: { returnDate?: string }) {
       <Stack gap="lg">
         <Group justify="space-between">
           <Title order={2}>Daily nutrition goals</Title>
-          <Button
-            component={Link}
-            href={returnDate ? `/nutrition?date=${returnDate}` : '/nutrition'}
-            variant="default"
-          >
-            Back to diary
-          </Button>
+          <Group gap="xs">
+            <Button component={Link} href="/settings" variant="subtle">
+              Settings
+            </Button>
+            <Button
+              component={Link}
+              href={returnDate ? `/nutrition?date=${returnDate}` : '/nutrition'}
+              variant="default"
+            >
+              Back to diary
+            </Button>
+          </Group>
         </Group>
         <Text c="dimmed">
           Enter your own daily targets. Leave any goal empty to track that nutrient without a

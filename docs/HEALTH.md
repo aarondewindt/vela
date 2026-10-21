@@ -146,3 +146,14 @@ check verified import through the worker, normalization, daily-total deduplicati
 Nutrition balance/goal comparison, manual retries and cross-user isolation; all
 synthetic accounts/data were removed. Real device entities still need setup and
 end-to-end verification by the account owner.
+
+
+## Chart goal references (#23)
+
+The calorie-balance chart shades the currently configured desired range and marks
+its bounds/preferred target with dashed lines. Exact targets (including zero) have
+a line; tolerance bands have an area; minimum/maximum goals shade the desired side
+of their single bound. Reference values extend the chart domain and remain visible
+even when observations are missing. Current goals apply to all displayed dates.
+Other metric charts remain unshaded because they have no configured goal ranges;
+Vela does not infer medical reference ranges from body measurements.

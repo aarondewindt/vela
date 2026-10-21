@@ -42,6 +42,7 @@ function Ingredient({
           disabled={disabled}
           allowCreate={false}
           showSuggestions={false}
+          relatedByDefault
           onChange={(next) => {
             setChosen(next);
             const initial = defaultQuantity(next);

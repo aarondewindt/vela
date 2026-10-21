@@ -66,7 +66,7 @@ Phases 3 and 4 were subsequently authorized and are described below. Phases 5 an
 
 ## Phase 3: related-food search
 
-The catalog offers **Fuzzy search**, which includes related foods using embeddings and remembers its on/off choice in this browser between visits and reloads. Archived products always use conventional search without changing that saved choice. The manual food picker offers **Include related foods**. Conventional search remains the default and works without Ollama. Hybrid search ranks exact normalized names, exact aliases and other literal text matches before semantic-only alternatives, deduplicates by product ID and returns up to 50 candidates. Related foods are suggestions requiring selection; cosine scores are retrieval metadata, not confidence probabilities. Expected provider/configuration failures return conventional matches with a visible fallback notice. Unexpected storage failures remain errors.
+The catalog offers **Fuzzy search**, which includes related foods using embeddings and remembers its on/off choice in this browser between visits and reloads. Archived products always use conventional search without changing that saved choice. The manual food picker offers **Include related foods**. Conventional search remains the diary picker default and works without Ollama; recipe ingredient pickers enable related-first search by default. Hybrid search ranks exact normalized names, exact aliases and other literal text matches before semantic-only alternatives, deduplicates by product ID and returns up to 50 candidates. Related foods are suggestions requiring selection; cosine scores are retrieval metadata, not confidence probabilities. Expected provider/configuration failures return conventional matches with a visible fallback notice. Unexpected storage failures remain errors.
 
 `lib/nutrition/product-embedding-*` binds `nutrition.products.semantic` to the dedicated `product_embeddings` table. Versioned text includes normalized food name, brand, description and sorted aliases, excluding nutrition/conversion/provenance numbers. A dedicated `searchUpdatedAt` changes only when that text changes, so nutrient/serving edits keep vectors usable. Owner/archive/freshness filters run before vector ranking. Archiving deletes its vector in the product transaction; physical deletion cascades; restoration queues indexing. Shared collection leases, digest/dimension validation, exact cosine search and atomic replacement are reused. Maintainer authorization is shared with task search; task behavior remains unchanged.
 
@@ -92,7 +92,7 @@ On the diary, choose **Describe a meal** and describe foods/amounts. **Use setti
 
 Review the selected foods, quantities, units, meal and date. A unique exact name or alias may select a product automatically; multiple exact matches and partial/semantic alternatives require selection. Missing amounts remain blank. Household names, aliases and common plurals resolve only through that product's configured servings; unknown conversions remain unresolved. Candidate buttons and **Edit draft food** allow explicit choice, unit/quantity edits and inline manual product creation. Foods can be added/removed manually. Save date/meal changes explicitly. Nutrition is computed by the same deterministic snapshot utilities as ordinary logging; previews label estimated conversions and total only resolved foods.
 
-When there is no exact name or alias, draft suggestions prioritize embedding-based related foods over partial text matches. The search merges and deduplicates both result pools before limiting to five suggestions, so alphabetically early products containing “rice” cannot crowd out the related-food results. Catalog and manual picker ranking stays text-first. A unique exact match still resolves without embedding inference; unavailable related-food search falls back to text matches with a notice beside the unresolved draft food. Each embedding search has a 12-second timeout within the draft's overall deadline. No additional food-search model or autonomous agent is used.
+When there is no exact name or alias, draft suggestions prioritize embedding-based related foods over partial text matches. The search merges and deduplicates both result pools before limiting to five suggestions, so alphabetically early products containing “rice” cannot crowd out the related-food results. Catalog and diary picker ranking stays text-first. Recipe ingredient pickers enable related-food search and related-first ranking by default, retain exact names/aliases first, and allow opting out. They reuse the same search service, timeout and visible conventional fallback. A unique exact match still resolves without embedding inference; unavailable related-food search falls back to text matches with a notice beside the unresolved draft food. Each embedding search has a 12-second timeout within the draft's overall deadline. No additional food-search model or autonomous agent is used.
 
 The model emits validated `addItem`, `removeItem`, `setQuantity`, `changeProduct`, `changeMealCategory` and `changeDate` operations, never database writes or nutrient values. Stable application-generated item IDs survive corrections. Invalid IDs, malformed output or invalid operation batches preserve the existing draft. Application services apply the complete batch after model/matching work, with a revision/token check. Date interpretation receives the saved timezone, authoritative today/yesterday, selected draft date, recent messages and current item IDs. Ambiguous dates/questions remain visible for explicit acknowledgement; unresolved foods/quantities always block confirmation.
 
@@ -168,3 +168,23 @@ The recipe name input includes a sparkle ActionIcon to **Autofill recipe details
 Each saved meal message has a **Show debug details** control. New attempts retain bounded model output, error/validation causes, model attribution, finish reason, elapsed time and generation limits in the owner-scoped draft turn. This includes successful responses. Raw output is limited to 20,000 characters, with an explicit truncation marker; error chains retain up to four bounded messages. SDK request objects, headers and connection configuration are excluded. Diagnostics are private meal data and are deleted with the draft. Retrying replaces the prior attempt's diagnostics, and stale generations cannot overwrite a newer attempt. Older messages and interrupted attempts may have no captured output.
 
 Migration `20261019120000_meal_turn_diagnostics` adds the nullable JSONB field. A live `qwen3:8b` check reproduced quoted `"null"` for an unknown hummus quantity; explicit JSON-null guidance and a worked example produced schema-valid output while preserving the missing-amount clarification. Validation continues to reject invalid model output.
+
+
+## Dashboard and goal settings (#27, #21, #46)
+
+The Dashboard shows today's protein, carbohydrate and fat progress through the same
+owner-scoped diary query. Its three compact bars mark the highest desired edge at
+75% initially and expand with headroom for overages. Blue means below a required
+lower bound, green means within the desired bounds (including above a minimum or
+below a maximum), and red means above an upper bound. Text retains the shared
+milestone statuses; the diary retains its more detailed milestone colors. Empty
+logging is labeled and missing goals are shown without invented progress. The date
+follows the saved timezone, including midnight while the dashboard remains open.
+
+Daily nutrient configuration now lives at `/settings/nutrition`, linked from Settings,
+the diary and Dashboard. The old `/nutrition/settings` URL redirects and preserves
+valid return dates. There is one shared configuration form and no duplicate editor.
+Accounts without saved goal settings receive a 35 g daily fiber minimum; an omitted
+fiber on first save receives the same default. Every existing saved fiber preference,
+including null (disabled), remains unchanged. Explicitly clearing a new goal also
+persists null. No migration or existing-account backfill is required.

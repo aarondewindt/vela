@@ -11,14 +11,16 @@ export function GoalProgress({
   target,
   options,
   unit,
+  compact = false,
 }: {
   label: string;
   value: string | null;
   target: string | null;
   options: GoalOptions;
   unit: string;
+  compact?: boolean;
 }) {
-  const scale = goalProgressScale(value, target, options);
+  const scale = goalProgressScale(value, target, options, compact ? 0.75 : 0.9);
   if (!scale) {
     return null;
   }
@@ -28,7 +30,15 @@ export function GoalProgress({
       <Progress.Root size="md">
         <Progress.Section
           value={scale.fill}
-          color={scale.color}
+          color={
+            compact
+              ? scale.status === 'below'
+                ? 'blue'
+                : scale.status === 'above'
+                  ? 'red'
+                  : 'green'
+              : scale.color
+          }
           withAria={false}
           role="progressbar"
           aria-label={`${label} goal progress`}

@@ -20,6 +20,7 @@ import {
   Title,
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
+import { goalChartReferences } from '@/lib/goals/chart-reference';
 import { GoalOptionsFields } from '@/components/Goals/GoalOptionsFields';
 import {
   defaultGoalOptions,
@@ -185,18 +186,6 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
       fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
       balance: day.balance,
-      goal:
-        data.goal.semantics?.kind === 'range'
-          ? data.goal.semantics.preferredTarget === undefined
-            ? null
-            : Number(data.goal.semantics.preferredTarget)
-          : (data.goal.semantics?.kind ?? 'target') === 'target'
-            ? data.goal.calorieBalance
-            : null,
-      goalLower:
-        day.goalEvaluation?.lowerBound == null ? null : Number(day.goalEvaluation.lowerBound),
-      goalUpper:
-        day.goalEvaluation?.upperBound == null ? null : Number(day.goalEvaluation.upperBound),
     })) ?? [];
   return (
     <Container size="lg" py="xl">
@@ -361,30 +350,27 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 {
                   title: 'Calorie balance',
                   unit: ' kcal',
-                  series: [
-                    ...(data.goal.semantics?.kind === 'range' &&
-                    data.goal.semantics.preferredTarget !== undefined
-                      ? [{ name: 'goal', label: 'Preferred target', color: 'green.6' }]
-                      : []),
-                    { name: 'balance', label: 'Balance', color: 'orange.6' },
-                    ...((data.goal.semantics?.kind ?? 'target') === 'target'
-                      ? [{ name: 'goal', label: 'Current target', color: 'gray.6' }]
-                      : [
-                          ...(data.goal.semantics.kind !== 'maximum'
-                            ? [{ name: 'goalLower', label: 'Goal lower bound', color: 'gray.6' }]
-                            : []),
-                          ...(data.goal.semantics.kind !== 'minimum'
-                            ? [{ name: 'goalUpper', label: 'Goal upper bound', color: 'gray.6' }]
-                            : []),
-                        ]),
-                  ],
+                  series: [{ name: 'balance', label: 'Balance', color: 'orange.6' }],
                 },
               ].map((item) => (
                 <Paper withBorder p="md" key={item.title}>
                   <Title order={3} mb="md">
                     {item.title}
                   </Title>
+                  {item.title === 'Calorie balance' && data.goal.calorieBalance !== null && (
+                    <Text size="xs" c="dimmed" mb="sm">
+                      Current goal:{' '}
+                      {describeGoal(data.goal.calorieBalance.toString(), data.goal.semantics)} kcal.
+                      Dashed lines mark thresholds; green shading shows any desired range.
+                    </Text>
+                  )}
                   <LineChart
+                    {...(item.title === 'Calorie balance'
+                      ? goalChartReferences(
+                          data.goal.calorieBalance?.toString() ?? null,
+                          data.goal.semantics ?? defaultGoalOptions
+                        )
+                      : {})}
                     h={220}
                     data={chart}
                     dataKey="date"

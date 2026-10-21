@@ -5,7 +5,8 @@ import { evaluateGoal, type GoalOptions } from './semantics';
 export function goalProgressScale(
   value: string | null,
   target: string | null,
-  options: GoalOptions
+  options: GoalOptions,
+  desiredPosition = 0.9
 ) {
   if (value === null) {
     return null;
@@ -33,7 +34,7 @@ export function goalProgressScale(
       ? Number(options.excellent)
       : null;
   const desiredEdge = excellent ?? upper ?? preferred;
-  const maximum = Math.max(desiredEdge / 0.9, current / 0.95);
+  const maximum = Math.max(desiredEdge / desiredPosition, current / 0.95);
   const position = (amount: number) => Math.max(0, Math.min(100, (amount / maximum) * 100));
   return {
     maximum,
