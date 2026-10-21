@@ -7,7 +7,7 @@ import type { PlanningCategoryValue, TaskRow } from './tasks';
 import { taskPatchSchema } from './record-schema';
 import type { z } from 'zod';
 import type { ViewConfig } from '@/lib/views/types';
-import { recurrenceMatchesDate } from './recurrence';
+import { recurrenceMatchesDate, recurrenceStartDate } from './recurrence';
 import {
   classifyCandidate,
   DEFAULT_GENERATOR_OPTIONS,
@@ -245,10 +245,10 @@ async function materializeRecurringOccurrences(userId: string, planDate: Date) {
       recurrenceRule: { not: null },
       status: { notIn: ['DONE', 'ARCHIVED', 'PAUSED'] },
     },
-    select: { id: true, recurrenceRule: true, createdAt: true },
+    select: { id: true, recurrenceRule: true, recurrenceAnchorDate: true, createdAt: true },
   });
   const data = tasks.flatMap((task) => {
-    const start = new Date(task.createdAt.toISOString().slice(0, 10));
+    const start = recurrenceStartDate(task);
     return Array.from(
       { length: 8 },
       (_, offset) => new Date(planDate.getTime() + offset * 86_400_000)
@@ -314,6 +314,7 @@ export const plannerService = {
       leadTimeDays: task.leadTimeDays,
       isRecurring: task.isRecurring,
       recurrenceRule: task.recurrenceRule,
+      recurrenceAnchorDate: task.recurrenceAnchorDate,
       recurrenceTz: task.recurrenceTz,
       themeId: task.themeId,
       category: task.category,
@@ -337,12 +338,16 @@ export const plannerService = {
   async updateTask(userId: string, id: string, patch: TaskPatch, tx?: Prisma.TransactionClient) {
     await assertOwnsTheme(userId, patch.themeId, tx);
     const { dueDate, recurrence, ...rest } = taskPatchSchema.parse(patch);
+    const { recurrenceAnchorDate, ...recurrenceFields } = recurrence ?? {};
     const apply = async (transaction: Prisma.TransactionClient) => {
       const result = await transaction.task.updateMany({
         where: { id, userId },
         data: {
           ...rest,
-          ...recurrence,
+          ...recurrenceFields,
+          ...(recurrenceAnchorDate !== undefined && {
+            recurrenceAnchorDate: toDate(recurrenceAnchorDate),
+          }),
           ...(dueDate !== undefined && { dueDate: toDate(dueDate) }),
         },
       });

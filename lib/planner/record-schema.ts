@@ -6,6 +6,7 @@ export const taskRecurrenceSchema = z
   .object({
     isRecurring: z.boolean(),
     recurrenceRule: z.string().trim().max(500).nullable(),
+    recurrenceAnchorDate: z.iso.date().nullable().optional(),
     recurrenceTz: z
       .string()
       .trim()

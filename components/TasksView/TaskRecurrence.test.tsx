@@ -12,6 +12,8 @@ jest.mock('@/lib/planner/query', () => ({ useUpdateTaskMutation: jest.fn() }));
 const mutate = jest.fn();
 const task = {
   id: 'task',
+  createdAt: new Date('2026-01-01T23:00:00Z'),
+  recurrenceAnchorDate: null,
   isRecurring: true,
   recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO,WE',
   recurrenceTz: 'Europe/Amsterdam',
@@ -42,6 +44,7 @@ it('shows existing settings, validates and saves all recurrence fields together'
     patch: {
       recurrence: {
         isRecurring: true,
+        recurrenceAnchorDate: '2026-01-01',
         recurrenceRule: 'FREQ=DAILY;INTERVAL=2',
         recurrenceTz: 'Europe/Amsterdam',
       },
@@ -58,6 +61,7 @@ it('can disable recurrence while preserving the rule and shows mutation errors',
     patch: {
       recurrence: {
         isRecurring: false,
+        recurrenceAnchorDate: '2026-01-01',
         recurrenceRule: task.recurrenceRule,
         recurrenceTz: task.recurrenceTz,
       },
@@ -86,6 +90,7 @@ it('defaults an unset timezone to the user preference without saving until reque
       patch: {
         recurrence: {
           isRecurring: true,
+          recurrenceAnchorDate: '2026-01-01',
           recurrenceRule: task.recurrenceRule,
           recurrenceTz: 'Pacific/Auckland',
         },
@@ -111,7 +116,12 @@ it('uses a preference loaded later without overwriting an explicit edit or clear
   expect(mutate).toHaveBeenCalledWith(
     expect.objectContaining({
       patch: {
-        recurrence: { isRecurring: true, recurrenceRule: task.recurrenceRule, recurrenceTz: null },
+        recurrence: {
+          recurrenceAnchorDate: '2026-01-01',
+          isRecurring: true,
+          recurrenceRule: task.recurrenceRule,
+          recurrenceTz: null,
+        },
       },
     })
   );
@@ -132,8 +142,45 @@ it('lets a manual timezone survive preference loading and provides a retry on fa
   expect(mutate).toHaveBeenCalledWith(
     expect.objectContaining({
       patch: {
-        recurrence: { isRecurring: true, recurrenceRule: task.recurrenceRule, recurrenceTz: 'UTC' },
+        recurrence: {
+          recurrenceAnchorDate: '2026-01-01',
+          isRecurring: true,
+          recurrenceRule: task.recurrenceRule,
+          recurrenceTz: 'UTC',
+        },
       },
     })
   );
+});
+
+it('shows and edits an explicit anchor independently of task creation and can restore the fallback', () => {
+  render(<TaskRecurrence task={{ ...task, recurrenceAnchorDate: new Date('2026-02-02') }} />);
+  const anchor = screen.getByLabelText('Recurrence anchor date');
+  expect(anchor).toHaveValue('2026-02-02');
+  fireEvent.change(anchor, { target: { value: '2026-03-03' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
+  expect(mutate).toHaveBeenLastCalledWith({
+    id: task.id,
+    patch: {
+      recurrence: {
+        isRecurring: true,
+        recurrenceRule: task.recurrenceRule,
+        recurrenceTz: task.recurrenceTz,
+        recurrenceAnchorDate: '2026-03-03',
+      },
+    },
+  });
+  fireEvent.change(anchor, { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
+  expect(mutate).toHaveBeenLastCalledWith({
+    id: task.id,
+    patch: {
+      recurrence: {
+        isRecurring: true,
+        recurrenceRule: task.recurrenceRule,
+        recurrenceTz: task.recurrenceTz,
+        recurrenceAnchorDate: null,
+      },
+    },
+  });
 });

@@ -10,6 +10,9 @@ import type { TaskRow } from '@/lib/planner/tasks';
 export function TaskRecurrence({ task }: { task: TaskRow }) {
   const [enabled, setEnabled] = useState(task.isRecurring ?? false);
   const [rule, setRule] = useState(task.recurrenceRule ?? 'FREQ=DAILY');
+  const [anchorDate, setAnchorDate] = useState(
+    (task.recurrenceAnchorDate ?? task.createdAt).toISOString().slice(0, 10)
+  );
   const preferences = trpc.settings.getPreferences.useQuery(undefined, {
     enabled: task.recurrenceTz == null,
   });
@@ -34,6 +37,14 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
         onChange={(event) => setRule(event.currentTarget.value)}
       />
       <TextInput
+        type="date"
+        label="Recurrence anchor date"
+        value={anchorDate}
+        disabled={update.isPending}
+        description="Start date for the recurrence cycle. Leave empty to use the task creation date."
+        onChange={(event) => setAnchorDate(event.currentTarget.value)}
+      />
+      <TextInput
         label="Recurrence timezone"
         value={timezone}
         disabled={update.isPending}
@@ -41,9 +52,10 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
         onChange={(event) => setTimezone(event.currentTarget.value)}
       />
       <Text size="xs" c="dimmed">
-        Recurrence uses calendar dates anchored to the task creation date. The timezone is stored as
-        metadata; the current scheduler does not shift occurrences by timezone. Changes apply to
-        newly generated occurrences; existing occurrences and plans are kept.
+        Recurrence uses calendar dates anchored to the selected date, or the task creation date when
+        unset. The timezone is stored as metadata; the current scheduler does not shift occurrences
+        by timezone. Changes apply to newly generated occurrences; existing occurrences and plans
+        are kept.
       </Text>
       {preferences.error && timezoneOverride === null && (
         <Alert color="red">
@@ -64,6 +76,7 @@ export function TaskRecurrence({ task }: { task: TaskRow }) {
           const parsed = taskRecurrenceSchema.safeParse({
             isRecurring: enabled,
             recurrenceRule: rule.trim() || null,
+            recurrenceAnchorDate: anchorDate || null,
             recurrenceTz: timezone.trim() || null,
           });
           if (!parsed.success) {

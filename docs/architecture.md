@@ -44,6 +44,12 @@ Next.js pages and Mantine components
 - `store/` contains Zustand UI stores. Use tRPC/TanStack Query for persistent server state rather than copying it into these stores. See [FRONTEND_API.md](FRONTEND_API.md) for the state ownership rules.
 - Jest tests are colocated with relevant components and services. `test-utils/` contains shared render helpers.
 
+Task recurrence stores an optional calendar `recurrenceAnchorDate`. Both legacy
+occurrence materialization and proposal eligibility resolve it through
+`lib/planner/recurrence.ts`, falling back to the original UTC creation date for
+existing tasks. TaskView edits the anchor through the owner-scoped task service;
+existing occurrences and plans are retained when recurrence settings change.
+
 ## Scheduler replacement policy
 
 The current generator remains available. The replacement scheduler policy under

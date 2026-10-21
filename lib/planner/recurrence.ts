@@ -61,3 +61,12 @@ export function recurrenceMatchesDate(rule: string, start: Date, date: Date): bo
     date.getUTCDate() === start.getUTCDate()
   );
 }
+
+// Preserve the historical UTC calendar-date anchor when no explicit date is set.
+export function recurrenceStartDate(task: {
+  createdAt: Date;
+  recurrenceAnchorDate?: Date | null;
+}): Date {
+  const anchor = task.recurrenceAnchorDate ?? task.createdAt;
+  return new Date(`${anchor.toISOString().slice(0, 10)}T00:00:00Z`);
+}

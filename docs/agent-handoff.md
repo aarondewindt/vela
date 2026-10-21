@@ -2,7 +2,7 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Health, recurrence, goal and shell improvements ready for review; all 28 database migrations applied. Earlier deployment notes retained.
+**Status:** Health, recurrence, goal and shell improvements ready for review; all 29 database migrations applied. Earlier deployment notes retained.
 **Last updated:** 2026-10-21
 
 ## Health, recurrence, goals and shell (#48/#51/#47/#9/#5) — 2026-10-21
@@ -12,15 +12,15 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   entity/timestamp/identity and explicit carried labels. Charts show actual samples;
   sleep, daily burn and missing balances remain date-specific/unknown.
 - TaskView exposes recurrence rule, enabled flag, timezone metadata and lead time.
-  Rule validation reuses the scheduler's supported subset. Calendar recurrence is
-  still anchored to task creation; timezone is stored but not interpreted by the
+  Rule validation reuses the scheduler's supported subset. Calendar recurrence
+  supports an editable anchor date with task creation as the fallback; timezone is stored but not interpreted by the
   scheduler. Changing/disabling recurrence retains existing occurrences and plans.
   Conversational recurrence edits remain excluded from the interpreter schema.
 - Shared goal evaluator and controls support minimum, maximum, target/tolerance and
   range semantics. Existing amounts retain exact target semantics until configured.
   See [goal semantics](GOAL_SEMANTICS.md) for compatibility and follow-up scope.
 - Planner conversation and goal semantics migrations were subsequently applied to
-  the local app database after a verified private backup. All 28 migrations are
+  the local app database after a verified private backup. All 29 migrations are
   applied; Prisma Client regenerated. No application process was restarted.
 - A follow-up aligns `TaskIndexJob` with its existing SQL: keep the trigger-required
   `updatedAt` database default alongside Prisma `@updatedAt`, and declare the existing
@@ -44,6 +44,14 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
   to PR #61 for review. No new migration is required for these UI follow-ups.
   Validation: all 825 tests (115 suites), TypeScript, Stylelint, scoped Oxlint/format
   and diff whitespace checks passed.
+- Recurrence anchor follow-up: TaskView exposes a calendar anchor date; clearing it
+  restores the UTC creation-date fallback. Legacy generation and proposal validation
+  share the same resolver; task-review sources include the anchor. Existing
+  occurrences/plans are retained. Migration `20261021220000_task_recurrence_anchor`
+  adds a nullable DATE column without rewriting existing task dates. It was applied
+  after a fresh verified backup; the live database-to-schema diff is empty.
+  Latest validation: all 839 tests (116 suites), TypeScript, Prisma validation,
+  scoped lint/format and whitespace checks passed.
 - Dynamic goals, non-daily periods, fiber goals and recurrence occurrence reconciliation
   are follow-ups. No deployment/restart or automatic merge is part of this batch.
 

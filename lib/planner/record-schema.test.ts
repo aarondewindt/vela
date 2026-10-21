@@ -43,3 +43,17 @@ it('allows disabling a legacy rule without erasing it, but rejects invalid timez
     }).success
   ).toBe(false);
 });
+
+it('validates optional calendar anchors without breaking existing recurrence callers', () => {
+  const recurrence = { isRecurring: true, recurrenceRule: 'FREQ=DAILY', recurrenceTz: null };
+  expect(taskRecurrenceSchema.parse(recurrence)).not.toHaveProperty('recurrenceAnchorDate');
+  expect(
+    taskRecurrenceSchema.parse({ ...recurrence, recurrenceAnchorDate: null }).recurrenceAnchorDate
+  ).toBeNull();
+  expect(
+    taskRecurrenceSchema.safeParse({ ...recurrence, recurrenceAnchorDate: '2026-02-29' }).success
+  ).toBe(false);
+  expect(
+    taskRecurrenceSchema.safeParse({ ...recurrence, recurrenceAnchorDate: '2028-02-29' }).success
+  ).toBe(true);
+});
