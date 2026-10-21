@@ -79,7 +79,8 @@ function GoalForm({
           disabled={save.isPending}
         />
         <Text size="xs" c="dimmed">
-          For a range, use the goal amount as its lower bound. Bounds are inclusive.
+          For a range, use the goal amount as its minimum, then set the maximum and optional
+          preferred target. Bounds are inclusive.
         </Text>
         {error && <Alert color="red">{error}</Alert>}
         {save.error && <Alert color="red">{save.error.message}</Alert>}
@@ -184,7 +185,14 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
       fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
       balance: day.balance,
-      goal: (data.goal.semantics?.kind ?? 'target') === 'target' ? data.goal.calorieBalance : null,
+      goal:
+        data.goal.semantics?.kind === 'range'
+          ? data.goal.semantics.preferredTarget === undefined
+            ? null
+            : Number(data.goal.semantics.preferredTarget)
+          : (data.goal.semantics?.kind ?? 'target') === 'target'
+            ? data.goal.calorieBalance
+            : null,
       goalLower:
         day.goalEvaluation?.lowerBound == null ? null : Number(day.goalEvaluation.lowerBound),
       goalUpper:
@@ -306,15 +314,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   {amount(selected.differenceFromGoal, 'kcal')}
                 </Text>
                 {selected.goalEvaluation && (
-                  <Text
-                    c={
-                      selected.goalEvaluation.satisfied === null
-                        ? 'dimmed'
-                        : selected.goalEvaluation.satisfied
-                          ? 'teal'
-                          : 'orange'
-                    }
-                  >
+                  <Text c={selected.goalEvaluation.color}>
                     {goalStatusLabels[selected.goalEvaluation.status]} · provisional comparison of
                     recorded data
                   </Text>
@@ -362,6 +362,10 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   title: 'Calorie balance',
                   unit: ' kcal',
                   series: [
+                    ...(data.goal.semantics?.kind === 'range' &&
+                    data.goal.semantics.preferredTarget !== undefined
+                      ? [{ name: 'goal', label: 'Preferred target', color: 'green.6' }]
+                      : []),
                     { name: 'balance', label: 'Balance', color: 'orange.6' },
                     ...((data.goal.semantics?.kind ?? 'target') === 'target'
                       ? [{ name: 'goal', label: 'Current target', color: 'gray.6' }]

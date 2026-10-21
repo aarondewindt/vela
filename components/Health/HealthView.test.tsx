@@ -108,10 +108,14 @@ it('configures a signed balance range and validates its inclusive bounds', async
   expect(save).not.toHaveBeenCalled();
   await user.clear(upper);
   await user.type(upper, '-200');
+  await user.type(
+    screen.getByRole('textbox', { name: 'Calorie balance preferred target' }),
+    '-300'
+  );
   await user.click(screen.getByRole('button', { name: 'Save goal' }));
   expect(save).toHaveBeenCalledWith({
     version: 0,
     calorieBalance: -400,
-    semantics: { kind: 'range', upperBound: '-200' },
+    semantics: { kind: 'range', upperBound: '-200', preferredTarget: '-300' },
   });
 });

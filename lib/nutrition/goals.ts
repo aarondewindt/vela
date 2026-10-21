@@ -12,6 +12,7 @@ export const nutritionGoals = {
       protein: goals?.protein?.toFixed() ?? null,
       carbohydrates: goals?.carbohydrates?.toFixed() ?? null,
       fat: goals?.fat?.toFixed() ?? null,
+      fiber: goals?.fiber?.toFixed() ?? null,
       version: goals?.version ?? 0,
     };
   },
@@ -19,13 +20,15 @@ export const nutritionGoals = {
   async save(userId: string, rawInput: GoalsInput) {
     const { version, semantics, ...amounts } = goalsInputSchema.parse(rawInput);
     return prisma.$transaction(async (db) => {
-      const options =
-        semantics ??
-        nutritionGoalOptionsSchema.parse(
-          (version === 0 ? null : await db.nutritionGoals.findUnique({ where: { userId } }))
-            ?.semantics ?? {}
-        );
-      goalsInputSchema.parse({ ...amounts, version, semantics: options });
+      const current =
+        version === 0 ? null : await db.nutritionGoals.findUnique({ where: { userId } });
+      const options = semantics ?? nutritionGoalOptionsSchema.parse(current?.semantics ?? {});
+      goalsInputSchema.parse({
+        ...amounts,
+        fiber: amounts.fiber === undefined ? (current?.fiber?.toFixed() ?? null) : amounts.fiber,
+        version,
+        semantics: options,
+      });
       const data = { ...amounts, semantics: options };
       if (version === 0) {
         try {
@@ -58,6 +61,7 @@ export const nutritionGoals = {
         protein: saved.protein?.toFixed() ?? null,
         carbohydrates: saved.carbohydrates?.toFixed() ?? null,
         fat: saved.fat?.toFixed() ?? null,
+        fiber: saved.fiber?.toFixed() ?? null,
         version: saved.version,
       };
     });

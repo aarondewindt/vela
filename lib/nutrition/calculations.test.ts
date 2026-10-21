@@ -1,5 +1,9 @@
 /** @jest-environment node */
-import { calculateNutrition, NutritionCalculationError } from './calculations';
+import {
+  calculateNutrition,
+  nutritionGoalProgress,
+  NutritionCalculationError,
+} from './calculations';
 import type { NutritionDefinition } from './types';
 
 export const peanutButter: NutritionDefinition = {
@@ -149,4 +153,27 @@ it('rejects unknown servings, a zero reference, overflow and underflow', () => {
       { quantity: '0.00000001', unit: 'ML' }
     )
   ).toThrow('too small');
+});
+
+it('keeps unknown fiber progress unknown and evaluates known fiber milestones', () => {
+  const goals = {
+    calories: null,
+    protein: null,
+    carbohydrates: null,
+    fat: null,
+    fiber: '25',
+    semantics: { fiber: { kind: 'minimum' as const, preferredTarget: '30', excellent: '40' } },
+  };
+  const totals = { calories: '0', protein: '0', carbohydrates: '0', fat: '0', fiber: null };
+  expect(nutritionGoalProgress(totals, goals).fiber).toMatchObject({
+    consumed: null,
+    percent: null,
+    remaining: null,
+    evaluation: { status: 'unknown' },
+  });
+  expect(nutritionGoalProgress({ ...totals, fiber: '40' }, goals).fiber.evaluation).toMatchObject({
+    status: 'excellent',
+    color: 'cyan',
+    satisfied: true,
+  });
 });

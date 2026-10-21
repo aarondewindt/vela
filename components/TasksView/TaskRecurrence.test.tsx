@@ -39,34 +39,40 @@ it('shows existing settings, validates and saves all recurrence fields together'
   expect(mutate).not.toHaveBeenCalled();
   fireEvent.change(rule, { target: { value: 'FREQ=DAILY;INTERVAL=2' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
-  expect(mutate).toHaveBeenCalledWith({
-    id: task.id,
-    patch: {
-      recurrence: {
-        isRecurring: true,
-        recurrenceAnchorDate: '2026-01-01',
-        recurrenceRule: 'FREQ=DAILY;INTERVAL=2',
-        recurrenceTz: 'Europe/Amsterdam',
+  expect(mutate).toHaveBeenCalledWith(
+    {
+      id: task.id,
+      patch: {
+        recurrence: {
+          isRecurring: true,
+          recurrenceAnchorDate: '2026-01-01',
+          recurrenceRule: 'FREQ=DAILY;INTERVAL=2',
+          recurrenceTz: 'Europe/Amsterdam',
+        },
       },
     },
-  });
+    expect.objectContaining({ onSuccess: expect.any(Function) })
+  );
 });
 it('can disable recurrence while preserving the rule and shows mutation errors', () => {
   (useUpdateTaskMutation as jest.Mock).mockReturnValue({ mutate, error: new Error('Save failed') });
   render(<TaskRecurrence task={task} />);
   fireEvent.click(screen.getByRole('switch', { name: 'Recurring task' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
-  expect(mutate).toHaveBeenCalledWith({
-    id: task.id,
-    patch: {
-      recurrence: {
-        isRecurring: false,
-        recurrenceAnchorDate: '2026-01-01',
-        recurrenceRule: task.recurrenceRule,
-        recurrenceTz: task.recurrenceTz,
+  expect(mutate).toHaveBeenCalledWith(
+    {
+      id: task.id,
+      patch: {
+        recurrence: {
+          isRecurring: false,
+          recurrenceAnchorDate: '2026-01-01',
+          recurrenceRule: task.recurrenceRule,
+          recurrenceTz: task.recurrenceTz,
+        },
       },
     },
-  });
+    expect.objectContaining({ onSuccess: expect.any(Function) })
+  );
   expect(screen.getByRole('alert')).toHaveTextContent('Save failed');
 });
 it('prevents editing or resubmission while saving', () => {
@@ -95,7 +101,8 @@ it('defaults an unset timezone to the user preference without saving until reque
           recurrenceTz: 'Pacific/Auckland',
         },
       },
-    })
+    }),
+    expect.objectContaining({ onSuccess: expect.any(Function) })
   );
 });
 it('uses a preference loaded later without overwriting an explicit edit or clear', () => {
@@ -123,7 +130,8 @@ it('uses a preference loaded later without overwriting an explicit edit or clear
           recurrenceTz: null,
         },
       },
-    })
+    }),
+    expect.objectContaining({ onSuccess: expect.any(Function) })
   );
 });
 it('lets a manual timezone survive preference loading and provides a retry on failure', () => {
@@ -149,7 +157,8 @@ it('lets a manual timezone survive preference loading and provides a retry on fa
           recurrenceTz: 'UTC',
         },
       },
-    })
+    }),
+    expect.objectContaining({ onSuccess: expect.any(Function) })
   );
 });
 
@@ -159,28 +168,34 @@ it('shows and edits an explicit anchor independently of task creation and can re
   expect(anchor).toHaveValue('2026-02-02');
   fireEvent.change(anchor, { target: { value: '2026-03-03' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
-  expect(mutate).toHaveBeenLastCalledWith({
-    id: task.id,
-    patch: {
-      recurrence: {
-        isRecurring: true,
-        recurrenceRule: task.recurrenceRule,
-        recurrenceTz: task.recurrenceTz,
-        recurrenceAnchorDate: '2026-03-03',
+  expect(mutate).toHaveBeenLastCalledWith(
+    {
+      id: task.id,
+      patch: {
+        recurrence: {
+          isRecurring: true,
+          recurrenceRule: task.recurrenceRule,
+          recurrenceTz: task.recurrenceTz,
+          recurrenceAnchorDate: '2026-03-03',
+        },
       },
     },
-  });
+    expect.objectContaining({ onSuccess: expect.any(Function) })
+  );
   fireEvent.change(anchor, { target: { value: '' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save recurrence' }));
-  expect(mutate).toHaveBeenLastCalledWith({
-    id: task.id,
-    patch: {
-      recurrence: {
-        isRecurring: true,
-        recurrenceRule: task.recurrenceRule,
-        recurrenceTz: task.recurrenceTz,
-        recurrenceAnchorDate: null,
+  expect(mutate).toHaveBeenLastCalledWith(
+    {
+      id: task.id,
+      patch: {
+        recurrence: {
+          isRecurring: true,
+          recurrenceRule: task.recurrenceRule,
+          recurrenceTz: task.recurrenceTz,
+          recurrenceAnchorDate: null,
+        },
       },
     },
-  });
+    expect.objectContaining({ onSuccess: expect.any(Function) })
+  );
 });

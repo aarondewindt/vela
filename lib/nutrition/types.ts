@@ -11,7 +11,7 @@ export const mealLabels: Record<MealCategory, string> = {
   DINNER: 'Dinner',
   SNACKS: 'Snacks',
 };
-export const goalKeys = ['calories', 'protein', 'carbohydrates', 'fat'] as const;
+export const goalKeys = ['calories', 'protein', 'carbohydrates', 'fat', 'fiber'] as const;
 export type GoalKey = (typeof goalKeys)[number];
 export type ReferenceUnit = (typeof referenceUnits)[number];
 export type QuantityUnit = (typeof quantityUnits)[number];

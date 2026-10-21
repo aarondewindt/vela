@@ -30,7 +30,11 @@ export const goalSchema = z
     }
     if (
       !validateGoalBounds(input.calorieBalance?.toString() ?? null, options) ||
-      (options.kind === 'range' && Math.abs(Number(options.upperBound)) > 10000) ||
+      ((options.kind === 'range' || options.kind === 'minimum') &&
+        [
+          options.preferredTarget,
+          options.kind === 'range' ? options.upperBound : options.excellent,
+        ].some((value) => value !== undefined && Math.abs(Number(value)) > 10000)) ||
       (options.kind === 'target' && Number(options.tolerance ?? 0) > 20000)
     ) {
       ctx.addIssue({

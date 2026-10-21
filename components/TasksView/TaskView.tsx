@@ -23,7 +23,7 @@ import {
   TextProperty,
 } from '../DataView/properties';
 import { formatDate, formatDateTime } from './format';
-import { TaskRecurrence } from './TaskRecurrence';
+import { TaskRecurrenceProperty } from './TaskRecurrenceProperty';
 import { TaskReview } from './TaskReview';
 import { TaskContentEditor } from './TaskContentEditor';
 
@@ -194,7 +194,7 @@ export function TaskView({ task, themes, tagSuggestions, onClose, actions }: Pro
           onSave={(dueDate) => save({ dueDate })}
         />
         <Property label="Recurrence">
-          <TaskRecurrence key={`${task.id}:${task.updatedAt.toISOString()}`} task={task} />
+          <TaskRecurrenceProperty key={task.id} task={task} />
         </Property>
         <NumberProperty
           label="Lead time"

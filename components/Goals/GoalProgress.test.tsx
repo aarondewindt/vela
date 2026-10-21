@@ -7,7 +7,7 @@ it('keeps the actual amount, desired bounds and status accessible when the scale
     <GoalProgress label="Protein" value="200" target="100" options={{ kind: 'minimum' }} unit="g" />
   );
   const bar = screen.getByRole('progressbar', { name: 'Protein goal progress' });
-  expect(bar).toHaveAttribute('aria-valuetext', '200 g; At least 100 g; Within goal');
+  expect(bar).toHaveAttribute('aria-valuetext', '200 g; Minimum 100 g; Goal reached!');
   expect(bar).toHaveAttribute('aria-valuenow', '200');
   expect(Number(bar.getAttribute('aria-valuemax'))).toBeGreaterThan(200);
   view.rerender(

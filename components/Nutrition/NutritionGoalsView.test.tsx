@@ -39,7 +39,12 @@ it('leaves targets empty until the user explicitly configures them', async () =>
   await user.type(screen.getByRole('textbox', { name: 'Protein (g)' }), '160');
   await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
   await waitFor(() => expect(screen.getByText('Daily goals saved.')).toBeInTheDocument());
-  expect(mutateAsync).toHaveBeenCalledWith({ ...initial, calories: '2400', protein: '160' });
+  expect(mutateAsync).toHaveBeenCalledWith({
+    ...initial,
+    calories: '2400',
+    protein: '160',
+    semantics: { protein: { kind: 'minimum' }, fiber: { kind: 'minimum' } },
+  });
   expect(invalidate).toHaveBeenCalledTimes(2);
 });
 it('rejects a zero goal without persisting or replacing the input', async () => {
@@ -73,6 +78,41 @@ it('edits minimum and range settings and rejects reversed bounds before saving',
     ...initial,
     calories: '2000',
     protein: '160',
-    semantics: { calories: { kind: 'range', upperBound: '2200' }, protein: { kind: 'minimum' } },
+    semantics: {
+      calories: { kind: 'range', upperBound: '2200' },
+      protein: { kind: 'minimum' },
+      fiber: { kind: 'minimum' },
+    },
+  });
+});
+
+it('saves protein and fiber milestones alongside a preferred fat range', async () => {
+  const user = userEvent.setup();
+  mutateAsync.mockResolvedValue(initial);
+  render(<NutritionGoalsView />);
+  for (const label of ['Protein', 'Fiber']) {
+    await user.type(screen.getByRole('textbox', { name: `${label} (g)` }), '25');
+    await user.type(screen.getByRole('textbox', { name: `${label} (g) preferred target` }), '30');
+    await user.type(
+      screen.getByRole('textbox', { name: `${label} (g) excellent threshold` }),
+      '40'
+    );
+  }
+  await user.type(screen.getByRole('textbox', { name: 'Fat (g)' }), '50');
+  await user.click(screen.getByRole('combobox', { name: 'Fat (g) goal type' }));
+  await user.click(screen.getByRole('option', { name: 'Range' }));
+  await user.type(screen.getByRole('textbox', { name: 'Fat (g) preferred target' }), '60');
+  await user.type(screen.getByRole('textbox', { name: 'Fat (g) upper bound' }), '70');
+  await user.click(screen.getByRole('button', { name: 'Save daily goals' }));
+  expect(mutateAsync).toHaveBeenCalledWith({
+    ...initial,
+    protein: '25',
+    fiber: '25',
+    fat: '50',
+    semantics: {
+      protein: { kind: 'minimum', preferredTarget: '30', excellent: '40' },
+      fiber: { kind: 'minimum', preferredTarget: '30', excellent: '40' },
+      fat: { kind: 'range', preferredTarget: '60', upperBound: '70' },
+    },
   });
 });
