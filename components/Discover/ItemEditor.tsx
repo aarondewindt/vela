@@ -5,6 +5,7 @@ import {
   Alert,
   Autocomplete,
   Button,
+  Checkbox,
   Group,
   Modal,
   NumberInput,
@@ -21,6 +22,7 @@ import {
   contentTypes,
   itemInputSchema,
   priorityOptions,
+  pageMetadataSchema,
   statusOptions,
   type ItemInput,
 } from '@/lib/discover/schema';
@@ -42,10 +44,25 @@ export function ItemEditor({
       ? itemInputSchema.parse(item)
       : { ...itemInputSchema.parse({ title: 'New item' }), title: '' }
   );
+  const [version, setVersion] = useState(item?.version ?? 1);
+  const [metadata, setMetadata] = useState(() => {
+    const parsed = pageMetadataSchema.safeParse(item?.sourceMetadata);
+    return parsed.success ? parsed.data : null;
+  });
+  const [selected, setSelected] = useState<string[]>([]);
+  const retrieve = trpc.discover.refreshMetadata.useMutation({
+    onSuccess: async (updated) => {
+      setVersion(updated.version);
+      const parsed = pageMetadataSchema.safeParse(updated.sourceMetadata);
+      setMetadata(parsed.success ? parsed.data : null);
+      setSelected([]);
+      await onRefresh();
+    },
+  });
   const [errors, setErrors] = useState<string[]>([]);
   const create = trpc.discover.create.useMutation();
   const update = trpc.discover.update.useMutation({ onError: () => void onRefresh() });
-  const busy = create.isPending || update.isPending;
+  const busy = create.isPending || update.isPending || retrieve.isPending;
   const failure = create.error ?? update.error;
   const change = (patch: Partial<ItemInput>) => setValue((current) => ({ ...current, ...patch }));
   const save = (event: React.FormEvent) => {
@@ -66,7 +83,7 @@ export function ItemEditor({
       },
     };
     if (item) {
-      update.mutate({ id: item.id, version: item.version, item: parsed.data }, options);
+      update.mutate({ id: item.id, version, item: parsed.data }, options);
     } else {
       create.mutate(parsed.data, options);
     }
@@ -129,6 +146,85 @@ export function ItemEditor({
             disabled={busy}
             onChange={(event) => change({ url: event.currentTarget.value || null })}
           />
+          {item?.url && (
+            <Stack gap="xs">
+              <Button
+                variant="light"
+                loading={retrieve.isPending}
+                disabled={create.isPending || update.isPending || value.url !== item.url}
+                onClick={() => retrieve.mutate({ id: item.id, version })}
+              >
+                {retrieve.error ? 'Retry metadata retrieval' : 'Retrieve / refresh metadata'}
+              </Button>
+              {value.url !== item.url && (
+                <Text size="sm">Save the changed URL before retrieving metadata.</Text>
+              )}
+              {retrieve.error && (
+                <Alert color="red" title="Metadata unavailable">
+                  {retrieve.error.message}
+                </Alert>
+              )}
+            </Stack>
+          )}
+          {!item && value.url && (
+            <Text size="sm">Save this item, then open its details to retrieve page metadata.</Text>
+          )}
+          {metadata && metadata.sourceUrl === value.url && (
+            <Stack gap="xs">
+              <Text fw={600}>Metadata preview</Text>
+              <Text size="xs" c="dimmed">
+                Web · {metadata.siteName || new URL(metadata.resolvedUrl).hostname} · Retrieved{' '}
+                {new Date(metadata.retrievedAt).toLocaleString()}
+              </Text>
+              <Text size="xs" style={{ overflowWrap: 'anywhere' }}>
+                Source: {metadata.resolvedUrl}
+              </Text>
+              <Text size="sm">
+                Choose fields to replace in this form, then save. Your other edits are preserved.
+              </Text>
+              {(['title', 'description', 'imageUrl'] as const).map(
+                (field) =>
+                  metadata[field] && (
+                    <Checkbox
+                      key={field}
+                      label={`${field === 'imageUrl' ? 'Cover URL' : field === 'title' ? 'Title' : 'Description'}: ${metadata[field]}`}
+                      checked={selected.includes(field)}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setSelected(
+                          event.currentTarget.checked
+                            ? [...selected, field]
+                            : selected.filter((key) => key !== field)
+                        )
+                      }
+                    />
+                  )
+              )}
+              {(!metadata.title || !metadata.description || !metadata.imageUrl) && (
+                <Text size="sm">
+                  {metadata.title || metadata.description || metadata.imageUrl
+                    ? 'Partial metadata: some fields are unavailable.'
+                    : 'No usable metadata found. This page may require JavaScript; you can retry or enter details manually.'}
+                </Text>
+              )}
+              <Button
+                variant="default"
+                disabled={busy || !selected.length}
+                onClick={() => {
+                  const patch: Partial<ItemInput> = {};
+                  for (const field of ['title', 'description', 'imageUrl'] as const) {
+                    if (selected.includes(field) && metadata[field]) {
+                      patch[field] = metadata[field];
+                    }
+                  }
+                  change(patch);
+                  setSelected([]);
+                }}
+              >
+                Use selected fields
+              </Button>
+            </Stack>
+          )}
           <Textarea
             label="Description"
             autosize

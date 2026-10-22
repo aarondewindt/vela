@@ -77,7 +77,10 @@ export function DiscoverView() {
   );
   const refresh = () => utils.discover.invalidate();
   const quickAdd = trpc.discover.quickAdd.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
+      if (saved?.url) {
+        setEditor({ item: saved });
+      }
       setText('');
       setPage(1);
       await refresh();

@@ -34,6 +34,11 @@ export const discoverRouter = router({
     .mutation(({ ctx, input }) =>
       discoverService.setStatus(ctx.userId, input.id, input.version, input.status)
     ),
+  refreshMetadata: protectedProcedure
+    .input(itemVersionSchema)
+    .mutation(({ ctx, input }) =>
+      discoverService.refreshMetadata(ctx.userId, input.id, input.version)
+    ),
   remove: protectedProcedure
     .input(itemVersionSchema)
     .mutation(({ ctx, input }) => discoverService.remove(ctx.userId, input.id, input.version)),

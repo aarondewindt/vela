@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('./metadata-fetch', () => ({ fetchPageMetadata: jest.fn() }));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     discoverItem: {
@@ -18,6 +19,7 @@ import { prisma } from '@/lib/prisma';
 import { discoverService } from './service';
 import { itemInputSchema, listItemsSchema, statusLabels } from './schema';
 import { itemFixture } from './test-fixtures';
+import { fetchPageMetadata } from './metadata-fetch';
 
 const id = itemFixture.id;
 const input = itemInputSchema.parse({ title: 'Dune', contentType: 'Book' });
@@ -210,4 +212,72 @@ it('scopes custom type suggestions to the owner', async () => {
   expect(db.findMany).toHaveBeenCalledWith(
     expect.objectContaining({ where: { userId: 'alice' }, distinct: ['contentType'] })
   );
+});
+
+const metadata = {
+  provider: 'web',
+  sourceUrl: 'https://example.com',
+  resolvedUrl: 'https://example.com/',
+  siteName: null,
+  retrievedAt: '2026-10-22T12:00:00.000Z',
+  title: 'Fetched',
+  description: null,
+  imageUrl: null,
+};
+it('retrieves only owned saved URLs and stores provenance without changing manual fields', async () => {
+  db.findFirst.mockResolvedValue({ ...itemFixture, url: metadata.sourceUrl });
+  (fetchPageMetadata as jest.Mock).mockResolvedValue(metadata);
+  await discoverService.refreshMetadata('alice', id, 1);
+  expect(db.findFirst).toHaveBeenCalledWith(
+    expect.objectContaining({ where: { id, userId: 'alice' } })
+  );
+  expect(fetchPageMetadata).toHaveBeenCalledWith(metadata.sourceUrl);
+  expect(db.updateManyAndReturn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: { id, userId: 'alice', version: 1, url: metadata.sourceUrl },
+      data: { sourceMetadata: metadata, version: { increment: 1 } },
+    })
+  );
+});
+it('does no network work for another owner, missing URL or stale version', async () => {
+  db.findFirst.mockResolvedValueOnce(null);
+  await expect(discoverService.refreshMetadata('bob', id, 1)).rejects.toMatchObject({
+    code: 'NOT_FOUND',
+  });
+  await expect(discoverService.refreshMetadata('alice', id, 1)).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+  });
+  db.findFirst.mockResolvedValue({ ...itemFixture, version: 2, url: metadata.sourceUrl });
+  await expect(discoverService.refreshMetadata('alice', id, 1)).rejects.toMatchObject({
+    code: 'CONFLICT',
+  });
+  expect(fetchPageMetadata).not.toHaveBeenCalled();
+  expect(db.updateManyAndReturn).not.toHaveBeenCalled();
+});
+it('rejects concurrent edits/deletes after retrieval and preserves the previous snapshot on failure', async () => {
+  db.findFirst.mockResolvedValue({ ...itemFixture, url: metadata.sourceUrl });
+  (fetchPageMetadata as jest.Mock).mockResolvedValue(metadata);
+  db.updateManyAndReturn.mockResolvedValue([]);
+  await expect(discoverService.refreshMetadata('alice', id, 1)).rejects.toMatchObject({
+    code: 'CONFLICT',
+  });
+  db.findFirst
+    .mockResolvedValueOnce({ ...itemFixture, url: metadata.sourceUrl })
+    .mockResolvedValueOnce(null);
+  await expect(discoverService.refreshMetadata('alice', id, 1)).rejects.toMatchObject({
+    code: 'NOT_FOUND',
+  });
+  db.updateManyAndReturn.mockClear();
+  (fetchPageMetadata as jest.Mock).mockRejectedValue(new Error('unreachable'));
+  db.findFirst.mockResolvedValue({ ...itemFixture, url: metadata.sourceUrl });
+  await expect(discoverService.refreshMetadata('alice', id, 1)).rejects.toThrow('unreachable');
+  expect(db.updateManyAndReturn).not.toHaveBeenCalled();
+});
+it('keeps provenance server owned and leaves URL duplicate handling unchanged when applying selected fields', async () => {
+  await discoverService.update('alice', id, 1, {
+    ...input,
+    title: 'Fetched',
+    sourceMetadata: metadata,
+  } as never);
+  expect(db.updateManyAndReturn.mock.calls[0][0].data).not.toHaveProperty('sourceMetadata');
 });

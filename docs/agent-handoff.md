@@ -2,8 +2,37 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Discover MVP ready for review; prior implementation and deployment checkpoints retained.
+**Status:** Discover MVP and reviewed URL enrichment ready for review in PR #74; prior checkpoints retained.
 **Last updated:** 2026-10-22
+
+## Discover URL metadata (#75) — 2026-10-22
+
+- Implemented on `feat/discover-personal-backlog` for existing [PR #74](https://github.com/aarondewindt/vela/pull/74).
+  Quick URL add opens the saved editor; explicit metadata retrieval previews
+  individually selected title/description/cover replacements. Refresh leaves
+  manual and unsaved fields intact; ordinary versioned save applies selections.
+- Protected `refreshMetadata` delegates to the owner-scoped service. Network
+  work runs outside transactions and checks version/URL again on snapshot write.
+  Nullable JSONB `sourceMetadata` retains provider/source/final URL, site name,
+  fetched values and retrieval time separately from editable fields. Existing URL
+  identity/deduplication and manual creation remain authoritative.
+- Server HTML extraction supports title, OG, Twitter, simple microdata and JSON-LD.
+  Fetches pin public DNS answers on each hop, block private/reserved/transition
+  addresses, allow standard HTTP/S ports, use fresh connections and bound redirects
+  (3), total time (8s), headers (16 KiB) and HTML (1 MiB). No scripts/resources run
+  or load. Failures preserve the last successful snapshot; empty/partial results,
+  loading and retry remain explicit. See [Discover](DISCOVER.md).
+- Migration `20261022140000_discover_metadata` adds only nullable JSONB.
+  **It has not been applied to the running database.** Prisma Client regenerated;
+  schema validation and live database diff confirm exactly the new column. A
+  temporary-table PostgreSQL transaction verified existing-row preservation,
+  nullable defaults, JSONB round trip and unchanged manual title, then rolled back.
+- Validation: all 1,068 Jest tests / 138 suites; focused Discover 105 tests / six
+  suites; TypeScript, scoped Oxlint/formatting, Stylelint and production build pass.
+  Repository-wide lint/format retain failures in unchanged Planner/auth/UI files.
+  No public restart/deployment or merge. Provider-specific integrations remain
+  follow-ups; web metadata is UTF-8 HTML only and retains the latest successful
+  snapshot rather than retrieval history.
 
 ## Planner meals, AI default and routine review — 2026-10-22
 

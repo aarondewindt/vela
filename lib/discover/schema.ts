@@ -123,3 +123,14 @@ export const listItemsSchema = z.object({
 });
 export type ItemInput = z.output<typeof itemInputSchema>;
 export type ListItemsInput = z.output<typeof listItemsSchema>;
+
+export const pageMetadataSchema = z.object({
+  provider: z.literal('web'),
+  sourceUrl: webUrlSchema,
+  resolvedUrl: webUrlSchema,
+  siteName: z.string().nullable(),
+  retrievedAt: z.iso.datetime(),
+  title: z.string().max(240).nullable(),
+  description: z.string().max(10000).nullable(),
+  imageUrl: webUrlSchema.nullable(),
+});

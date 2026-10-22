@@ -8,6 +8,7 @@ jest.mock('@/lib/trpc/client', () => ({
       quickAdd: { useMutation: jest.fn() },
       create: { useMutation: jest.fn() },
       update: { useMutation: jest.fn() },
+      refreshMetadata: { useMutation: jest.fn() },
       setStatus: { useMutation: jest.fn() },
       remove: { useMutation: jest.fn() },
     },
@@ -48,6 +49,11 @@ const result = {
 };
 beforeEach(() => {
   jest.clearAllMocks();
+  (trpc.discover.refreshMetadata.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+    isPending: false,
+    error: null,
+  });
   (trpc.useUtils as jest.Mock).mockReturnValue({ discover: { invalidate: refresh } });
   (trpc.discover.list.useQuery as jest.Mock).mockReturnValue({
     ...result,
@@ -250,4 +256,117 @@ it('shows empty collection and filtered empty states', async () => {
   expect(screen.getByText('Your next discovery starts here.')).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText('Search collection'), { target: { value: 'missing' } });
   expect(screen.getByText('No items match your filters.')).toBeInTheDocument();
+});
+
+const savedMetadata = {
+  provider: 'web',
+  sourceUrl: 'https://example.com/book',
+  resolvedUrl: 'https://example.com/book',
+  retrievedAt: '2026-10-22T12:00:00.000Z',
+  siteName: 'Library',
+  title: 'Fetched book',
+  description: 'Fetched description',
+  imageUrl: null,
+};
+it('previews fetched metadata and replaces only explicitly selected fields after refresh', async () => {
+  const user = userEvent.setup();
+  (trpc.discover.list.useQuery as jest.Mock).mockReturnValue({
+    ...result,
+    data: { items: [{ ...itemFixture, url: savedMetadata.sourceUrl }], total: 1 },
+  });
+  const retrieve = jest.fn();
+  (trpc.discover.refreshMetadata.useMutation as jest.Mock).mockImplementation((options) => ({
+    mutate: (input: unknown) => {
+      retrieve(input);
+      void options.onSuccess({ ...itemFixture, version: 2, sourceMetadata: savedMetadata });
+    },
+    isPending: false,
+    error: null,
+  }));
+  render(<DiscoverView />);
+  await user.click(screen.getByRole('button', { name: 'Details & edit' }));
+  const dialog = screen.getByRole('dialog');
+  fireEvent.change(within(dialog).getByLabelText('Description'), {
+    target: { value: 'My description' },
+  });
+  fireEvent.change(within(dialog).getByLabelText('Personal notes'), {
+    target: { value: 'My notes' },
+  });
+  await user.click(within(dialog).getByRole('button', { name: 'Retrieve / refresh metadata' }));
+  expect(retrieve).toHaveBeenCalledWith({ id: itemFixture.id, version: 1 });
+  expect(within(dialog).getByRole('textbox', { name: 'Title' })).toHaveValue('Dune');
+  expect(within(dialog).getByLabelText('Description')).toHaveValue('My description');
+  expect(
+    within(dialog).getByText('Partial metadata: some fields are unavailable.')
+  ).toBeInTheDocument();
+  expect(within(dialog).getByRole('checkbox', { name: 'Title: Fetched book' })).not.toBeChecked();
+  await user.click(within(dialog).getByRole('checkbox', { name: 'Title: Fetched book' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Use selected fields' }));
+  expect(within(dialog).getByRole('textbox', { name: 'Title' })).toHaveValue('Fetched book');
+  expect(within(dialog).getByLabelText('Description')).toHaveValue('My description');
+  await user.click(within(dialog).getByRole('button', { name: 'Save item' }));
+  expect(update).toHaveBeenCalledWith(
+    {
+      id: itemFixture.id,
+      version: 2,
+      item: expect.objectContaining({
+        title: 'Fetched book',
+        description: 'My description',
+        notes: 'My notes',
+      }),
+    },
+    expect.anything()
+  );
+});
+it('keeps manual save available on retrieval failure with an explicit retry', async () => {
+  const user = userEvent.setup();
+  (trpc.discover.list.useQuery as jest.Mock).mockReturnValue({
+    ...result,
+    data: { items: [{ ...itemFixture, url: savedMetadata.sourceUrl }], total: 1 },
+  });
+  const retrieve = jest.fn();
+  (trpc.discover.refreshMetadata.useMutation as jest.Mock).mockReturnValue({
+    mutate: retrieve,
+    isPending: false,
+    error: { message: 'Unavailable; keep editing manually.' },
+  });
+  render(<DiscoverView />);
+  await user.click(screen.getByRole('button', { name: 'Details & edit' }));
+  expect(screen.getByText('Unavailable; keep editing manually.')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Retry metadata retrieval' }));
+  expect(retrieve).toHaveBeenCalledWith({ id: itemFixture.id, version: 1 });
+  expect(screen.getByRole('button', { name: 'Save item' })).toBeEnabled();
+});
+it('hides old URL metadata and prevents fetching an unsaved changed URL', async () => {
+  const user = userEvent.setup();
+  (trpc.discover.list.useQuery as jest.Mock).mockReturnValue({
+    ...result,
+    data: {
+      items: [{ ...itemFixture, url: savedMetadata.sourceUrl, sourceMetadata: savedMetadata }],
+      total: 1,
+    },
+  });
+  render(<DiscoverView />);
+  await user.click(screen.getByRole('button', { name: 'Details & edit' }));
+  expect(screen.getByText('Metadata preview')).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('URL', { exact: true }), {
+    target: { value: 'https://example.com/other' },
+  });
+  expect(screen.queryByText('Metadata preview')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retrieve / refresh metadata' })).toBeDisabled();
+});
+it('opens the enrichment editor after saving a URL through quick add', async () => {
+  const user = userEvent.setup();
+  (trpc.discover.quickAdd.useMutation as jest.Mock).mockImplementation((options) => ({
+    mutate: () => void options.onSuccess({ ...itemFixture, url: savedMetadata.sourceUrl }),
+    isPending: false,
+    error: null,
+  }));
+  render(<DiscoverView />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Title or URL' }), {
+    target: { value: savedMetadata.sourceUrl },
+  });
+  await user.click(screen.getByRole('button', { name: 'Add item' }));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Retrieve / refresh metadata' })).toBeEnabled();
 });

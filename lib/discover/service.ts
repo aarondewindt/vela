@@ -10,6 +10,7 @@ import {
   type ItemInput,
   type ListItemsInput,
 } from './schema';
+import { fetchPageMetadata } from './metadata-fetch';
 
 const itemSelect = {
   id: true,
@@ -19,6 +20,7 @@ const itemSelect = {
   description: true,
   url: true,
   imageUrl: true,
+  sourceMetadata: true,
   tags: true,
   priority: true,
   notes: true,
@@ -127,6 +129,26 @@ export const discoverService = {
       throw new TRPCError({ code: 'NOT_FOUND', message: 'Discover item not found.' });
     }
     return item;
+  },
+  async refreshMetadata(userId: string, id: string, version: number) {
+    const item = await discoverService.get(userId, id);
+    if (item.version !== version) {
+      return requireChanged(userId, id);
+    }
+    if (!item.url) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Save a URL before retrieving metadata.',
+      });
+    }
+    const sourceMetadata = await fetchPageMetadata(item.url);
+    // The network runs outside a transaction. A stale result must never overwrite a newer URL/edit.
+    const rows = await prisma.discoverItem.updateManyAndReturn({
+      where: { id, userId, version, url: item.url },
+      data: { sourceMetadata, version: { increment: 1 } },
+      select: itemSelect,
+    });
+    return rows[0] ?? (await requireChanged(userId, id));
   },
   async create(userId: string, rawInput: ItemInput) {
     const input = itemInputSchema.parse(rawInput);

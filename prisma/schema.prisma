@@ -78,6 +78,8 @@ model DiscoverItem {
   // Hash of the normalized URL, independent of manually editable title/details.
   urlKey      String?        @db.Char(64)
   imageUrl    String?        @db.VarChar(2048)
+  // Latest retrieved web metadata; never written from editable item input.
+  sourceMetadata Json?       @db.JsonB
   tags        String[]       @default([])
   priority    Int?
   notes       String?

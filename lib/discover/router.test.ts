@@ -12,6 +12,7 @@ jest.mock('./service', () => ({
     update: jest.fn(),
     setStatus: jest.fn(),
     remove: jest.fn(),
+    refreshMetadata: jest.fn(),
   },
 }));
 import { discoverRouter } from './router';
@@ -30,6 +31,7 @@ it('requires authentication on every Discover procedure', async () => {
     () => caller.update({ id, version: 1, item: { title: 'Dune' } }),
     () => caller.setStatus({ id, version: 1, status: 'COMPLETED' }),
     () => caller.remove({ id, version: 1 }),
+    () => caller.refreshMetadata({ id, version: 1 }),
   ]) {
     await expect(call()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   }
@@ -54,6 +56,8 @@ it('takes ownership only from the session and transforms quick URLs before the s
       contentType: 'Website',
     })
   );
+  await caller.refreshMetadata({ id, version: 1 });
+  expect(discoverService.refreshMetadata).toHaveBeenCalledWith('alice', id, 1);
   await caller.get({ id });
   await caller.list({});
   await caller.types();
@@ -79,6 +83,7 @@ it('rejects invalid identifiers, versions, URLs and ratings before any service w
   const caller = discoverRouter.createCaller({ userId: 'alice' });
   for (const call of [
     () => caller.get({ id: 'bad' }),
+    () => caller.refreshMetadata({ id, version: 0 }),
     () => caller.create({ title: ' ' }),
     () => caller.create({ title: 'Item', url: 'javascript:alert(1)' }),
     () => caller.update({ id, version: 0, item: { title: 'Item' } }),
