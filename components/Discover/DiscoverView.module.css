@@ -1,0 +1,58 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: var(--mantine-spacing-md);
+}
+
+.quickInput {
+  flex: 1;
+  min-width: min(100%, 240px);
+}
+
+.quickType {
+  width: 180px;
+  max-width: 100%;
+}
+
+.card,
+.itemHeading {
+  min-width: 0;
+}
+
+.cardContent {
+  height: 100%;
+}
+
+.typeBadge {
+  max-width: 100%;
+}
+
+.title {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.title:hover {
+  text-decoration: underline;
+}
+
+.breakText,
+.tag {
+  overflow-wrap: anywhere;
+}
+
+.tag {
+  height: auto;
+  white-space: normal;
+}
+
+.actions {
+  margin-top: auto;
+}

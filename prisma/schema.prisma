@@ -52,9 +52,44 @@ model User {
   nutritionIndexJob         NutritionProductIndexJob?
   nutritionDrafts           NutritionMealDraft[]
   nutritionMealCopies       NutritionMealCopy[]
+  discoverItems             DiscoverItem[]
 
   @@unique([email])
   @@map("user")
+}
+
+enum DiscoverStatus {
+  WANT_TO_EXPLORE
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  DROPPED
+}
+
+model DiscoverItem {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String         @db.VarChar(240)
+  contentType String         @default("Other") @db.VarChar(80)
+  status      DiscoverStatus @default(WANT_TO_EXPLORE)
+  description String?
+  url         String?        @db.VarChar(2048)
+  // Hash of the normalized URL, independent of manually editable title/details.
+  urlKey      String?        @db.Char(64)
+  imageUrl    String?        @db.VarChar(2048)
+  tags        String[]       @default([])
+  priority    Int?
+  notes       String?
+  rating      Int?
+  version     Int            @default(1)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([userId, urlKey])
+  @@index([userId, createdAt])
+  @@index([userId, contentType, status])
+  @@map("discover_items")
 }
 
 enum AiMessageRole {

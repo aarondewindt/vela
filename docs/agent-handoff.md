@@ -2,7 +2,7 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Planner meals and AI-default evaluation ready for review; prior deployment notes retained.
+**Status:** Discover MVP ready for review; prior implementation and deployment checkpoints retained.
 **Last updated:** 2026-10-22
 
 ## Planner meals, AI default and routine review — 2026-10-22
@@ -537,3 +537,35 @@ User authorized implementing the reusable per-user Home Assistant connector and 
 - Independently validated release/whole-remaining-effort replacement options preserve protected work and show displaced minutes, recorded deadlines and conservative deadline risk. Pending-plan accounting considers projected allocations, and corrections compose against original operations/reservations. Preview uses existing create/fingerprint/idempotency; explicit acceptance retains existing locking, revalidation and receipts. No schema migration or deployment was performed for #35. Existing semantic-search work and environment files were preserved.
 - Documentation: [Day plan review](PLAN_REVIEWS.md); proposal API and architecture notes updated. Limits: transient reviews, 100 occupied blocks for AI, three replacement options per adjustable block, no combined repair optimizer or deadline-completion prediction. Manual/fixed/started/calendar/history corrections remain in the explicit existing workflows.
 - Validation: full Jest run passed (709 tests / 100 suites). Two subsequent pending-projection/delegation tests also passed in the final focused review/router run (20 tests / three suites). TypeScript, scoped Oxlint/format, diff whitespace check and production build passed. The restricted build stalled; it was stopped, its stale generated build lock removed after confirming no build remained, and production compilation succeeded outside the sandbox. No live browser, actual model inference or new live PostgreSQL integration checks were run for #35; React/domain/service/router tests cover new behavior, and the full run includes existing proposal acceptance tests. Shared public server was not restarted.
+
+## Discover MVP — #42 — 2026-10-22
+
+- Implemented `/discover` and its main navigation entry on
+  `feat/discover-personal-backlog`. Responsive cards, title/URL quick add, complete
+  detail editing, inline statuses, confirmed deletion, conventional search,
+  type/status/tag/priority filters and six sorts use protected tRPC and existing
+  Mantine/TanStack Query patterns. See [Discover](DISCOVER.md) for API, limits and
+  decisions.
+- One owner-scoped `DiscoverItem` model stores all manual fields, extensible string
+  content types, a shared status enum and optimistic versions. Nullable per-owner
+  canonical URL hashes enforce duplicates under concurrent writes; title-only
+  duplicates remain allowed. No metadata fetching, AI, embeddings or Planner
+  integration was added.
+- Additive migration `20261022120000_discover_items` was applied locally after a
+  successful private `yarn db:backup`; Prisma Client regenerated and schema/database
+  diff empty. The backup and synthetic verification scripts/screenshots remain
+  ignored under `.local/`. Temporary PostgreSQL and browser users, sessions and
+  items were deleted. The shared public server was not restarted or deployed.
+- Validation: 1,017 tests across 136 Jest suites passed; final focused run passed
+  56 tests across five suites. TypeScript, Prisma validation, changed-file
+  formatting/Oxlint, repository Stylelint, database drift check and production
+  build passed. Live PostgreSQL checks covered CRUD, every status, combined
+  filtering, all sorts, pagination, two-user isolation, cascading deletion,
+  duplicate create/edit races and stale-write races (28 checks). Browser checks
+  covered quick add, notes/tags/rating editing, persistent status, duplicate
+  feedback, search, desktop/mobile layouts and cancel/confirm deletion (14
+  checks). Repository-wide lint and formatting retain failures in unchanged files.
+- PR is intended for review only; do not merge automatically. Keep #42 open until
+  the implementation is reviewed. Future metadata integrations should preserve
+  editable fields separately from provider snapshots and reuse existing shared
+  AI/embedding infrastructure when requested.

@@ -10,8 +10,10 @@ import { taskSearchRouter } from '@/lib/task-search/router';
 import { nutritionRouter } from '@/lib/nutrition/router';
 import { taskReviewRouter } from '@/lib/task-reviews/router';
 import { router } from './server';
+import { discoverRouter } from '@/lib/discover/router';
 
 export const appRouter = router({
+  discover: discoverRouter,
   planner: plannerRouter,
   plannerConversation: conversationRouter,
   taskReviews: taskReviewRouter,

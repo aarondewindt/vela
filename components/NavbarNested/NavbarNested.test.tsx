@@ -24,3 +24,8 @@ it('opens Settings on its subroutes with all sections nested in the main navbar'
   fireEvent.click(health);
   expect(useAppShellStore.getState().navbar_opened).toBe(false);
 });
+
+it('registers Discover as a Vela app in the main navigation', () => {
+  render(<NavbarNested />);
+  expect(screen.getByRole('link', { name: 'Discover' })).toHaveAttribute('href', '/discover');
+});
