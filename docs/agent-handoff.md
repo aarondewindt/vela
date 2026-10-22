@@ -565,7 +565,9 @@ User authorized implementing the reusable per-user Home Assistant connector and 
   covered quick add, notes/tags/rating editing, persistent status, duplicate
   feedback, search, desktop/mobile layouts and cancel/confirm deletion (14
   checks). Repository-wide lint and formatting retain failures in unchanged files.
-- PR is intended for review only; do not merge automatically. Keep #42 open until
-  the implementation is reviewed. Future metadata integrations should preserve
+- [PR #74](https://github.com/aarondewindt/vela/pull/74) is open for review and
+  unmerged. [Issue #42 was updated](https://github.com/aarondewindt/vela/issues/42#issuecomment-6329639737)
+  with implementation, validation, limitations and future work; it remains open.
+  Do not merge automatically. Future metadata integrations should preserve
   editable fields separately from provider snapshots and reuse existing shared
   AI/embedding infrastructure when requested.
