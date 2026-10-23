@@ -2,6 +2,8 @@
 
 Experimental personal planning and nutrition tracking. See [daily-use deployment](docs/DAILY_USE_DEPLOYMENT.md) for the desktop/Pi Cloudflare Tunnel setup, public startup commands, account setup, backups and recovery.
 
+The native [Android Companion](android/README.md) has a separate Kotlin/Compose project and Ubuntu host build/device workflow. VS Code/Codex can continue editing in the existing devcontainer; the Next.js/Yarn workflow is unchanged.
+
 # Mantine Next.js template
 
 This is a template for [Next.js](https://nextjs.org/) app router + [Mantine](https://mantine.dev/).

@@ -19,6 +19,23 @@ not the desktop's LAN address. Reserve `192.168.0.106` for the desktop in DHCP,
 or recheck its address on the desktop with `ip -4 address` before creating the
 route. The Pi's `172.23.0.0/24` edge network is not the origin address.
 
+## LAN development access
+
+Compose publishes development port 3000 on the desktop network interfaces;
+`yarn dev` listens on `0.0.0.0` inside the container. Open
+`http://<desktop-LAN-IP>:3000` from another LAN device. In `vela.env`, add that
+full origin to `BETTER_AUTH_TRUSTED_ORIGINS` (comma-separated), for example
+`BETTER_AUTH_TRUSTED_ORIGINS=http://192.168.0.106:3000`. Next.js also uses the
+hostnames from this setting for development asset requests. Keep
+`NEXT_PUBLIC_BETTER_AUTH_URL` unset to let browser auth requests use the current
+origin.
+
+After changing Compose port mappings or `vela.env`, run **Dev Containers: Rebuild
+Container** in VS Code, then restart `yarn dev`. A server restart alone does not
+update Docker's port publication. If LAN access still times out, check the
+desktop firewall allows TCP 3000 from the LAN and that the devices are not on an
+isolated guest network. Keep this development port off public tunnels.
+
 ## Why a second command in the same container
 
 The actual command is `yarn dev` (`yard` is not installed). It runs Next.js 16.2.9

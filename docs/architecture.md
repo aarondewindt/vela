@@ -53,6 +53,22 @@ occurrence materialization and proposal eligibility resolve it through
 existing tasks. TaskView edits the anchor through the owner-scoped task service;
 existing occurrences and plans are retained when recurrence settings change.
 
+## Android companion bootstrap
+
+`android/` is an independent single-module Kotlin/Material 3 Compose Gradle project
+for Android companion Phase 1 (#88, architecture issue #58). It currently renders
+unconnected health/server/sync status only and requests no health/network/runtime permissions.
+Samsung Health feasibility (#89), authenticated ingestion/pairing (#90), and
+background synchronization (#91) remain unimplemented. No web API, Prisma schema
+or existing health ingestion behavior changes in this phase.
+
+VS Code/Codex edits the shared checkout in the existing Node devcontainer;
+Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
+tooling is opt-in and Android CI is separate from the existing web checks.
+See [Android setup](../android/README.md) for pinned versions, local SDK path
+handling, phone installation/debugging and loopback port 3000 access via
+host ADB reverse.
+
 ## Daily meal requirements
 
 [Meal scheduling](PLANNER_MEALS.md) uses versioned finite preferences on existing
@@ -91,4 +107,4 @@ Important future product goals and deployment assumptions are documented in [PRO
 
 ## Experimental desktop deployment
 
-The initial daily-use deployment runs the app and PostgreSQL in the existing Ubuntu desktop dev container, with the Pi retaining gateway services. Public `yarn public:build` / `yarn public:start` commands serve an optimized Next.js build on port 3001 with a fixed HTTPS auth origin; local `yarn dev` remains on desktop-loopback port 3000. Both processes share the database. The existing Cloudflare Tunnel points directly from the Pi to the desktop, without Caddy or Access. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md) for setup, account provisioning, Docker volume retention, tested database backup/restore commands and operational limitations.
+The initial daily-use deployment runs the app and PostgreSQL in the existing Ubuntu desktop dev container, with the Pi retaining gateway services. Public `yarn public:build` / `yarn public:start` commands serve an optimized Next.js build on port 3001 with a fixed HTTPS auth origin; local `yarn dev` is available on desktop LAN port 3000. Both processes share the database. The existing Cloudflare Tunnel points directly from the Pi to the desktop, without Caddy or Access. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md) for setup, account provisioning, Docker volume retention, tested database backup/restore commands and operational limitations.

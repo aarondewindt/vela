@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vela Companion</string>
+    <string name="welcome">Your health companion</string>
+    <string name="intro">Vela Companion will bring selected Samsung Health readings into your Vela account.</string>
+    <string name="health_title">Samsung Health</string>
+    <string name="health_status">Not connected. Health access will be available in a future update.</string>
+    <string name="server_title">Vela connection</string>
+    <string name="server_status">Not configured. Account pairing will be available in a future update.</string>
+    <string name="sync_title">Synchronization</string>
+    <string name="sync_status">No sync yet. This version does not read or upload health data.</string>
+</resources>

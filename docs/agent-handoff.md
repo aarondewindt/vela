@@ -2,8 +2,80 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Discover MVP and reviewed URL enrichment ready for review in PR #74; prior checkpoints retained.
-**Last updated:** 2026-10-22
+**Status:** Android Companion Phase 1 builds and launches on the user's S25 FE; host helper scripts added. Debugger/connected-test/layout checks remain manual. Prior checkpoints retained, including Discover PR #74.
+**Last updated:** 2026-10-24
+
+## Android completion confirmation — 2026-10-24
+
+- User confirmed the build/deployment scripts work and the app launches on the
+  S25 FE. This meets #88 acceptance; debugger, connected smoke test and layout
+  checks remain explicitly unverified.
+- Development port 3000 is now published on the LAN; Next.js development origins
+  include hostnames from `BETTER_AUTH_TRUSTED_ORIGINS`. Deployment documentation
+  covers LAN origin configuration. Android README clarifies ADB reverse is optional
+  when the phone can access the desktop LAN address. Local environment files are
+  excluded from the commit.
+
+## Android host shortcuts — 2026-10-24
+
+- User confirmed successful Ubuntu host build and USB installation/launch on the
+  S25 FE. Added executable `android/scripts/build.sh` and `deploy.sh`, with shared
+  JDK 17/SDK/ADB discovery. Java 25 remains the user's system default. Build accepts
+  extra Gradle options/tasks; deploy checks device access before building, updates
+  via `install -r`, then launches. `--no-build`, `--serial` and `ANDROID_SERIAL`
+  support existing APKs and explicit devices. No automatic tooling installation,
+  uninstall, network changes or devcontainer changes.
+- README documents shortcuts and custom tool locations. Nine focused Jest tests
+  pass with mocked Java/Gradle/ADB: path/argument handling, default SDK discovery,
+  device selection, sequencing, incompatible JDK and failure propagation. Bash
+  syntax and diff whitespace checks pass. Actual `build.sh --offline --no-daemon`
+  with the temporary JDK/SDK succeeded; Gradle reported the expected inaccessible
+  host SDK path in ignored local.properties, then used the temporary ANDROID_HOME.
+  That local configuration was not modified. Deploy script itself is mocked here;
+  the user's earlier manual phone install/launch is confirmed. Android Studio
+  debugger, connected smoke test and layout acceptance remain manual gates.
+
+## Android Companion Phase 1 (#88) — 2026-10-23
+
+- Read #58/#88, root instructions, architecture/frontend/project docs and all
+  existing devcontainer configuration. Follow the updated phase split: #88 is
+  bootstrap/workflow only; Samsung Health feasibility is #89, secure device
+  pairing/ingestion/manual sync #90, background synchronization #91.
+- Added independent `android/` Kotlin DSL single-app Compose/Material 3 project,
+  unconnected status screen, native vector from the existing Vela favicon,
+  JVM manifest-permission test and compiled Compose device smoke test. No Samsung
+  SDK, health/network/runtime permissions, credentials, API or schema changes.
+  AndroidX injects its own signature-protected internal receiver permission.
+- Pinned Gradle 8.13 (official generated wrapper/JAR and distribution checksum
+  verified), AGP 8.13.2, Kotlin/Compose compiler 2.3.10, Compose BOM 2025.12.00,
+  Activity Compose 1.12.4, API 36 and Build Tools 35.0.0, JDK/JVM 17, min API 28.
+  `android/app/gradle.lockfile` locks resolved debug/test dependency versions.
+  Separate path-scoped Android CI compiles APK/device tests, runs JVM tests/lint;
+  its YAML was parsed locally, but the hosted workflow has not been executed.
+- [Android README](../android/README.md) documents the shared host/container
+  checkout, JDK/SDK setup, host build fallback, optional container tooling,
+  local.properties path conflicts, signing identity, S25 FE USB authorization,
+  install/launch/debug commands, connected tests and physical acceptance steps.
+  Host `adb reverse tcp:3000 tcp:3000` uses existing Ubuntu-loopback publication;
+  no dev-server LAN exposure or host ADB/USB sharing with the container.
+- Validation: temporary JDK 17.0.17+10, SDK command-line tools 19.0 and SDK packages
+  under `/tmp/vela-android-toolchain`, without modifying the devcontainer image.
+  Wrapper `clean :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+  :app:assembleDebugAndroidTest --write-locks` passed; a second clean build with
+  `--offline` and enforced lockfile also passed (81 tasks). JVM test: one pass.
+  APK metadata verifies app ID, launcher, min/target SDK, and absence of network/
+  health permissions. Online lint: zero errors/five warnings (four deliberate
+  older-version notices and one Android 12 backup-rule advisory); offline lint:
+  zero errors/one backup-rule warning. No app data is stored in this shell.
+  XML parsing, wrapper shell syntax, ignore rules, web `yarn typecheck` and
+  tracked-file whitespace checks passed. Existing devcontainer, package.json,
+  yarn.lock and web runtime code are unchanged; no service restart or deployment.
+- Remaining gate: use **host** Android Studio/ADB to install and launch on the
+  real Galaxy S25 FE, check rotation/font size/light-dark behavior, hit the
+  `MainActivity.onCreate` debugger breakpoint and run
+  `./gradlew :app:connectedDebugAndroidTest`. Device test APK compilation does
+  not establish physical-device success. The same README records recovery and
+  networking checks. No issue/PR comments, commits, publishing or merges made.
 
 ## Discover URL metadata (#75) — 2026-10-22
 
