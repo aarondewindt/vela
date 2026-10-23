@@ -2,8 +2,31 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Android #89 diagnostics implemented; full APK/JVM-test/lint/device-test compilation passes against supplied Samsung SDK 1.1.0. User confirmed S25 FE permission/read success and accepted #89 for closure; precise calorie semantics remain unclassified in the record. #88 host workflow preserved.
+**Status:** Issue #93 device authentication and Android pairing implemented on the current branch. Security/unit and isolated PostgreSQL concurrency checks pass; Android APK/JVM/lint/device-test compilation passes. Public HTTPS/physical-phone pairing and Keystore device execution remain manual verification. No health ingestion/sync (#90/#91) was added; stop for authentication review.
 **Last updated:** 2026-10-24
+
+## Device authentication #93 — 2026-10-24
+
+- Generic account-owned hashed credentials and ten-minute, separate-secret pairing
+  live in `lib/devices/`; external REST routes are under `/api/devices/`.
+  Protected tRPC and Settings → Devices support review/approval/list/revocation.
+  Android uses manual HTTPS pairing and AES-GCM Android Keystore storage.
+- Apply `20261024000000_device_credentials` using `yarn prisma migrate deploy`,
+  regenerate Prisma and restart. Only an isolated test schema was migrated during
+  validation; the application database has not had this migration applied.
+  Device issuance/verification requires canonical HTTPS `BETTER_AUTH_URL`; no new
+  configuration secret. See [device authentication](DEVICE_AUTH.md) for contracts,
+  rate budgets, recovery and complete verification steps.
+- PostgreSQL tests prove concurrent redemption issues exactly one token, owner
+  isolation, expiry, immediate subsequent-request revocation and atomic rate limits.
+  Android device tests were compiled, not executed on a phone. Real pairing and
+  Samsung calorie semantics must be verified before #90 ingestion work.
+- Full Jest passed (1,104 tests before the final route/page tests); focused final
+  route/settings checks pass. Changed files pass formatting/lint; repository-wide
+  formatting/lint retain unrelated baseline failures; broad Stylelint also includes
+  ignored generated Android test-report CSS. Normal production build and TypeScript
+  pass outside the restricted sandbox. Webpack fallback encounters an existing
+  Mantine schedule/rrule import error.
 
 ## Android #89 user acceptance — 2026-10-24
 

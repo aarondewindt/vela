@@ -1,3 +1,6 @@
+jest.mock('@/components/SettingsView/DeviceSettings', () => ({
+  DeviceSettings: () => <div>Private device controls</div>,
+}));
 jest.mock('next/headers', () => ({ headers: jest.fn(() => new Headers()) }));
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('@/components/Nutrition/NutritionGoalsView', () => ({
@@ -25,9 +28,10 @@ import NutritionPage from './nutrition/page';
 import HomeAssistantPage from './home-assistant/page';
 import HealthPage from './health/page';
 import AiPage from './ai-models/page';
+import DevicesPage from './devices/page';
 const nutrition = (date?: string) => NutritionPage({ searchParams: Promise.resolve({ date }) });
 beforeEach(() => jest.clearAllMocks());
-it.each([nutrition, HomeAssistantPage, HealthPage, AiPage])(
+it.each([nutrition, HomeAssistantPage, HealthPage, AiPage, DevicesPage])(
   'requires sign-in before mounting protected configuration (%#)',
   async (page) => {
     (auth.api.getSession as unknown as jest.Mock).mockResolvedValue(null);

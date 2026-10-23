@@ -6,8 +6,9 @@ Phase 2 (#89) adds read-only Samsung Health activity-summary calorie diagnostics
 Read [SDK setup and physical-device validation](../docs/ANDROID_HEALTH_VALIDATION.md)
 first: download the licensed Data SDK 1.1.0 AAR to
 `android/app/libs/samsung-health-data-api-1.1.0.aar`, enable Samsung Health developer
-Data Read mode and grant only activity-summary READ. No backend connection,
-credentials, upload or automatic synchronization is implemented. The user accepted #89 after successful permission granting and satisfactory
+Data Read mode and grant only activity-summary READ. Issue #93 adds HTTPS device pairing and Keystore-encrypted credentials; see
+[device authentication and pairing](../docs/DEVICE_AUTH.md). No health upload or
+automatic synchronization is implemented. The user accepted #89 after successful permission granting and satisfactory
 readings on the S25 FE. Detailed calorie semantics remain unclassified in the
 record; see the validation guide before using a specific interpretation.
 
@@ -170,7 +171,8 @@ midnight, delayed wearable updates and developer-mode persistence, are in the
 
 ## Container → Ubuntu → phone networking
 
-The diagnostic app has no Vela backend connection or uploads. For browser checks over the LAN, open
+The companion pairs only with an HTTPS Vela origin; HTTP LAN/ADB routes below
+remain browser-only development checks. No health uploads are implemented. For browser checks over the LAN, open
 `http://192.168.0.106:3000` on the phone while connected to the same LAN (use the
 desktop’s current LAN IP if it changes). See [LAN development access](../docs/DAILY_USE_DEPLOYMENT.md#lan-development-access)
 for origin configuration. If this works, no ADB reverse is necessary.

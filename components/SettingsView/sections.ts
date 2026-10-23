@@ -1,5 +1,11 @@
 export const settingsSections = [
   {
+    label: 'Devices',
+    href: '/settings/devices',
+    group: 'Integrations',
+    description: 'Pair companions and revoke scoped device access.',
+  },
+  {
     label: 'Profile',
     href: '/settings/profile',
     group: 'Account',

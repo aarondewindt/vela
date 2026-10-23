@@ -1,6 +1,6 @@
 # Vela Architecture
 
-Vela is a Next.js App Router application for private daily planning. PostgreSQL is the source of truth, accessed through Prisma. The application uses tRPC for ordinary web-client requests and an authenticated HTTP route for AI Dev chat streaming. REST integration APIs and a Vela-owned MCP API remain future directions in [the project plan](PROJECT_PLAN.md), not alternate current persistence paths.
+Vela is a Next.js App Router application for private daily planning. PostgreSQL is the source of truth, accessed through Prisma. The application uses tRPC for ordinary web-client requests and an authenticated HTTP route for AI Dev chat streaming. Scoped device pairing/verification REST APIs are implemented; other integration APIs and a Vela-owned MCP API remain future directions in [the project plan](PROJECT_PLAN.md), not alternate current persistence paths.
 
 ```text
 Next.js pages and Mantine components
@@ -66,8 +66,14 @@ stay in memory, with explicit clipboard copy and no automatic health logging.
 Samsung Health Data SDK 1.1.0 is a locally supplied, Git-ignored AAR. Debug reads
 require Samsung Health Data Read developer mode plus user consent. The user accepted the
 S25 FE read diagnostics for #89; detailed elapsed/projected semantics are not
-classified in the recorded evidence; no backend ingestion,
-API/schema changes, pairing or background synchronization are implemented.
+classified in the recorded evidence; no health ingestion or background synchronization are implemented.
+
+Issue #93 adds generic account-owned device credentials, separate-secret one-time
+pairing, protected Settings → Devices management and Android Keystore-backed
+credential storage. `lib/devices/` owns deterministic issuance, verification, scope
+checks, revocation and database-backed rate limits; `/api/devices/` exposes the
+external protocol. Browser authentication remains Better Auth. See
+[device authentication](DEVICE_AUTH.md) for migrations, HTTPS, pairing and tests.
 
 VS Code/Codex edits the shared checkout in the existing Node devcontainer;
 Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
