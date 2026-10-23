@@ -2,8 +2,37 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Planner meals and AI-default evaluation ready for review; prior deployment notes retained.
+**Status:** Discover MVP and reviewed URL enrichment ready for review in PR #74; prior checkpoints retained.
 **Last updated:** 2026-10-22
+
+## Discover URL metadata (#75) — 2026-10-22
+
+- Implemented on `feat/discover-personal-backlog` for existing [PR #74](https://github.com/aarondewindt/vela/pull/74).
+  Quick URL add opens the saved editor; explicit metadata retrieval previews
+  individually selected title/description/cover replacements. Refresh leaves
+  manual and unsaved fields intact; ordinary versioned save applies selections.
+- Protected `refreshMetadata` delegates to the owner-scoped service. Network
+  work runs outside transactions and checks version/URL again on snapshot write.
+  Nullable JSONB `sourceMetadata` retains provider/source/final URL, site name,
+  fetched values and retrieval time separately from editable fields. Existing URL
+  identity/deduplication and manual creation remain authoritative.
+- Server HTML extraction supports title, OG, Twitter, simple microdata and JSON-LD.
+  Fetches pin public DNS answers on each hop, block private/reserved/transition
+  addresses, allow standard HTTP/S ports, use fresh connections and bound redirects
+  (3), total time (8s), headers (16 KiB) and HTML (1 MiB). No scripts/resources run
+  or load. Failures preserve the last successful snapshot; empty/partial results,
+  loading and retry remain explicit. See [Discover](DISCOVER.md).
+- Migration `20261022140000_discover_metadata` adds only nullable JSONB.
+  **It has not been applied to the running database.** Prisma Client regenerated;
+  schema validation and live database diff confirm exactly the new column. A
+  temporary-table PostgreSQL transaction verified existing-row preservation,
+  nullable defaults, JSONB round trip and unchanged manual title, then rolled back.
+- Validation: all 1,068 Jest tests / 138 suites; focused Discover 105 tests / six
+  suites; TypeScript, scoped Oxlint/formatting, Stylelint and production build pass.
+  Repository-wide lint/format retain failures in unchanged Planner/auth/UI files.
+  No public restart/deployment or merge. Provider-specific integrations remain
+  follow-ups; web metadata is UTF-8 HTML only and retains the latest successful
+  snapshot rather than retrieval history.
 
 ## Planner meals, AI default and routine review — 2026-10-22
 
@@ -537,3 +566,37 @@ User authorized implementing the reusable per-user Home Assistant connector and 
 - Independently validated release/whole-remaining-effort replacement options preserve protected work and show displaced minutes, recorded deadlines and conservative deadline risk. Pending-plan accounting considers projected allocations, and corrections compose against original operations/reservations. Preview uses existing create/fingerprint/idempotency; explicit acceptance retains existing locking, revalidation and receipts. No schema migration or deployment was performed for #35. Existing semantic-search work and environment files were preserved.
 - Documentation: [Day plan review](PLAN_REVIEWS.md); proposal API and architecture notes updated. Limits: transient reviews, 100 occupied blocks for AI, three replacement options per adjustable block, no combined repair optimizer or deadline-completion prediction. Manual/fixed/started/calendar/history corrections remain in the explicit existing workflows.
 - Validation: full Jest run passed (709 tests / 100 suites). Two subsequent pending-projection/delegation tests also passed in the final focused review/router run (20 tests / three suites). TypeScript, scoped Oxlint/format, diff whitespace check and production build passed. The restricted build stalled; it was stopped, its stale generated build lock removed after confirming no build remained, and production compilation succeeded outside the sandbox. No live browser, actual model inference or new live PostgreSQL integration checks were run for #35; React/domain/service/router tests cover new behavior, and the full run includes existing proposal acceptance tests. Shared public server was not restarted.
+
+## Discover MVP — #42 — 2026-10-22
+
+- Implemented `/discover` and its main navigation entry on
+  `feat/discover-personal-backlog`. Responsive cards, title/URL quick add, complete
+  detail editing, inline statuses, confirmed deletion, conventional search,
+  type/status/tag/priority filters and six sorts use protected tRPC and existing
+  Mantine/TanStack Query patterns. See [Discover](DISCOVER.md) for API, limits and
+  decisions.
+- One owner-scoped `DiscoverItem` model stores all manual fields, extensible string
+  content types, a shared status enum and optimistic versions. Nullable per-owner
+  canonical URL hashes enforce duplicates under concurrent writes; title-only
+  duplicates remain allowed. No metadata fetching, AI, embeddings or Planner
+  integration was added.
+- Additive migration `20261022120000_discover_items` was applied locally after a
+  successful private `yarn db:backup`; Prisma Client regenerated and schema/database
+  diff empty. The backup and synthetic verification scripts/screenshots remain
+  ignored under `.local/`. Temporary PostgreSQL and browser users, sessions and
+  items were deleted. The shared public server was not restarted or deployed.
+- Validation: 1,017 tests across 136 Jest suites passed; final focused run passed
+  56 tests across five suites. TypeScript, Prisma validation, changed-file
+  formatting/Oxlint, repository Stylelint, database drift check and production
+  build passed. Live PostgreSQL checks covered CRUD, every status, combined
+  filtering, all sorts, pagination, two-user isolation, cascading deletion,
+  duplicate create/edit races and stale-write races (28 checks). Browser checks
+  covered quick add, notes/tags/rating editing, persistent status, duplicate
+  feedback, search, desktop/mobile layouts and cancel/confirm deletion (14
+  checks). Repository-wide lint and formatting retain failures in unchanged files.
+- [PR #74](https://github.com/aarondewindt/vela/pull/74) is open for review and
+  unmerged. [Issue #42 was updated](https://github.com/aarondewindt/vela/issues/42#issuecomment-6329639737)
+  with implementation, validation, limitations and future work; it remains open.
+  Do not merge automatically. Future metadata integrations should preserve
+  editable fields separately from provider snapshots and reuse existing shared
+  AI/embedding infrastructure when requested.

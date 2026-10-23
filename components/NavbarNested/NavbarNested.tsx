@@ -11,6 +11,7 @@ import {
   ChatCircleIcon,
   ForkKnifeIcon,
   HeartbeatIcon,
+  CompassIcon,
 } from '@phosphor-icons/react';
 
 const navbar_map = [
@@ -37,6 +38,7 @@ const navbar_map = [
     ],
   },
   { label: 'Health', icon: HeartbeatIcon, link: '/health' },
+  { label: 'Discover', icon: CompassIcon, link: '/discover' },
   {
     label: 'Settings',
     icon: GearIcon,
