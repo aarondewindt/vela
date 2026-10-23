@@ -1,8 +1,15 @@
-# Vela Android Companion — Phase 1
+# Vela Android Companion — calorie diagnostics
 
 This is the standalone Kotlin/Jetpack Compose project for [#88](https://github.com/aarondewindt/vela/issues/88), under the architecture in [#58](https://github.com/aarondewindt/vela/issues/58). Open **this directory** as a project in Android Studio. It is independent of Yarn and Next.js.
 
-Phase 1 provides a launchable Material 3 status screen, JVM test entry point and Compose device smoke test. It requests **no health, network or runtime permissions** and does not read Samsung Health, connect to Vela, store credentials or synchronize anything. AndroidX adds its own signature-protected internal receiver permission during manifest merging. Samsung Health feasibility/provider integration is #89; secure pairing/ingestion/manual sync is #90; background work is #91. There is no Samsung SDK AAR to download for this phase.
+Phase 2 (#89) adds read-only Samsung Health activity-summary calorie diagnostics.
+Read [SDK setup and physical-device validation](../docs/ANDROID_HEALTH_VALIDATION.md)
+first: download the licensed Data SDK 1.1.0 AAR to
+`android/app/libs/samsung-health-data-api-1.1.0.aar`, enable Samsung Health developer
+Data Read mode and grant only activity-summary READ. No backend connection,
+credentials, upload or automatic synchronization is implemented. The user accepted #89 after successful permission granting and satisfactory
+readings on the S25 FE. Detailed calorie semantics remain unclassified in the
+record; see the validation guide before using a specific interpretation.
 
 ## Development split
 
@@ -22,9 +29,11 @@ After the JDK/SDK setup below, run these scripts in an **Ubuntu host terminal**
 from the repository root (they also work via an absolute path from any directory):
 
 ```bash
+./android/scripts/devices.sh               # List connected devices and emulators
 ./android/scripts/build.sh                 # Build the debug APK
 ./android/scripts/deploy.sh                # Build, install/update and launch on USB phone
 ./android/scripts/deploy.sh --no-build     # Install and launch the existing APK
+./android/scripts/deploy.sh --no-build --no-streaming # Try push install if ADB streaming stalls
 ./android/scripts/deploy.sh --serial SERIAL # Select a specific device
 ```
 
@@ -40,7 +49,11 @@ Deployment checks device access before building. It targets the single USB
 device by default; `ANDROID_SERIAL` or `--serial` selects a specific device
 (including a wireless device). Installation uses `adb install -r` to retain app
 data; signing conflicts still require the manual recovery described below.
-The scripts do not install tooling or change networking/port forwarding.
+Deployment prints separate installation and launch stages. If it stops after the
+installation message, keep the phone unlocked and try `--no-streaming` to use
+ADB push installation instead of streaming. Device listing alone does not prove
+APK installation works. The scripts do not install tooling or change
+networking/port forwarding.
 
 Extra Gradle options/tasks can be passed to the build script:
 
@@ -61,7 +74,7 @@ Extra Gradle options/tasks can be passed to the build script:
 | Activity Compose | 1.12.4 |
 | SDK platform / compile / target | Android 16 / API 36 |
 | SDK Build Tools | 35.0.0 |
-| Minimum phone OS | Android 9 / API 28 |
+| Minimum phone OS | Android 10 / API 29 |
 
 These are deliberate fixed stable versions, not requests for the latest versions. AGP's [compatibility table](https://developer.android.com/build/releases/agp-8-13-0-release-notes) specifies Gradle 8.13, JDK 17 and Build Tools 35.0.0. Check the [Kotlin compatibility table](https://kotlinlang.org/docs/gradle-configure-project.html) when updating the plugins together. Use Android Studio with AGP 8.13 support (Otter 2025.2.1 or newer compatible Studio); decline automatic build-tool upgrades when first importing.
 
@@ -114,7 +127,7 @@ Host `android/local.properties` contains a host-only path: it takes precedence o
 
 Run all ADB commands on the **Ubuntu host**, using SDK Platform-Tools:
 
-1. On the phone, open Settings → About phone → Software information; tap Build number seven times and authenticate if asked. Under Settings → Developer options, enable USB debugging. Connect with a USB **data** cable, unlock the phone and approve the host's RSA debugging prompt. Android developer options are separate from Samsung Health developer mode; the latter is unnecessary for Phase 1.
+1. On the phone, open Settings → About phone → Software information; tap Build number seven times and authenticate if asked. Under Settings → Developer options, enable USB debugging. Connect with a USB **data** cable, unlock the phone and approve the host's RSA debugging prompt. Android developer options are separate from Samsung Health developer Data Read mode; configure the latter using the validation guide.
 2. For Ubuntu USB access, follow the [Android hardware-device setup](https://developer.android.com/studio/run/device):
 
    ```bash
@@ -151,16 +164,13 @@ adb -s "$ANDROID_SERIAL" logcat --pid="$(adb -s "$ANDROID_SERIAL" shell pidof -s
 
 The app must be running for the PID command; rerun it after restarting the process. The connected test uses the authorized device (disconnect other devices/emulators if selection is ambiguous). Results are under `app/build/reports/androidTests/connected/`.
 
-Physical-device acceptance checklist:
-
-- Install and launch on the S25 FE; confirm the app title and all three unconnected status cards, with no permission prompts.
-- Rotate, switch light/dark mode, increase font size and scroll; content should remain readable and clear of system bars.
-- Relaunch from the launcher; confirm it still shows no connection and no completed sync.
-- Hit the `onCreate` breakpoint and inspect Logcat; run the connected smoke test.
+Physical-device checks for #89, including permissions, today/history comparisons,
+midnight, delayed wearable updates and developer-mode persistence, are in the
+[validation guide](../docs/ANDROID_HEALTH_VALIDATION.md#comparison-procedure-and-completion-gate).
 
 ## Container → Ubuntu → phone networking
 
-Phase 1 makes **no network requests**. For browser checks over the LAN, open
+The diagnostic app has no Vela backend connection or uploads. For browser checks over the LAN, open
 `http://192.168.0.106:3000` on the phone while connected to the same LAN (use the
 desktop’s current LAN IP if it changes). See [LAN development access](../docs/DAILY_USE_DEPLOYMENT.md#lan-development-access)
 for origin configuration. If this works, no ADB reverse is necessary.
@@ -193,14 +203,17 @@ devcontainer :3000 (yarn dev listening on 0.0.0.0)
 
 `localhost` in the phone normally means the phone, in Ubuntu means Ubuntu, and in the container means the container. `10.0.2.2` is an emulator convention and is not the physical S25 FE's host address. ADB reverse still uses loopback even though Compose also publishes port 3000 for LAN development. No extra port or ADB-in-container workaround is necessary. Do not expose the dev server through a public tunnel. Existing public production port 3001 and database ports are unaffected.
 
-The browser check works independently of Android app networking policy. This APK has no `INTERNET` permission or cleartext allowance. When native development networking is introduced in #90, use HTTPS for credentials/health uploads and scope any local HTTP exception to a debug variant. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
+The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela adds no backend client or cleartext allowance. When native development networking is introduced in #90, use HTTPS for credentials/health uploads and scope any local HTTP exception to a debug variant. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
 
 ## Verification record
 
 The user confirmed the build/deployment scripts work and the app launches on the
 S25 FE (2026-10-24). Android Studio debugger attachment, the connected smoke test and the
-remaining layout checks are still manual gates. See [the shared handoff](../docs/agent-handoff.md)
+remaining layout checks are still manual gates. The #89 diagnostic APK, JVM tests,
+lint and device-test compilation pass against the supplied Samsung AAR; the user confirmed
+Samsung permission granting and satisfactory readings, and accepted #89 for
+closure. Detailed semantic measurements were not supplied. See [the shared handoff](../docs/agent-handoff.md)
 for the latest performed checks. CI and compiling the instrumented test APK cannot
 establish physical-device results.
 
-Future Samsung Health testing must happen on the real phone in #89: emulator launchability only validates this shell. That phase must prove total/active calorie access and elapsed-day versus projected-day semantics before backend ingestion depends on it.
+The earlier launch confirmation covers #88 only. #89 Samsung Health reads and calorie semantics require the physical-device checks in the validation guide; implementation or fake-provider test success does not close that feasibility gate.

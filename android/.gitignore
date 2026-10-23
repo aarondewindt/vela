@@ -15,3 +15,6 @@ captures/
 keystore.properties
 *.apk
 *.aab
+
+# Samsung SDK is supplied locally under its own license
+app/libs/*.aar

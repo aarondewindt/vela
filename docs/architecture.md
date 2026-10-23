@@ -53,21 +53,27 @@ occurrence materialization and proposal eligibility resolve it through
 existing tasks. TaskView edits the anchor through the owner-scoped task service;
 existing occurrences and plans are retained when recurrence settings change.
 
-## Android companion bootstrap
+## Android companion
 
-`android/` is an independent single-module Kotlin/Material 3 Compose Gradle project
-for Android companion Phase 1 (#88, architecture issue #58). It currently renders
-unconnected health/server/sync status only and requests no health/network/runtime permissions.
-Samsung Health feasibility (#89), authenticated ingestion/pairing (#90), and
-background synchronization (#91) remain unimplemented. No web API, Prisma schema
-or existing health ingestion behavior changes in this phase.
+`android/` is an independent single-module Kotlin/Material 3 Compose Gradle project.
+Phase 1 (#88) establishes the host/container workflow. Phase 2 (#89) adds manual,
+read-only Samsung Health activity-summary calorie diagnostics behind a small
+`HealthProvider` interface; only `SamsungHealthProvider` imports Samsung SDK types.
+`ReadCalorieDiagnostics` owns day ranges and refresh coordination. Missing readings
+remain unknown and total/active calories are never added together. Diagnostics
+stay in memory, with explicit clipboard copy and no automatic health logging.
+
+Samsung Health Data SDK 1.1.0 is a locally supplied, Git-ignored AAR. Debug reads
+require Samsung Health Data Read developer mode plus user consent. The user accepted the
+S25 FE read diagnostics for #89; detailed elapsed/projected semantics are not
+classified in the recorded evidence; no backend ingestion,
+API/schema changes, pairing or background synchronization are implemented.
 
 VS Code/Codex edits the shared checkout in the existing Node devcontainer;
 Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
-tooling is opt-in and Android CI is separate from the existing web checks.
-See [Android setup](../android/README.md) for pinned versions, local SDK path
-handling, phone installation/debugging and loopback port 3000 access via
-host ADB reverse.
+tooling remains opt-in and Android CI is separate from web checks. See
+[Android setup](../android/README.md) and [calorie validation](ANDROID_HEALTH_VALIDATION.md)
+for the licensed SDK setup, signing/developer-mode limits, deployment and tests.
 
 ## Daily meal requirements
 

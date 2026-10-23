@@ -2,8 +2,82 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Android Companion Phase 1 builds and launches on the user's S25 FE; host helper scripts added. Debugger/connected-test/layout checks remain manual. Prior checkpoints retained, including Discover PR #74.
+**Status:** Android #89 diagnostics implemented; full APK/JVM-test/lint/device-test compilation passes against supplied Samsung SDK 1.1.0. User confirmed S25 FE permission/read success and accepted #89 for closure; precise calorie semantics remain unclassified in the record. #88 host workflow preserved.
 **Last updated:** 2026-10-24
+
+## Android #89 user acceptance — 2026-10-24
+
+- User confirmed permission granting worked and calorie values looked good on the
+  S25 FE, then explicitly requested closure of #89 and commit/push of the changes.
+- ADB shell/install hangs resolved after disconnecting/reconnecting USB. No app
+  logic fault was established; progress output and optional push install remain.
+- No exact measurement values, elapsed/projected classification, or individual
+  midnight/watch-delay/revoke/reboot outcomes were supplied. Record acceptance
+  without inventing those results. Future ingestion must not assume semantics.
+- Local Android build/JVM/lint/device-test-compilation and offline lock checks
+  passed; connected device tests were not run by this agent. SDK AAR, local SDK
+  paths, environment files, keys and private health readings remain outside Git.
+
+## Phone deployment diagnosis — 2026-10-24
+
+- User reports `deploy.sh` prints successful build/APK path but no visible phone
+  change. Device listing works; install/launch success is not established.
+- Added explicit installation/launch progress messages and opt-in `--no-streaming`
+  for ADB push installation. Default install behavior is unchanged. Thirteen
+  host-script Jest tests pass; shell syntax and diff whitespace checks pass.
+- Subsequent shell test also hung. User disconnected/reconnected USB and confirmed
+  communication worked, then confirmed successful Samsung permission/read access.
+
+## Samsung Health diagnostic implementation (#89) — 2026-10-24
+
+- Read #58/#88/#89, Android instructions/project and architecture/frontend/project
+  documentation. Official Samsung docs currently list Data SDK 1.1.0, Samsung
+  Health 6.30.2+, Android 10/API 29+, Java 17+, physical smartphones only.
+- Added provider-neutral `HealthProvider`, typed query/result diagnostics and
+  `SamsungHealthProvider` requesting only ACTIVITY_SUMMARY READ. Total and active
+  calories remain separate; no missing-to-zero conversion, uploads, backend,
+  persistence or background jobs. Samsung SDK imports stay in the adapter.
+- Manual refresh queries today-to-captured-time, today's full calendar day and a
+  selected completed historical day, with local/derived UTC bounds, raw returned
+  aggregate rows, request/response instants, platform source filter and versions.
+  Permission/manage action, resume recheck, partial query errors and actionable
+  SDK errors/resolution are visible. Revoke/authorization failure discards data;
+  explicit clipboard copy is the only export. Aggregate intervals are explicitly
+  not measurement/last-sync timestamps; observed semantics stay UNVERIFIED.
+- User supplied SDK archive's library as
+  `android/app/libs/samsung-health-data-api-1.1.0.aar` (Git-ignored). Embedded version
+  1.1.0/code 1010004 verified; SHA-256 recorded/enforced in Gradle. Samsung AAR
+  contributes normal INTERNET permission; Vela has no backend client or upload
+  path. Gradle prerequisite and CI missing-secret failures explain local setup.
+  CI needs a privately supplied
+  `SAMSUNG_HEALTH_DATA_SDK_AAR_URL` private HTTPS download URL repository secret, subject to SDK license.
+- Kept #88 host scripts/devcontainer/web workflow; minSdk raised 28→29 for Samsung
+  Health compatibility. Added documented Gson/Parcelize and explicit coroutines,
+  regenerated only the six existing debug/test dependency locks. No unrelated
+  web or local environment changes.
+- Validation: 11 Kotlin/JUnit domain tests passed in a temporary JVM harness using
+  the actual provider-independent production/test sources, Kotlin 2.3.10,
+  coroutines 1.10.2 and JDK 17.0.21 under `/tmp/vela-android-toolchain`. Covers DST
+  23/25-hour days, captured-time/midnight boundaries, completed dates, missing/null/
+  multirow data, total/active separation, denial/revocation, query failure,
+  authorization failure and cancellation. Nine existing Jest host-script tests
+  passed. Dependency graph resolution and lock regeneration passed.
+- Full Gradle `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+  :app:assembleDebugAndroidTest --write-locks` passed (81 tasks) using the actual
+  supplied Samsung AAR; offline rerun with enforced locks also passed. Temporary
+  JDK/Android SDK under `/tmp` used without changing
+  the devcontainer or ignored host local.properties. All 12 Android JVM tests pass
+  (11 domain + manifest test). Lint: zero errors/seven warnings (six dependency/
+  tool update notices and existing Android 12 backup-rules advisory). APK manifest
+  verifies INTERNET from Samsung and AndroidX internal receiver permission only;
+  no health runtime/write permissions. SDK binary stays ignored; no health data
+  logged. Connected UI test and actual Samsung reads are not run here.
+- See [validation guide](ANDROID_HEALTH_VALIDATION.md) for licensed SDK setup,
+  host deployment, test commands and physical comparison/revoke/midnight/
+  watch-delay/reboot gates. Rebuild on Ubuntu before installing so the host
+  debug signing key is used; a container-built APK may have a different key.
+- User subsequently accepted #89 for closure; see the acceptance checkpoint above.
+  No server ingestion/sync (#90/#91) changes are included.
 
 ## Android completion confirmation — 2026-10-24
 

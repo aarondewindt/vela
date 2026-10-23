@@ -32,7 +32,7 @@ describe('Android host scripts', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vela-host-scripts-'));
     project = path.join(directory, 'checkout with spaces', 'android');
     fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-    for (const file of ['host-common.sh', 'build.sh', 'deploy.sh']) {
+    for (const file of ['host-common.sh', 'build.sh', 'deploy.sh', 'devices.sh']) {
       fs.copyFileSync(path.join(__dirname, file), path.join(project, 'scripts', file));
     }
     const jdk = path.join(directory, 'jdk 17');
@@ -61,6 +61,21 @@ esac`);
 
   afterEach(() => fs.rmSync(directory, { recursive: true, force: true }));
 
+  test('lists all devices outside the checkout without requiring Java or selecting a serial', () => {
+    const result = run('devices.sh', [], {
+      VELA_ANDROID_JAVA_HOME: '/missing-jdk',
+      ANDROID_SERIAL: 'phone-1',
+    });
+    expect(result.status).toBe(0);
+    expect(calls()).toBe('adb:devices -l\n');
+  });
+
+  test('device listing help and invalid arguments do not invoke ADB', () => {
+    expect(run('devices.sh', ['--help']).stdout).toContain('Usage:');
+    expect(run('devices.sh', ['--unknown']).status).toBe(1);
+    expect(calls()).toBe('');
+  });
+
   test('build works outside the checkout and forwards Gradle arguments intact', () => {
     const result = run('build.sh', ['--offline', '-Pexample=value with spaces']);
     expect(result.status).toBe(0);
@@ -77,6 +92,21 @@ esac`);
       `adb:-d install -r ${project}/app/build/outputs/apk/debug/app-debug.apk`,
       'adb:-d shell am start -W -n space.aarondewindt.vela.companion/.MainActivity',
     ]);
+  });
+
+  test('deployment reports installation and launch progress', () => {
+    const result = run('deploy.sh', ['--no-build']);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Installing Vela Companion using');
+    expect(result.stdout).toContain('Launching Vela Companion...');
+    expect(result.stdout).toContain('Vela Companion launch command completed.');
+  });
+
+  test('push installation can be selected when streamed installation stalls', () => {
+    const result = run('deploy.sh', ['--no-build', '--no-streaming', '--serial', 'phone-2']);
+    expect(result.status).toBe(0);
+    expect(calls()).toContain(`adb:-s phone-2 install -r --no-streaming ${project}/app/build/outputs/apk/debug/app-debug.apk`);
+    expect(calls()).toContain('adb:-s phone-2 shell am start');
   });
 
   test('no-build supports explicit serial selection over ANDROID_SERIAL', () => {
@@ -111,6 +141,8 @@ esac`);
     const result = run('deploy.sh', ['--no-build'], { ADB_INSTALL_EXIT: '1' });
     expect(result.status).toBe(1);
     expect(calls()).not.toContain('am start');
+    expect(result.stdout).toContain('Installing Vela Companion using');
+    expect(result.stdout).not.toContain('Launching Vela Companion...');
   });
 
   test('rejects an explicitly configured incompatible JDK', () => {
