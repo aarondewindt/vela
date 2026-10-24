@@ -132,6 +132,8 @@ it('excludes fully allocated work and exposes only remaining effort', async () =
     taskOccurrenceId: taskId(id + 80),
     status: 'PLANNED',
     durationMinutes: id === 1 ? 30 : 10,
+    startsAt: at('09:00'),
+    endsAt: at(id === 1 ? '09:30' : '09:10'),
   })) as typeof s.blocks;
   const result = await retrievePlanningTasks('owner', { ...input, semantic: false }, s);
   expect(result.candidates.map((c) => c.taskId)).not.toContain(taskId(1));

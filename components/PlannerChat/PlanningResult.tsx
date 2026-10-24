@@ -19,7 +19,7 @@ export function PlanningResult({ value, onRevise }: { value: unknown; onRevise?:
     <Paper withBorder p="xs">
       <Stack gap="xs">
         <Text size="sm">
-          {result.date} · {result.reply}
+          {result.date} · {result.summary ?? result.reply.split('\n')[0]}
         </Text>
         {result.review && (
           <PlanReview

@@ -9,7 +9,7 @@ const candidates = [
 const response = {
   summary: 'A small day',
   workBudgetMinutes: 30,
-  selected: [{ key: 'C2', reason: 'Due today' }],
+  selected: [{ key: 'C2', reason: 'Due today', plannedMinutes: 30 }],
   omitted: [],
 };
 
@@ -25,7 +25,9 @@ it('constrains model references to short aliases for the current candidate pool'
 
 it('maps the exact chosen occurrence and leaves unmentioned candidates unscheduled with an honest explanation', () => {
   const result = selectionContract(candidates).resolve(response);
-  expect(result.selection.selected).toEqual([{ key: candidates[1].key, reason: 'Due today' }]);
+  expect(result.selection.selected).toEqual([
+    { key: candidates[1].key, reason: 'Due today', plannedMinutes: 30 },
+  ]);
   expect(result.selection.omitted.map((item) => item.key)).toEqual([
     candidates[0].key,
     candidates[2].key,
@@ -81,4 +83,33 @@ it('requires an empty omission list for unguided fill ordering', () => {
     contract.schema.safeParse({ ...response, omitted: [{ key: 'C1', reason: 'Less urgent' }] })
       .success
   ).toBe(false);
+});
+
+it.each([undefined, null, 0, 9999])(
+  'rejects a guided allocation of %s instead of filling the day with remaining effort',
+  (plannedMinutes) => {
+    const contract = selectionContract(candidates);
+    expect(
+      contract.schema.safeParse({
+        ...response,
+        selected: [
+          {
+            key: 'C2',
+            reason: 'About an hour',
+            ...(plannedMinutes === undefined ? {} : { plannedMinutes }),
+          },
+        ],
+      }).success
+    ).toBe(false);
+  }
+);
+it('requires numeric day allocations in the model schema while keeping unguided fill compatible', () => {
+  const schema = z.toJSONSchema(selectionContract(candidates).schema) as any;
+  expect(schema.properties.selected.items.required).toContain('plannedMinutes');
+  expect(
+    selectionContract(candidates, true).schema.safeParse({
+      ...response,
+      selected: [{ key: 'C2', reason: 'Urgency order' }],
+    }).success
+  ).toBe(true);
 });

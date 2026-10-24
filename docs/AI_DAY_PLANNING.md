@@ -50,7 +50,10 @@ changes during generation require a fresh preview. Nothing updates planning
 records before acceptance.
 
 AI chooses candidate order, explains selections/omissions, and may suggest a
-smaller work-minute budget and per-task `plannedMinutes` allocations when guidance was supplied. Approximate requests such as “about an hour” become bounded allocation targets rather than changes to recorded task estimates. Unguided generation tries
+smaller work-minute budget. Guided model output requires a positive integer
+`plannedMinutes` for every selected task; an omitted/null allocation is invalid rather
+than silently scheduling its entire remaining estimate. Numeric allocation targets
+are saved alongside actual placed minutes and shown under the AI assessment. Approximate requests such as “about an hour” become bounded allocation targets rather than changes to recorded task estimates. Unguided generation tries
 remaining eligible candidates after the AI shortlist, without a model-imposed
 work cap or unsolicited per-task allocation target. It cannot supply placement timestamps, alter task
 properties, waive constraints, complete prerequisites, or apply changes. The
@@ -90,8 +93,21 @@ blocks or reservations can be added, the service returns an unsaved report with
 
 Eligibility uses current task/occurrence status, unresolved hard prerequisites,
 selected date and earliest start. Due dates propagate through hard dependency
-chains. Remaining work subtracts completed effort and commitments in all current
-plans, separately per recurring occurrence. Missing effort uses the existing
+chains. BACKLOG and IN_PROGRESS tasks remain candidates when they have planned or
+active blocks on earlier or later dates. Open non-recurring occurrences can be
+continued before or after their original date; future recurring occurrences still
+respect their recurrence date. Planning adds a block for the existing occurrence
+and preserves other dates' blocks. Moving those blocks or asking whether to move
+versus add is deferred.
+
+Remaining work subtracts actual DONE effort across current plans and selected-day
+PLANNED/IN_PROGRESS commitments, separately per recurring occurrence. Other dates'
+uncompleted allocations do not consume today's effort budget. If completed effort
+has exhausted a positive estimate while the task remains unfinished, a labelled
+25-minute continuation allowance keeps it discoverable without changing its estimate.
+Creation and acceptance use the same accounting and warn about retained blocks on
+other dates. Session finish extensions still inspect all commitments, so continuation
+cannot falsely qualify as completing the whole task. Missing effort uses the existing
 25-minute default and is identified in the report. Blocked tasks are reported;
 scheduling a prerequisite does not unlock its dependents.
 
@@ -164,7 +180,7 @@ and desktop/390px layouts. Temporary fixtures are removed after verification.
 
 Chat planning uses saved availability and the existing current-time cutoff automatically.
 Approximate durations, ordering and relative emphasis belong in guidance; the scheduler
-can return `plannedMinutes` for each selected candidate. Deterministic placement caps
+must return numeric `plannedMinutes` for each selected candidate. Deterministic placement caps
 that allocation at remaining effort, available time and existing session constraints.
 Unguided fill ignores unsolicited model allocation targets, preserving normal fill behavior.
 
@@ -185,3 +201,15 @@ calling the scheduler. Typed limits remain an application API feature. Guidance
 alone is not represented as a verified arbitrary hard constraint. Scheduler reports
 and validated proposals describe the actual result; chat must not ask users to
 re-enter saved availability or reserve an empty interval for a task.
+
+
+### Guided allocation regression check
+
+`node --conditions=react-server --import tsx scripts/evaluate-planner-allocations.ts`
+runs the selection contract and deterministic placement with synthetic tasks only;
+it reads no user records and saves no proposals. It uses configured Ollama and
+`PLANNER_EVAL_MODEL` (default `qwen3:8b`). With Vela estimated at 9,999 minutes and
+guidance requesting an hour, cleaning up to 30 minutes, video focus and guitar,
+the 2026-10-24 check returned actual allocations of 60 / 30 / 96 / 30 minutes
+respectively, alongside dinner, breaks and leisure reservations. This is one
+synthetic real-model case, not general natural-language compliance evidence.

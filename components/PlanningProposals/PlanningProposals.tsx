@@ -803,7 +803,11 @@ function GenerationReview({
                   .filter((outcome) => outcome.selectionReason)
                   .map((outcome) => (
                     <Text size="sm" key={outcome.key}>
-                      {outcome.title}: {outcome.selectionReason}
+                      {outcome.title}:{' '}
+                      {outcome.plannedMinutes
+                        ? `AI allocation target: ${outcome.plannedMinutes} min. `
+                        : ''}
+                      {outcome.selectionReason}
                     </Text>
                   ))}
               </Stack>

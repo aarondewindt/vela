@@ -1,3 +1,4 @@
+import { countsTowardDayEffort, unfinishedEffortBudget } from './effort';
 import { limitedTaskMinutes } from './task-limits';
 import { mealKindSchema, mealTitles, readMealPreferences, type MealKind } from '../meals';
 import type { Snapshot } from './snapshot';
@@ -79,7 +80,7 @@ export function eligible(s: Snapshot, taskId: string, occurrenceId: string | nul
     if (
       !occurrence ||
       !['PENDING', 'SCHEDULED'].includes(occurrence.status) ||
-      occurrence.occurrenceDate > new Date(`${s.date}T00:00:00Z`)
+      (task.isRecurring && occurrence.occurrenceDate > new Date(`${s.date}T00:00:00Z`))
     ) {
       fail('Occurrence not found, closed, or not yet eligible.');
     }
@@ -480,12 +481,25 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   for (const block of allocations) {
     totals.set(taskKey(block), (totals.get(taskKey(block)) ?? 0) + block.durationMinutes);
   }
+  const dayTotals = new Map<string, number>();
+  const completedTotals = new Map<string, number>();
+  for (const block of allocations) {
+    const key = taskKey(block);
+    if (countsTowardDayEffort(block, dayStart, dayEnd)) {
+      dayTotals.set(key, (dayTotals.get(key) ?? 0) + block.durationMinutes);
+    }
+    if (block.status === 'DONE') {
+      completedTotals.set(key, (completedTotals.get(key) ?? 0) + block.durationMinutes);
+    }
+  }
+  const dayBudget = (block: ProposalBlock) =>
+    unfinishedEffortBudget(estimateOf(block.taskId), completedTotals.get(taskKey(block)) ?? 0);
   for (const block of final.filter((b) => changed.has(b.id) && b.taskId)) {
-    const estimate = estimateOf(block.taskId);
+    const estimate = dayBudget(block);
     if (
       occupied(block) &&
       block.status !== 'DONE' &&
-      (totals.get(taskKey(block)) ?? 0) > estimate
+      (dayTotals.get(taskKey(block)) ?? 0) > estimate
     ) {
       fail(
         'Proposed time exceeds the task’s remaining estimate after completed work and commitments.'
@@ -594,6 +608,31 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     }
   }
   const warnings: string[] = [];
+  const continued = new Map(
+    final
+      .filter((block) => changed.has(block.id) && block.taskId && block.status === 'PLANNED')
+      .map((block) => [taskKey(block), block])
+  );
+  for (const [key, block] of continued) {
+    if (dayBudget(block) > estimateOf(block.taskId)) {
+      warnings.push(
+        `${block.title}: recorded completed work has reached its estimate, but the task is still unfinished. Using a 25-minute continuation allowance; review its estimate.`
+      );
+    }
+    if (
+      otherBlocks.some(
+        (other) =>
+          taskKey(other) === key &&
+          occupied(other) &&
+          other.status !== 'DONE' &&
+          !countsTowardDayEffort(other, dayStart, dayEnd)
+      )
+    ) {
+      warnings.push(
+        `${block.title}: existing scheduled blocks on other dates are retained. This proposal adds work on the selected day; it does not move those blocks.`
+      );
+    }
+  }
   if (changes.some((c) => c.type === 'finish')) {
     warnings.push(
       'Actual work is recorded as entered. Finishing a block only completes its task or occurrence when explicitly selected.'
@@ -665,7 +704,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
           changes.some((c) => c.before?.id === op.blockId && c.after && taskKey(c.after) === key)
       )
         ? 0
-        : Math.max(0, estimateOf(block.taskId) - (totals.get(key) ?? 0)),
+        : Math.max(0, dayBudget(block) - (dayTotals.get(key) ?? 0)),
     })),
   };
 }

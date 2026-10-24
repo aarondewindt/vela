@@ -40,3 +40,28 @@ it('ignores malformed model output instead of rendering arbitrary interactive co
   expect(container.querySelector('button')).toBeNull();
   expect(screen.queryByText('Apply')).not.toBeInTheDocument();
 });
+
+it('keeps the card heading concise while detailed allocation results remain in the proposal', () => {
+  render(
+    <PlanningResult
+      value={{
+        ...value,
+        summary: 'Planned 216 task minutes across 2 tasks.',
+        reply:
+          'Planned 216 task minutes across 2 tasks.\nWork on Vela: 60 minutes scheduled.\nSoLocos: 96 minutes scheduled.',
+      }}
+    />
+  );
+  expect(
+    screen.getByText('2030-01-07 · Planned 216 task minutes across 2 tasks.')
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Work on Vela/)).not.toBeInTheDocument();
+  expect(screen.getByText(/Saved preview/)).toBeInTheDocument();
+});
+it('shows the first line for older saved generation results without a separate summary', () => {
+  render(
+    <PlanningResult value={{ ...value, reply: 'Planned 216 minutes.\nTask allocation details' }} />
+  );
+  expect(screen.getByText('2030-01-07 · Planned 216 minutes.')).toBeInTheDocument();
+  expect(screen.queryByText(/Task allocation details/)).not.toBeInTheDocument();
+});

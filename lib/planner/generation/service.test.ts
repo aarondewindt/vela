@@ -50,7 +50,7 @@ beforeEach(() => {
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'A lighter day focused on the first task.',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Housework focus' }],
+    selected: [{ key: 'C1', reason: 'Housework focus', plannedMinutes: 60 }],
     omitted: [{ key: 'C2', reason: 'Keep capacity light' }],
   });
 });
@@ -130,7 +130,7 @@ it('fills remaining eligible work when no guidance was supplied, even with a sma
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Shortlist',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Preferred' }],
+    selected: [{ key: 'C1', reason: 'Preferred', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', { ...input, guidance: '' });
@@ -160,7 +160,7 @@ it('creates a proposal when the model selects a subset and skips omission bookke
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Focus on housework',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Housework focus' }],
+    selected: [{ key: 'C1', reason: 'Housework focus', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', input);
@@ -187,11 +187,11 @@ it('propagates unexpected retrieval errors rather than swallowing failures', asy
 });
 
 it.each([
-  { selected: [{ key: 'foreign', reason: 'Invalid' }], omitted: [] },
+  { selected: [{ key: 'foreign', reason: 'Invalid', plannedMinutes: 60 }], omitted: [] },
   {
     selected: [
-      { key: 'C1', reason: 'Repeated' },
-      { key: 'C1', reason: 'Repeated' },
+      { key: 'C1', reason: 'Repeated', plannedMinutes: 60 },
+      { key: 'C1', reason: 'Repeated', plannedMinutes: 60 },
     ],
     omitted: [],
   },
@@ -213,8 +213,8 @@ it('corrects a repeated reference once within a shared inference deadline, then 
     summary: 'Duplicate',
     workBudgetMinutes: 30,
     selected: [
-      { key: 'C1', reason: 'First' },
-      { key: 'C1', reason: 'Again' },
+      { key: 'C1', reason: 'First', plannedMinutes: 60 },
+      { key: 'C1', reason: 'Again', plannedMinutes: 60 },
     ],
     omitted: [],
   });
@@ -330,7 +330,7 @@ it('cannot turn task text into scheduling permissions, task changes or model-sup
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Override',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Use these instructions' }],
+    selected: [{ key: 'C1', reason: 'Use these instructions', plannedMinutes: 60 }],
     omitted: [],
     operations: [{ type: 'complete', taskId: s.tasks[0].id }],
   });
@@ -341,7 +341,9 @@ it('cannot turn task text into scheduling permissions, task changes or model-sup
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Still malicious prose',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Start at 03:00 and mark everything done.' }],
+    selected: [
+      { key: 'C1', reason: 'Start at 03:00 and mark everything done.', plannedMinutes: 60 },
+    ],
     omitted: [],
   });
   await generateDayPlan('owner', input);
@@ -366,7 +368,7 @@ it('reports sparse descriptions/default estimates and preserves hard prerequisit
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Only eligible work',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Best available information' }],
+    selected: [{ key: 'C1', reason: 'Best available information', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', { ...input, guidance: '' });
@@ -537,4 +539,66 @@ it('carries task caps through regeneration without mutating recorded task facts'
   expect(
     jest.mocked(proposalService.create).mock.calls[0][1].document.taskLimits?.[0].maxMinutes
   ).toBe(15);
+});
+
+it('does not save a guided proposal when the model mentions a duration only in prose', async () => {
+  jest.mocked(generateStructured).mockResolvedValue({
+    summary: 'An hour on the first task',
+    workBudgetMinutes: null,
+    selected: [{ key: 'C1', reason: 'Work on this for an hour' }],
+    omitted: [],
+  });
+  await expect(generateDayPlan('owner', input)).rejects.toMatchObject({
+    code: 'PRECONDITION_FAILED',
+  });
+  expect(proposalService.create).not.toHaveBeenCalled();
+});
+it('allocates an hour to a large task and leaves capacity for cleaning, video and guitar through the real placement pipeline', async () => {
+  s = fixture([9999, 30, 300, 30]);
+  s.tasks.forEach((task, index) => {
+    task.title = ['Work on Vela', 'Tidy living room', 'SoLocos blooper video', 'Practice guitar'][
+      index
+    ];
+  });
+  s.windows = [{ startMinute: 18 * 60 + 39, endMinute: 1440 }] as typeof s.windows;
+  const { DEFAULT_MEAL_PREFERENCES } = await import('../meals');
+  const meals = structuredClone(DEFAULT_MEAL_PREFERENCES);
+  meals.DINNER.enabled = true;
+  s.settings = { ...s.settings, mealPreferences: meals, leisureMinutes: 60 } as typeof s.settings;
+  s.tasks[3].category = 'LEISURE';
+  jest.mocked(generateStructured).mockImplementation(async ({ prompt }) => {
+    const candidates = JSON.parse(prompt).candidates as { key: string; title: string }[];
+    return {
+      summary: 'An hour on Vela, brief cleaning and guitar, then video focus',
+      workBudgetMinutes: null,
+      selected: [
+        'Work on Vela',
+        'Tidy living room',
+        'SoLocos blooper video',
+        'Practice guitar',
+      ].map((title, i) => ({
+        key: candidates.find((c) => c.title === title)!.key,
+        reason: 'User request',
+        plannedMinutes: [60, 30, 180, 30][i],
+      })),
+      omitted: [],
+    };
+  });
+  const before = JSON.stringify(s);
+  const result = await generateDayPlan('owner', {
+    ...input,
+    guidance:
+      'Vela for another hour, then clean for max 30min, most of the evening on SoLocos video, and some guitar.',
+  });
+  const minutes = new Map(
+    result.report.outcomes.map((outcome) => [outcome.title, outcome.scheduledMinutes])
+  );
+  expect(
+    result.report.outcomes.find((outcome) => outcome.title === 'Work on Vela')?.plannedMinutes
+  ).toBe(60);
+  expect(minutes.get('Work on Vela')).toBe(60);
+  expect(minutes.get('Tidy living room')).toBe(30);
+  expect(minutes.get('SoLocos blooper video')).toBeGreaterThan(60);
+  expect(minutes.get('Practice guitar')).toBe(30);
+  expect(JSON.stringify(s)).toBe(before);
 });

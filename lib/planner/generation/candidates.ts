@@ -1,3 +1,4 @@
+import { countsTowardDayEffort, unfinishedEffortBudget } from '../proposals/effort';
 import type { Snapshot } from '../proposals/snapshot';
 import { wallInstant } from '../proposals/time';
 import { eligible } from '../proposals/validate';
@@ -53,7 +54,7 @@ export function planningCandidates(s: Snapshot) {
       (o) =>
         o.taskId === task.id &&
         ['PENDING', 'SCHEDULED'].includes(o.status) &&
-        o.occurrenceDate <= day
+        (!task.isRecurring || o.occurrenceDate <= day)
     );
     const choices: (string | null)[] = occurrences.map((o) => o.id);
     // A recurring selected-day occurrence remains virtual until acceptance.
@@ -71,16 +72,33 @@ export function planningCandidates(s: Snapshot) {
         }
         continue;
       }
-      const allocated = s.blocks
-        .filter(
-          (b) =>
-            ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(b.status) &&
-            (task.isRecurring
-              ? Boolean(occurrenceId) && b.taskOccurrenceId === occurrenceId
-              : s.occurrences.some((o) => o.id === b.taskOccurrenceId && o.taskId === task.id))
+      const matchingBlocks = s.blocks.filter(
+        (b) =>
+          ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(b.status) &&
+          (task.isRecurring
+            ? Boolean(occurrenceId) && b.taskOccurrenceId === occurrenceId
+            : s.occurrences.some((o) => o.id === b.taskOccurrenceId && o.taskId === task.id))
+      );
+      const completed = matchingBlocks
+        .filter((b) => b.status === 'DONE')
+        .reduce((total, b) => total + b.durationMinutes, 0);
+      const estimate = task.estimatedMinutes ?? 25;
+      const budget = unfinishedEffortBudget(estimate, completed);
+      if (budget > estimate) {
+        warnings.push(
+          `${task.title}: recorded completed work has reached its estimate, but the task is still unfinished. Using a 25-minute continuation allowance; review its estimate.`
+        );
+      }
+      const allocated = matchingBlocks
+        .filter((b) =>
+          countsTowardDayEffort(
+            b,
+            wallInstant(s.date, 0, s.timezone),
+            wallInstant(s.date, 1440, s.timezone)
+          )
         )
         .reduce((total, b) => total + b.durationMinutes, 0);
-      const remaining = Math.max(0, (task.estimatedMinutes ?? 25) - allocated);
+      const remaining = Math.max(0, budget - allocated);
       if (!remaining) {
         continue;
       }

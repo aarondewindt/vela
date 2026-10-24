@@ -91,8 +91,82 @@ export async function planInstruction(
     ) ?? []),
   ].map((b) => ({ ...b, label: b.title }));
   const candidates = context.candidates.map((c) => ({ ...c, label: c.title }));
+  const resolveCandidate = (query: string | null) => {
+    // Chat may copy a task ID instead of the composite candidate/occurrence ID.
+    const taskMatches = candidates.filter((candidate) => candidate.taskId === query);
+    if (taskMatches.length > 1) {
+      throw new Clarification(
+        'Several eligible task occurrences match this task ID. Choose one by its candidate ID.',
+        taskMatches
+      );
+    }
+    return taskMatches[0] ?? resolveOne(candidates, query, 'eligible task occurrence');
+  };
   if (old && old.baseHash !== context.baseHash) {
     throw new Clarification('Planning inputs changed. Refresh and generate a fresh proposal.');
+  }
+  if (instruction.type === 'replaceBlocks') {
+    const selected = instruction.blockQueries.map((query) => resolveOne(blocks, query, 'block'));
+    if (new Set(selected.map((block) => block.id)).size !== selected.length) {
+      throw new Clarification('Choose each block only once.');
+    }
+    if (selected.some((block) => block.status !== 'PLANNED' || !block.editable)) {
+      throw new Clarification('Choose editable planned blocks for replacement.');
+    }
+    const candidate = resolveCandidate(instruction.candidateQuery);
+    const document = old ? documentSchema.parse(old.document) : undefined;
+    if (document?.replan) {
+      throw new Clarification('Accept or discard the progress preview first.');
+    }
+    let operations = [...(document?.operations ?? [])];
+    for (const block of selected) {
+      const replacement = {
+        kind: 'TASK' as const,
+        taskId: candidate.taskId,
+        occurrenceId: candidate.occurrenceId,
+        startsAt: block.startsAt,
+        endsAt: block.endsAt,
+      };
+      if (block.id.startsWith('new:')) {
+        const index = Number(block.id.slice(4));
+        const original = operations[index];
+        if (!original || !('block' in original)) {
+          throw new Clarification(
+            'Could not identify this pending block. Generate a new proposal.'
+          );
+        }
+        operations[index] = {
+          ...original,
+          block: replacement,
+          explanation: instruction.explanation,
+        };
+      } else {
+        operations = operations.filter((op) => !('blockId' in op && op.blockId === block.id));
+        operations.push({
+          type: 'replace',
+          blockId: block.id,
+          block: replacement,
+          explanation: instruction.explanation,
+        });
+      }
+    }
+    const result = await proposalService.create(userId, {
+      requestId,
+      date,
+      baseHash: context.baseHash,
+      document: {
+        schemaVersion: 1,
+        operations,
+        taskLimits: document?.taskLimits,
+        selectionExplanation: document ? selectionExplanation(document) : undefined,
+        reservations: document?.reservations,
+        freeIntervals: document?.freeIntervals,
+      },
+    });
+    return {
+      reply: `Review the replacement of ${selected.length} blocks with “${candidate.title}”, preserving their start and end times. Your plan has not changed.`,
+      proposalId: result.id,
+    };
   }
   if (instruction.type === 'reserve') {
     const startsAt = wallInstant(
@@ -175,7 +249,7 @@ export async function planInstruction(
       : resolveOne(blocks, instruction.blockQuery, 'block');
   const candidate =
     instruction.action === 'replace' || instruction.action === 'add'
-      ? resolveOne(candidates, instruction.candidateQuery, 'eligible task occurrence')
+      ? resolveCandidate(instruction.candidateQuery)
       : undefined;
   if (instruction.type === 'replan') {
     if (old) {

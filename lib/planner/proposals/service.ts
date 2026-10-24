@@ -129,7 +129,7 @@ export const proposalService = {
           (o) =>
             o.taskId === task.id &&
             ['PENDING', 'SCHEDULED'].includes(o.status) &&
-            o.occurrenceDate <= day(date)
+            (!task.isRecurring || o.occurrenceDate <= day(date))
         );
         const choices = occurrences.length ? occurrences.map((o) => o.id) : [null];
         return choices.flatMap((occurrenceId) => {

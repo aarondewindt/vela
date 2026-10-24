@@ -229,3 +229,16 @@ reservations, availability or protected work. Standard weekday availability rema
 08:00–08:45, 12:00–13:00 and 17:15–24:00. The preview displays these windows, the
 planning goal and any guided work budget so unavailable gaps are distinguishable
 from time left unallocated.
+
+## Cross-day unfinished work correction (2026-10-24)
+
+BACKLOG/IN_PROGRESS tasks remain eligible when scheduled on earlier or later dates.
+For the selected day's effort budget, count DONE effort across current plans and
+PLANNED/IN_PROGRESS blocks on that local day. Other dates' unfinished allocations
+remain intact and do not consume today's budget. Reuse an open non-recurring
+occurrence regardless of its original date; keep future recurring occurrence gates.
+An exhausted estimate does not imply completion: expose a labelled 25-minute
+continuation allowance and request estimate review, without rewriting task facts.
+Future UX may ask whether to move an existing future block or add work; currently
+continuation adds a block through the ordinary reviewed proposal workflow.
+All commitments still constrain explicit completion and finish-extension claims.

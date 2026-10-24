@@ -7,7 +7,7 @@ import { generateDaySchema } from '../generation/schema';
 import { generateDayPlan } from '../generation/service';
 import { planInstruction } from '../conversation/planning';
 import { Clarification } from '../conversation/resolve';
-import { instructionSchema } from '../conversation/schema';
+import { instructionSchema, replaceBlocksSchema } from '../conversation/schema';
 import { proposalService } from '../proposals/service';
 import { reviewDayPlan } from '../review/service';
 import { reviewDaySchema } from '../review/schema';
@@ -16,7 +16,7 @@ import { plannerChatContext } from './context';
 const dateSchema = z.object({ date: z.iso.date() }).strict();
 const actionSchema = z.union(
   instructionSchema.options.filter((option) =>
-    ['edit', 'reserve', 'replan'].includes(option.shape.type.value)
+    ['edit', 'reserve', 'replan', 'replaceBlocks'].includes(option.shape.type.value)
   )
 );
 
@@ -74,6 +74,40 @@ export function planningTools(
     }
     return current;
   };
+  const executeAction = async (instruction: z.input<typeof actionSchema>) =>
+    sequential(async () => {
+      const parsed = actionSchema.parse(instruction);
+      if (
+        parsed.type !== 'edit' &&
+        parsed.type !== 'reserve' &&
+        parsed.type !== 'replan' &&
+        parsed.type !== 'replaceBlocks'
+      ) {
+        throw new Error('Unsupported planning action.');
+      }
+      try {
+        const id = requestId(parsed);
+        const saved = await replay(id);
+        if (saved) {
+          return result(
+            parsed.date,
+            'Recovered the saved proposal. Review before accepting.',
+            saved.id
+          );
+        }
+        const previous = await checkPending(parsed.date);
+        const planned = await planInstruction(userId, id, parsed, previous, userTimezone);
+        if (previous && planned.proposalId && previous.proposalId !== planned.proposalId) {
+          await proposalService.discard(userId, previous.proposalId);
+        }
+        return result(parsed.date, planned.reply, planned.proposalId);
+      } catch (error) {
+        if (error instanceof Clarification) {
+          return result(parsed.date, error.message);
+        }
+        throw error;
+      }
+    });
   return {
     getPlanningContext: tool({
       description:
@@ -104,42 +138,34 @@ export function planningTools(
           if (old && generated.id && old.proposalId !== generated.id) {
             await proposalService.discard(userId, old.proposalId);
           }
-          return result(date, generated.report.summary, generated.id ?? undefined);
+          return {
+            ...result(
+              date,
+              [
+                generated.report.summary,
+                ...generated.report.outcomes.map(
+                  (outcome) =>
+                    `${outcome.title}: ${outcome.scheduledMinutes} minutes scheduled. ${outcome.reason}`
+                ),
+                ...generated.report.warnings,
+              ].join('\n'),
+              generated.id ?? undefined
+            ),
+            summary: generated.report.summary,
+          };
         }),
     }),
     proposeScheduleChanges: tool({
       description:
         'Propose a specific edit, timed free interval, or progress/replanning action via existing services. References must identify exactly one task/block. Revisions compose with the pending preview; nothing is applied. For easier replacements ask which eligible task. Never complete tasks unless explicitly requested.',
       inputSchema: actionSchema,
-      execute: async (instruction) =>
-        sequential(async () => {
-          const parsed = actionSchema.parse(instruction);
-          if (parsed.type !== 'edit' && parsed.type !== 'reserve' && parsed.type !== 'replan') {
-            throw new Error('Unsupported planning action.');
-          }
-          try {
-            const id = requestId(parsed);
-            const saved = await replay(id);
-            if (saved) {
-              return result(
-                parsed.date,
-                'Recovered the saved proposal. Review before accepting.',
-                saved.id
-              );
-            }
-            const previous = await checkPending(parsed.date);
-            const planned = await planInstruction(userId, id, parsed, previous, userTimezone);
-            if (previous && planned.proposalId && previous.proposalId !== planned.proposalId) {
-              await proposalService.discard(userId, previous.proposalId);
-            }
-            return result(parsed.date, planned.reply, planned.proposalId);
-          } catch (error) {
-            if (error instanceof Clarification) {
-              return result(parsed.date, error.message);
-            }
-            throw error;
-          }
-        }),
+      execute: executeAction,
+    }),
+    replaceScheduledBlocks: tool({
+      description:
+        'Replace one or several specific planned blocks with an eligible task, preserving every selected block’s exact times and all unrelated preview changes. For requests such as replace Vela blocks after 20:30, select the matching block IDs from pending preview context using its local timezone. Pass the exact eligible candidate ID. Never invent time slots. Returns one validated preview; never applies changes.',
+      inputSchema: replaceBlocksSchema.omit({ type: true }),
+      execute: async (input) => executeAction({ ...input, type: 'replaceBlocks' }),
     }),
     reviewDayPlan: tool({
       description:

@@ -151,6 +151,18 @@ it('keeps model intent separate from the actual placement report', async () => {
     ...generationFixture(),
     reviewBy: undefined,
     selectionSummary: 'Selection intent only',
+    outcomes: [
+      {
+        key: 'task',
+        title: 'Vela',
+        remainingMinutes: 9969,
+        scheduledMinutes: 30,
+        plannedMinutes: 60,
+        reason: 'Placed 30 minutes',
+        selectionReason: 'Requested an hour',
+        deadlineRisk: false,
+      },
+    ],
     model: { provider: 'ollama', modelId: 'fixture' },
     mode: 'ai',
   };
@@ -162,6 +174,7 @@ it('keeps model intent separate from the actual placement report', async () => {
     .setup()
     .click(screen.getByRole('button', { name: 'AI assessment before scheduling' }));
   await waitFor(() => expect(screen.getByText('Selection intent only')).toBeVisible());
+  expect(screen.getByText(/AI allocation target: 60 min/)).toBeVisible();
 });
 
 it('makes the fill goal and actual availability windows visible in the preview', async () => {

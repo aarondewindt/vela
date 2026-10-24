@@ -97,6 +97,7 @@ arbitrarily.
 | `getPlanningContext` | Bounded authorized day, availability, task and block summaries. |
 | `generateDayPlan` | Existing `generation/service.ts::generateDayPlan`, including AI selection, placement, report and proposal creation. |
 | `proposeScheduleChanges` | Existing `conversation/planning.ts::planInstruction`; edits, free intervals and #36 `proposalService.replan`. |
+| `replaceScheduledBlocks` | Replace selected planned blocks with one eligible task in one validated proposal, retaining exact times and unrelated changes. |
 | `reviewDayPlan` | Existing #35 review service, with verified conflicts separated from advisory AI concerns and validated correction previews. |
 | `explainPlanningDecision` | Saved generation reports, omissions and change explanations; no additional scheduler/review inference. |
 
@@ -155,6 +156,10 @@ The latest user message is preserved verbatim, with bounded conversation guidanc
 appended when space permits. The scheduler handles interpretation and reports the
 actual placements and unmet requests. Saved availability, task eligibility,
 placement rules, proposal validation and explicit approval remain deterministic.
+Proposal cards use a short summary heading while keeping detailed results available
+to chat and the saved preview. Older multiline results display their first line.
+Generation tool replies include actual per-task allocated minutes, omission reasons and warnings so the chat can distinguish the result from requested preferences. For replacements across multiple blocks (for example Vela blocks after 20:30), chat selects exact preview/block IDs in the planning timezone and an exact eligible candidate ID; the application preserves the recorded intervals and validates the complete revision atomically. Ambiguous, protected or stale selections leave the prior preview available.
+
 Guidance is not a guarantee that an arbitrary requested restriction was enforced.
 Typed `freeTimes`/`taskLimits` remain available to application services, but chat
 no longer has to extract them before requesting a plan.

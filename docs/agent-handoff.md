@@ -935,3 +935,45 @@ connected test execution, live Withings/Samsung validation or issue closure.
 Stop after this continuation for user review; #12/#94/heart-rate/Health Connect
 were excluded. Remaining live-device, cadence, BMR availability and calorie
 semantics checks are in the source-matrix guide.
+
+## Planner continuation eligibility — 2026-10-24
+
+User acceptance trace exposed unfinished SoLocos work disappearing from generation:
+all dates' planned/active minutes consumed the effort estimate, and future occurrence
+dates were rejected. BACKLOG/IN_PROGRESS one-off tasks can now reuse open occurrences
+on either side of their original date. DONE effort plus selected-local-day commitments
+consume the day budget; other dates' unfinished blocks remain intact. If completed
+effort exhausts an unfinished task's estimate, use a labelled 25-minute continuation
+allowance without modifying the estimate. Shared proposal validation/acceptance applies
+the same accounting; recurrence dates, prerequisites, earliest starts, actual history,
+explicit completion and session-extension protections remain. Future move-versus-add
+confirmation is deferred; continuation currently adds a reviewed block.
+
+The trace also supplied a bare task UUID instead of a composite candidate ID.
+Conversation replacement/addition now resolves unique task IDs and clarifies multiple
+eligible occurrences. Prior uncommitted replacement-tool/result-detail changes from
+this session remain in the working tree. The model still failed the requested Vela
+one-hour preference in the pasted trace; eligibility correction does not demonstrate
+that the model will select or allocate the requested work correctly. Live Ollama/UI
+acceptance remains required. No saved user schedule was modified or deployed.
+
+
+## Guided allocation correction — 2026-10-24
+
+Latest trace restored SoLocos eligibility/selection but allocated 186 minutes to
+Vela, starving video and cleaning. Guided selection previously allowed omitted/null
+plannedMinutes, which fell back to the full task estimate. The model contract now
+requires positive numeric allocations for every guided selection, with explicit
+approximate-duration examples. Missing allocations reject the proposal; unguided
+fill behavior stays compatible. Allocation targets persist in generation outcomes
+and display separately from actual placement under the AI assessment. Proposal
+card headings use a concise summary; detailed actual results still reach chat.
+
+Synthetic real qwen3:8b selection plus application placement passed with Vela
+estimated at 9,999 minutes: 60 Vela / 30 cleaning / 96 video / 30 guitar minutes,
+plus dinner/breaks/leisure. Repeatable no-user-record/no-proposal check:
+`node --conditions=react-server --import tsx scripts/evaluate-planner-allocations.ts`.
+Full Jest: 154 suites, 1,239 tests passed; five opt-in tests skipped. TypeScript,
+scoped lint/format and whitespace passed. This verifies one synthetic model case;
+actual authenticated chat/UI acceptance and general guidance compliance remain
+unverified. No deployment, user schedule edits or commits in this turn.

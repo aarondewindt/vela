@@ -14,7 +14,16 @@ export function selectionContract(candidates: readonly { key: string }[], fill =
   const key = z.enum(references.map((reference) => reference.key) as [string, ...string[]]);
   const assessment = z.object({ key, reason: z.string().trim().min(1).max(700) }).strict();
   const selectedAssessment = assessment.extend({
-    plannedMinutes: z.number().int().positive().max(1440).nullable().optional(),
+    plannedMinutes: fill
+      ? z.number().int().positive().max(1440).nullable().optional()
+      : z
+          .number()
+          .int()
+          .positive()
+          .max(1440)
+          .describe(
+            'Minutes to allocate to this task on the selected day, not its total effort. Required for every guided selection. Use approximate durations from guidance (another hour = 60); leave capacity for the other requested tasks.'
+          ),
   });
   const schema = selectionSchema.extend({
     selected: z.array(selectedAssessment).max(candidates.length),
@@ -28,7 +37,7 @@ export function selectionContract(candidates: readonly { key: string }[], fill =
       if (!parsed.success) {
         throw new AiError(
           'INVALID_PROVIDER_RESPONSE',
-          'The model returned an invalid task selection or an unknown candidate reference.'
+          'The model returned an invalid task selection, missing guided allocation, or an unknown candidate reference.'
         );
       }
       const seen = new Set<string>();

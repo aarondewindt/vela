@@ -129,6 +129,7 @@ export const generationReportSchema = z.object({
       title: z.string(),
       remainingMinutes: z.number(),
       scheduledMinutes: z.number(),
+      plannedMinutes: z.number().int().positive().max(1440).optional(),
       reason: z.string(),
       selectionReason: z.string().optional(),
       deadlineRisk: z.boolean(),

@@ -3,6 +3,15 @@ import { taskPatchSchema, themePatchSchema } from '../record-schema';
 
 const query = z.string().trim().min(1).max(240);
 const time = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+export const replaceBlocksSchema = z
+  .object({
+    type: z.literal('replaceBlocks'),
+    date: z.iso.date(),
+    blockQueries: z.array(query).min(1).max(80),
+    candidateQuery: query,
+    explanation: z.string().trim().min(1).max(2000),
+  })
+  .strict();
 export const instructionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clarify'), question: z.string().trim().min(1).max(2000) }).strict(),
   z.object({ type: z.literal('find'), entity: z.enum(['task', 'theme']), query }).strict(),
@@ -52,6 +61,7 @@ export const instructionSchema = z.discriminatedUnion('type', [
       explanation: z.string().trim().min(1).max(2000),
     })
     .strict(),
+  replaceBlocksSchema,
   z
     .object({
       type: z.literal('reserve'),

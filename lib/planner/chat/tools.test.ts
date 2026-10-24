@@ -48,7 +48,10 @@ beforeEach(() => {
   jest.resetAllMocks();
   jest
     .mocked(generateDayPlan)
-    .mockResolvedValue({ id: id(1), report: { summary: 'Existing scheduler' } } as any);
+    .mockResolvedValue({
+      id: id(1),
+      report: { summary: 'Existing scheduler', outcomes: [], warnings: [] },
+    } as any);
   jest.mocked(proposalService.get).mockResolvedValue({
     id: id(1),
     status: 'PENDING',
@@ -234,4 +237,44 @@ it('keeps the original message intact when chat summarizes its interpretation', 
   expect(jest.mocked(generateDayPlan).mock.calls[0][1].guidance).toContain(original);
   expect(planningGuidance('x'.repeat(2000), 'context')).toBe('x'.repeat(2000));
   expect(planningGuidance('latest', 'x'.repeat(2000))).toHaveLength(2000);
+});
+
+it('replaces multiple preview blocks without requiring an edit discriminator or invented times', async () => {
+  const input = {
+    date,
+    blockQueries: ['new:3', 'new:4', 'new:5'],
+    candidateQuery: id(6),
+    explanation: 'SoLocos after 20:30',
+  };
+  await execute(
+    planningTools('owner', 'turn', { date, proposalId: id(1) }),
+    'replaceScheduledBlocks',
+    input
+  );
+  expect(planInstruction).toHaveBeenCalledWith(
+    'owner',
+    expect.any(String),
+    { ...input, type: 'replaceBlocks' },
+    { date, proposalId: id(1) },
+    undefined
+  );
+  expect(proposalService.discard).toHaveBeenCalledWith('owner', id(1));
+  expect(proposalService.accept).not.toHaveBeenCalled();
+});
+it('reports actual allocations and omissions to chat instead of only the total', async () => {
+  jest.mocked(generateDayPlan).mockResolvedValue({
+    id: id(1),
+    report: {
+      summary: 'Planned 229 minutes',
+      outcomes: [
+        { title: 'Work on Vela', scheduledMinutes: 229, reason: 'Placed in four blocks' },
+        { title: 'SoLocos blooper video', scheduledMinutes: 0, reason: 'Not selected' },
+      ],
+      warnings: ['Some requested work remains unscheduled'],
+    },
+  } as any);
+  const response = await execute(planningTools('owner', 'turn'), 'generateDayPlan', generation);
+  expect(response.reply).toContain('Work on Vela: 229 minutes scheduled');
+  expect(response.reply).toContain('SoLocos blooper video: 0 minutes scheduled');
+  expect(response.reply).toContain('Some requested work remains unscheduled');
 });
