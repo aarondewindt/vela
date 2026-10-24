@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { PlannerChat } from '../PlannerChat/PlannerChat';
 import {
   ActionIcon,
   Alert,
@@ -137,7 +138,9 @@ function formatTime(value: Date | string, timezone: string) {
 }
 
 function formatSelectedDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'Select a date';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return 'Select a date';
+  }
   const date = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
     return 'Select a date';
@@ -166,6 +169,7 @@ function currentDateInTimezone(timezone: string) {
 }
 
 export function TodayView() {
+  const [workspaceSurface, setWorkspaceSurface] = useState('schedule');
   const selectedDate = usePlannerStore((state) => state.selectedDate);
   const setSelectedDate = usePlannerStore((state) => state.setSelectedDate);
   const setAsideOpened = useAppShellStore((state) => state.set_aside_opened);
@@ -185,7 +189,7 @@ export function TodayView() {
   const unskipBlock = useUnskipBlockMutation();
 
   const [layer, setLayer] = useState<PlannerLayer>('tasks');
-  
+
   const [scheduleView, setScheduleView] = useState<ScheduleView>('schedule');
 
   const [colorBy, setColorBy] = useState<'theme' | 'category'>('theme');
@@ -223,7 +227,8 @@ export function TodayView() {
   );
   const selectedBlock = blocks.find((block) => block.id === selectedBlockId) ?? null;
   const categorySlots = plan?.categorySlots ?? [];
-  const selectedCategorySlot = categorySlots.find((slot) => slot.id === selectedCategorySlotId) ?? null;
+  const selectedCategorySlot =
+    categorySlots.find((slot) => slot.id === selectedCategorySlotId) ?? null;
   const selectedTask = selectedBlock?.taskOccurrence?.taskId
     ? tasks.find((task) => task.id === selectedBlock.taskOccurrence?.taskId)
     : undefined;
@@ -252,73 +257,103 @@ export function TodayView() {
   const scheduleEvents = useMemo<ScheduleEventData[]>(() => {
     const tasksById = new Map(tasks.map((task) => [task.id, task]));
     const themesById = new Map((themesQuery.data ?? []).map((theme) => [theme.id, theme]));
-    const availabilityEvents = layer !== 'availability' ? [] : (dayData?.availability ?? []).flatMap((window) => {
-      const startMinute = getMinuteInDay(window.start, timezone, selectedDate);
-      const endMinute = getMinuteInDay(window.end, timezone, selectedDate);
-      if (startMinute < 0 || endMinute <= startMinute) {
-        return [];
-      }
-      return [{
-        id: `availability:${startMinute}:${endMinute}`,
-        title: 'Availability',
-        start: localDateTime(window.start, timezone),
-        end: localDateTime(window.end, timezone),
-        color: 'teal',
-        variant: 'light' as const,
-        display: 'background' as const,
-        payload: { kind: 'availability', startMinute, endMinute },
-      }];
-    });
-    const categorySlotEvents = layer === 'availability' ? [] : (dayData?.plan?.categorySlots ?? []).map((slot) => ({
-      id: `category-slot-${slot.id}`,
-      title: planningCategoryLabels[slot.category],
-      start: localDateTime(slot.startsAt, timezone),
-      end: localDateTime(slot.endsAt, timezone),
-      color: categoryColors[slot.category],
-      variant: 'light' as const,
-      display: 'background' as const,
-      payload: { kind: 'category-slot', slotId: slot.id, source: slot.source },
-    }));
-    const blockEvents = layer !== 'tasks' ? [] : (dayData?.plan?.dailyBlocks ?? []).map((block) => ({
-      id: block.id,
-      title: block.title,
-      start: localDateTime(block.startsAt, timezone),
-      end: localDateTime(block.endsAt, timezone),
-      color: block.calendarEventId
-        ? block.calendarEvent?.isBusy
-          ? 'red'
-          : 'gray'
-        : colorBy === 'category'
-          ? categoryColors[
-              block.category ??
-                tasksById.get(block.taskOccurrence?.taskId ?? '')?.category ??
-                'WORK'
-            ] ?? 'gray'
-          : (themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
-              ?.color ?? 'gray'),
-      variant: 'light' as const,
-      display: block.calendarEventId && block.calendarEvent?.isBusy ? ('background' as const) : undefined,
-      payload: block.calendarEventId
-        ? { kind: 'calendar', isBusy: Boolean(block.calendarEvent?.isBusy) }
-        : { kind: 'block', blockId: block.id, status: block.status },
-    }));
+    const availabilityEvents =
+      layer !== 'availability'
+        ? []
+        : (dayData?.availability ?? []).flatMap((window) => {
+            const startMinute = getMinuteInDay(window.start, timezone, selectedDate);
+            const endMinute = getMinuteInDay(window.end, timezone, selectedDate);
+            if (startMinute < 0 || endMinute <= startMinute) {
+              return [];
+            }
+            return [
+              {
+                id: `availability:${startMinute}:${endMinute}`,
+                title: 'Availability',
+                start: localDateTime(window.start, timezone),
+                end: localDateTime(window.end, timezone),
+                color: 'teal',
+                variant: 'light' as const,
+                display: 'background' as const,
+                payload: { kind: 'availability', startMinute, endMinute },
+              },
+            ];
+          });
+    const categorySlotEvents =
+      layer === 'availability'
+        ? []
+        : (dayData?.plan?.categorySlots ?? []).map((slot) => ({
+            id: `category-slot-${slot.id}`,
+            title: planningCategoryLabels[slot.category],
+            start: localDateTime(slot.startsAt, timezone),
+            end: localDateTime(slot.endsAt, timezone),
+            color: categoryColors[slot.category],
+            variant: 'light' as const,
+            display: 'background' as const,
+            payload: { kind: 'category-slot', slotId: slot.id, source: slot.source },
+          }));
+    const blockEvents =
+      layer !== 'tasks'
+        ? []
+        : (dayData?.plan?.dailyBlocks ?? []).map((block) => ({
+            id: block.id,
+            title: block.title,
+            start: localDateTime(block.startsAt, timezone),
+            end: localDateTime(block.endsAt, timezone),
+            color: block.calendarEventId
+              ? block.calendarEvent?.isBusy
+                ? 'red'
+                : 'gray'
+              : colorBy === 'category'
+                ? (categoryColors[
+                    block.category ??
+                      tasksById.get(block.taskOccurrence?.taskId ?? '')?.category ??
+                      'WORK'
+                  ] ?? 'gray')
+                : (themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
+                    ?.color ?? 'gray'),
+            variant: 'light' as const,
+            display:
+              block.calendarEventId && block.calendarEvent?.isBusy
+                ? ('background' as const)
+                : undefined,
+            payload: block.calendarEventId
+              ? { kind: 'calendar', isBusy: Boolean(block.calendarEvent?.isBusy) }
+              : { kind: 'block', blockId: block.id, status: block.status },
+          }));
     const linkedEventIds = new Set(
       (dayData?.plan?.dailyBlocks ?? []).flatMap((block) =>
         block.calendarEventId ? [block.calendarEventId] : []
       )
     );
-    const calendarEvents = layer !== 'tasks' ? [] : (dayData?.events ?? []).filter((event) => !linkedEventIds.has(event.id)).map((event) => ({
-      id: `calendar-${event.id}`,
-      title: event.title,
-      start: localDateTime(event.startsAt, timezone),
-      end: localDateTime(event.endsAt, timezone),
-      color: event.isBusy ? 'red' : 'gray',
-      variant: 'light' as const,
-      display: event.isBusy ? ('background' as const) : ('default' as const),
-      payload: { kind: 'calendar', isBusy: event.isBusy },
-    }));
+    const calendarEvents =
+      layer !== 'tasks'
+        ? []
+        : (dayData?.events ?? [])
+            .filter((event) => !linkedEventIds.has(event.id))
+            .map((event) => ({
+              id: `calendar-${event.id}`,
+              title: event.title,
+              start: localDateTime(event.startsAt, timezone),
+              end: localDateTime(event.endsAt, timezone),
+              color: event.isBusy ? 'red' : 'gray',
+              variant: 'light' as const,
+              display: event.isBusy ? ('background' as const) : ('default' as const),
+              payload: { kind: 'calendar', isBusy: event.isBusy },
+            }));
     return [...availabilityEvents, ...categorySlotEvents, ...blockEvents, ...calendarEvents];
-  }, [colorBy, dayData?.availability, dayData?.events, dayData?.plan?.categorySlots, dayData?.plan?.dailyBlocks, layer, selectedDate, tasks, themesQuery.data, timezone]);
+  }, [
+    colorBy,
+    dayData?.availability,
+    dayData?.events,
+    dayData?.plan?.categorySlots,
+    dayData?.plan?.dailyBlocks,
+    layer,
+    selectedDate,
+    tasks,
+    themesQuery.data,
+    timezone,
+  ]);
 
   const error =
     dayQuery.error ??
@@ -359,15 +394,23 @@ export function TodayView() {
 
   const canPlaceTaskAt = (task: TaskRow | null, start: string) => {
     const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
-    if (startMinute < 0) return false;
-    const endMinute = startMinute + (task?.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 25);
-    if (endMinute > 1440) return false;
+    if (startMinute < 0) {
+      return false;
+    }
+    const endMinute =
+      startMinute +
+      (task?.estimatedMinutes && task.estimatedMinutes > 0 ? task.estimatedMinutes : 25);
+    if (endMinute > 1440) {
+      return false;
+    }
     const overlaps = (startsAt: Date, endsAt: Date) =>
       getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
       getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
     return !(
       blocks.some(
-        (block) => ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) && overlaps(block.startsAt, block.endsAt)
+        (block) =>
+          ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) &&
+          overlaps(block.startsAt, block.endsAt)
       ) || busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
     );
   };
@@ -375,7 +418,9 @@ export function TodayView() {
   const canPlaceCategoryAt = (start: string) => {
     const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
     const endMinute = startMinute + DEFAULT_CATEGORY_SLOT_MINUTES;
-    if (startMinute < 0 || endMinute > 1440) return false;
+    if (startMinute < 0 || endMinute > 1440) {
+      return false;
+    }
     const overlaps = (startsAt: Date, endsAt: Date) =>
       getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
       getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
@@ -387,7 +432,9 @@ export function TodayView() {
 
   const addCategorySlotAt = (category: PlanningCategoryValue, start: string) => {
     const startMinute = getMinuteFromLocalDateTime(start, selectedDate);
-    if (startMinute < 0) return;
+    if (startMinute < 0) {
+      return;
+    }
     const endMinute = startMinute + DEFAULT_CATEGORY_SLOT_MINUTES;
     const clock = (minute: number) =>
       `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}:00`;
@@ -557,9 +604,7 @@ export function TodayView() {
         )}
         {selectedBlock.brief && <Text size="sm">{selectedBlock.brief}</Text>}
         <Property label="Category">
-          <ReadOnlyValue>
-            {planningCategoryLabels[selectedBlock.category ?? 'WORK']}
-          </ReadOnlyValue>
+          <ReadOnlyValue>{planningCategoryLabels[selectedBlock.category ?? 'WORK']}</ReadOnlyValue>
         </Property>
       </PropertyPanel>
     )
@@ -619,7 +664,9 @@ export function TodayView() {
             aria-label="Planning date"
             value={selectedDate}
             onChange={(value) => {
-              if (value) changeSelectedDate(value);
+              if (value) {
+                changeSelectedDate(value);
+              }
             }}
             valueFormat="ddd, MMM D"
             size="sm"
@@ -661,7 +708,8 @@ export function TodayView() {
         >
           <Group justify="space-between" align="center" wrap="wrap">
             <Text size="sm">
-              You can still add tasks manually. Set standard hours to enable automatic draft planning.
+              You can still add tasks manually. Set standard hours to enable automatic draft
+              planning.
             </Text>
           </Group>
         </Alert>
@@ -763,11 +811,7 @@ export function TodayView() {
             </>
           )}
           {layer === 'categories' && (
-            <Button
-              size="xs"
-              variant="default"
-              onClick={() => setAddCategoryBlockOpen(true)}
-            >
+            <Button size="xs" variant="default" onClick={() => setAddCategoryBlockOpen(true)}>
               Add category slot
             </Button>
           )}
@@ -790,14 +834,37 @@ export function TodayView() {
         </Group>
       </Group>
 
+      <SegmentedControl
+        hiddenFrom="lg"
+        aria-label="Planner workspace surface"
+        value={workspaceSurface}
+        onChange={setWorkspaceSurface}
+        data={[
+          { value: 'tasks', label: 'Candidate tasks' },
+          { value: 'schedule', label: 'Day schedule' },
+          { value: 'chat', label: 'Planner chat' },
+        ]}
+      />
       <Paper radius="sm" className={classes.scheduleSurface}>
+        <div className={classes.workspaceLabels}>
+          <Text fw={600}>Candidate tasks</Text>
+          <Text fw={600}>Day schedule</Text>
+          <Text fw={600}>Planner chat</Text>
+        </div>
         <Splitter
           orientation="horizontal"
           className={classes.scheduleSplitter}
+          classNames={{ handle: classes.workspaceHandle }}
           style={{ minHeight: 420 }}
         >
-          <Splitter.Pane defaultSize="25%" min="0%" aria-label="Task list">
-            {scheduleView === 'schedule' && layer === 'tasks' && (
+          <Splitter.Pane
+            defaultSize="22%"
+            min="16%"
+            className={classes.workspacePane}
+            data-active={workspaceSurface === 'tasks' || undefined}
+            aria-label="Task list"
+          >
+            {layer === 'tasks' && (
               <TaskPickerPane
                 tasks={backlog}
                 themes={themesQuery.data ?? []}
@@ -832,8 +899,14 @@ export function TodayView() {
               />
             )}
           </Splitter.Pane>
-          <Splitter.Pane defaultSize="75%" min="40%" aria-label="Day schedule">
-            { scheduleView === 'schedule' ? 
+          <Splitter.Pane
+            defaultSize="48%"
+            min="35%"
+            className={classes.workspacePane}
+            data-active={workspaceSurface === 'schedule' || undefined}
+            aria-label="Day schedule"
+          >
+            {scheduleView === 'schedule' ? (
               <DayView
                 date={selectedDate}
                 onDateChange={setSelectedDate}
@@ -866,16 +939,14 @@ export function TodayView() {
                   (layer === 'tasks' &&
                     event.payload?.kind === 'block' &&
                     event.payload?.status === 'PLANNED') ||
-                  (layer === 'categories' &&
-                    event.payload?.kind === 'category-slot') ||
+                  (layer === 'categories' && event.payload?.kind === 'category-slot') ||
                   (layer === 'availability' && event.payload?.kind === 'availability')
                 }
                 canResizeEvent={(event) =>
                   (layer === 'tasks' &&
                     event.payload?.kind === 'block' &&
                     event.payload?.status === 'PLANNED') ||
-                  (layer === 'categories' &&
-                    event.payload?.kind === 'category-slot') ||
+                  (layer === 'categories' && event.payload?.kind === 'category-slot') ||
                   (layer === 'availability' && event.payload?.kind === 'availability')
                 }
                 onTimeSlotClick={({ slotStart }) => {
@@ -887,10 +958,7 @@ export function TodayView() {
                 onEventClick={(event) => {
                   if (layer === 'categories' && event.payload?.kind === 'category-slot') {
                     setSelectedCategorySlotId(String(event.payload.slotId));
-                  } else if (
-                    layer === 'availability' &&
-                    event.payload?.kind === 'availability'
-                  ) {
+                  } else if (layer === 'availability' && event.payload?.kind === 'availability') {
                     setSelectedAvailabilityWindow({
                       startMinute: event.payload.startMinute,
                       endMinute: event.payload.endMinute,
@@ -932,7 +1000,9 @@ export function TodayView() {
                   }
                   const taskId = dataTransfer.getData(TASK_DRAG_TYPE);
                   setDraggedTask(null);
-                  if (!taskId) return;
+                  if (!taskId) {
+                    return;
+                  }
                   addTaskAt(taskId, dropDateTime);
                 }}
                 onEventPlacementRejected={() =>
@@ -963,18 +1033,15 @@ export function TodayView() {
                 }}
                 withAllDaySlot={false}
               />
-              : 
-              <AgendaView 
-                events={scheduleEvents} 
+            ) : (
+              <AgendaView
+                events={scheduleEvents}
                 rangeStart={selectedDate}
                 rangeEnd={selectedDate}
                 onEventClick={(event) => {
                   if (layer === 'categories' && event.payload?.kind === 'category-slot') {
                     setSelectedCategorySlotId(String(event.payload.slotId));
-                  } else if (
-                    layer === 'availability' &&
-                    event.payload?.kind === 'availability'
-                  ) {
+                  } else if (layer === 'availability' && event.payload?.kind === 'availability') {
                     setSelectedAvailabilityWindow({
                       startMinute: event.payload.startMinute,
                       endMinute: event.payload.endMinute,
@@ -985,9 +1052,18 @@ export function TodayView() {
                   }
                 }}
               />
-          
-            }
-            
+            )}
+          </Splitter.Pane>
+          <Splitter.Pane
+            defaultSize="30%"
+            min="24%"
+            className={classes.workspacePane}
+            data-active={workspaceSurface === 'chat' || undefined}
+            aria-label="Planner chat"
+          >
+            <div className={classes.chatPane}>
+              <PlannerChat date={selectedDate} />
+            </div>
           </Splitter.Pane>
         </Splitter>
       </Paper>
@@ -1164,7 +1240,8 @@ export function TodayView() {
         {selectedAvailabilityWindow && (
           <Stack>
             <Text size="sm" c="dimmed">
-              {`${String(Math.floor(selectedAvailabilityWindow.startMinute / 60)).padStart(2, '0')}:${String(selectedAvailabilityWindow.startMinute % 60).padStart(2, '0')}`}–
+              {`${String(Math.floor(selectedAvailabilityWindow.startMinute / 60)).padStart(2, '0')}:${String(selectedAvailabilityWindow.startMinute % 60).padStart(2, '0')}`}
+              –
               {selectedAvailabilityWindow.endMinute === 1440
                 ? '24:00'
                 : `${String(Math.floor(selectedAvailabilityWindow.endMinute / 60)).padStart(2, '0')}:${String(selectedAvailabilityWindow.endMinute % 60).padStart(2, '0')}`}
@@ -1188,7 +1265,11 @@ export function TodayView() {
       <Modal
         opened={Boolean(selectedCategorySlot)}
         onClose={() => setSelectedCategorySlotId(null)}
-        title={selectedCategorySlot ? planningCategoryLabels[selectedCategorySlot.category] : 'Category slot'}
+        title={
+          selectedCategorySlot
+            ? planningCategoryLabels[selectedCategorySlot.category]
+            : 'Category slot'
+        }
         centered
         size="sm"
       >

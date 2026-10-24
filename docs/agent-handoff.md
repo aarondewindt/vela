@@ -2,8 +2,28 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Issue #90 manual Android health synchronization implemented on the current branch. Full Jest, isolated PostgreSQL ingestion, TypeScript and Android build/JVM/lint/device-test compilation pass. Physical phone-to-Vela verification and Samsung elapsed/projected semantic classification remain manual gates. No #91 background sync implemented.
+**Status:** Issue #59 Phase 1 workspace foundation implemented on `feat/59-planner-workspace`. Continue later phases on this same branch and PR. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
+
+## Planner workspace #59 — Phase 1
+
+- Today retains candidate picker and DayView handlers, adds resizable Planner chat,
+  and uses focused panes below `lg` without unmounting the chat.
+- Shared AI Dev conversation/streaming factories and UI support separate Planner
+  histories, `planner.conversation` model settings, streaming, retry and basic Markdown.
+- Planner context is server-owned and bounded; chat has no mutation tools. Existing
+  proposal generation/review/replan/acceptance controls are embedded in a planning
+  card. See [workspace architecture and next steps](PLANNER_WORKSPACE.md).
+- Additive migration `20261024130000_planner_chat_scope` must be deployed before
+  runtime use. Prisma generated and schema validated; application DB not migrated.
+- Full Jest passed: 1,165 tests, five opt-in tests skipped; the final Markdown
+  rendering test also passed separately. TypeScript, Prisma schema validation,
+  production build and changed-file lint/style/format checks pass. Repository-wide
+  lint/format retain unrelated baseline failures. The build required running outside
+  the sandbox after stopping a stalled sandbox build and removing its stale lock.
+- Authenticated desktop/mobile drag/resize and live Ollama smoke checks remain
+  manual; no browser automation is installed. Keep #59 open for later linked
+  proposal highlighting and conversational tools. Do not close #37/#38/#73.
 
 ## Android manual synchronization #90 — 2026-10-24
 

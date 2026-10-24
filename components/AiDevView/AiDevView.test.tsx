@@ -23,7 +23,7 @@ import userEvent from '@testing-library/user-event';
 import { DefaultChatTransport } from 'ai';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
-import { AiDevView } from './AiDevView';
+import { AiDevView, ConversationChat } from './AiDevView';
 
 const id = '45f6af99-9a30-4638-b05f-fb826b970379';
 const saved = {
@@ -275,5 +275,30 @@ describe('AiDevView saved conversations', () => {
     );
     expect(setMessages).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Retry response' })).toBeEnabled();
+  });
+});
+
+it('restores Planner history and sends the current workspace date after navigation', async () => {
+  Object.assign(trpc, { plannerChat: trpc.aiDev });
+  (trpc.useUtils as jest.Mock).mockReturnValue({
+    plannerChat: { listConversations: { invalidate }, getConversation: { invalidate } },
+  });
+  const view = render(<ConversationChat plannerDate="2026-10-24" />);
+  expect(await screen.findByRole('textbox', { name: 'Message' })).toBeInTheDocument();
+  const transport = (DefaultChatTransport as jest.Mock).mock.calls.at(-1)[0];
+  expect(transport.api).toBe('/api/planner/chat');
+  const message = { id: 'u', role: 'user', parts: [{ type: 'text', text: 'Help plan' }] };
+  expect(transport.prepareSendMessagesRequest({ id, messages: [message] }).body.date).toBe(
+    '2026-10-24'
+  );
+  view.rerender(
+    <>
+      <ConversationChat plannerDate="2026-10-25" />
+    </>
+  );
+  expect(transport.prepareSendMessagesRequest({ id, messages: [message] }).body).toEqual({
+    conversationId: id,
+    message,
+    date: '2026-10-25',
   });
 });

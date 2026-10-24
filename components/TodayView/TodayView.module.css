@@ -1,6 +1,6 @@
 .root {
   width: 100%;
-  max-width: 1500px;
+  max-width: 2000px;
   margin-inline: auto;
 }
 
@@ -84,4 +84,33 @@
 
 .footer {
   padding-inline: var(--mantine-spacing-xs);
+}
+
+.chatPane {
+  height: min(80dvh, 1100px);
+  overflow: auto;
+  min-width: 0;
+}
+
+.workspaceLabels {
+  display: grid;
+  grid-template-columns: 22fr 48fr 30fr;
+  padding: var(--mantine-spacing-xs);
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+@media (max-width: 74.99em) {
+  .workspaceLabels,
+  .workspaceHandle {
+    display: none;
+  }
+
+  .workspacePane {
+    flex-basis: 100% !important;
+    width: 100%;
+  }
+
+  .workspacePane:not([data-active]) {
+    display: none;
+  }
 }

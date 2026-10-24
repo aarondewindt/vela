@@ -26,7 +26,8 @@ import {
 } from '@tabler/icons-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import { DefaultChatTransport } from 'ai';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { BasicMarkdown } from './BasicMarkdown';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
 import type { AppRouter } from '@/lib/trpc/root';
@@ -36,16 +37,23 @@ import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/
 
 type SavedConversation = inferRouterOutputs<AppRouter>['aiDev']['getConversation'];
 
-export function AiDevView() {
-  const utils = trpc.useUtils();
-  const models = trpc.aiDev.listChatModels.useQuery(undefined, { retry: false });
-  const conversations = trpc.aiDev.listConversations.useQuery(undefined, {
+export function ConversationChat({
+  plannerDate,
+  children,
+}: { plannerDate?: string; children?: ReactNode } = {}) {
+  const planner = plannerDate !== undefined;
+  const api = planner ? trpc.plannerChat : trpc.aiDev;
+  const feature = planner ? 'planner.conversation' : 'aiDev.chat';
+  const allUtils = trpc.useUtils();
+  const utils = planner ? allUtils.plannerChat : allUtils.aiDev;
+  const models = api.listChatModels.useQuery(undefined, { retry: false });
+  const conversations = api.listConversations.useQuery(undefined, {
     retry: false,
     refetchOnMount: 'always',
   });
   const [modelId, setModelId] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const detail = trpc.aiDev.getConversation.useQuery(
+  const detail = api.getConversation.useQuery(
     { id: conversationId! },
     {
       enabled: Boolean(conversationId),
@@ -56,43 +64,53 @@ export function AiDevView() {
     }
   );
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const create = trpc.aiDev.createConversation.useMutation({
+  const create = api.createConversation.useMutation({
     onSuccess: async ({ id }) => {
       setConversationId(id);
-      await utils.aiDev.listConversations.invalidate();
+      await utils.listConversations.invalidate();
     },
     onError: (error) => setMutationError(error.message),
   });
-  const remove = trpc.aiDev.deleteConversation.useMutation({
+  const remove = api.deleteConversation.useMutation({
     onSuccess: async () => {
       setConversationId(null);
-      await utils.aiDev.listConversations.invalidate();
+      await utils.listConversations.invalidate();
     },
     onError: (error) => setMutationError(error.message),
   });
   // Do not render another session's cached data before a fresh authorized read.
   const saved =
     conversations.isFetchedAfterMount && !conversations.error ? (conversations.data ?? []) : [];
+  const restored = useRef(false);
+  useEffect(() => {
+    if (planner && conversations.isFetchedAfterMount && !conversations.error && !restored.current) {
+      restored.current = true;
+      setConversationId(conversations.data?.[0]?.id ?? null);
+    }
+  }, [planner, conversations.isFetchedAfterMount, conversations.error, conversations.data]);
   const current = detail.isFetchedAfterMount && !detail.error ? detail.data : undefined;
   const override = modelId ? { provider: 'ollama' as const, modelId } : null;
-  const resolution = useFeatureModel('aiDev.chat', override, !conversationId);
+  const resolution = useFeatureModel(feature, override, !conversationId);
   const selection = resolution.selection;
   const refresh = () => {
-    void utils.aiDev.listConversations.invalidate();
+    void utils.listConversations.invalidate();
     if (conversationId) {
-      void utils.aiDev.getConversation.invalidate({ id: conversationId });
+      void utils.getConversation.invalidate({ id: conversationId });
     }
   };
 
   return (
-    <Container size="lg" py="xl">
+    <Container fluid={planner} size="lg" py={planner ? 'xs' : 'xl'} px={planner ? 'xs' : undefined}>
       <Stack gap="lg">
         <div>
-          <Title order={2}>AI Dev</Title>
+          <Title order={planner ? 4 : 2}>{planner ? 'Planner chat' : 'AI Dev'}</Title>
           <Text c="dimmed" mt={4}>
-            Chat with an installed model. Conversations are saved to your account.
+            {planner
+              ? `Planning ${plannerDate}. Conversations are saved to your account.`
+              : 'Chat with an installed model. Conversations are saved to your account.'}
           </Text>
         </div>
+        {children}
         <Group align="flex-end">
           <Select
             className={classes.modelPicker}
@@ -241,6 +259,7 @@ export function AiDevView() {
             conversation={current}
             onSaved={refresh}
             models={models.data ?? []}
+            plannerDate={plannerDate}
           />
         )}
       </Stack>
@@ -252,26 +271,35 @@ function ChatPanel({
   conversation,
   onSaved,
   models,
+  plannerDate,
 }: {
   conversation: SavedConversation;
   onSaved: () => void;
   models: AiModel[];
+  plannerDate?: string;
 }) {
-  const utils = trpc.useUtils();
-  const resolution = useFeatureModel('aiDev.chat', conversation.override);
-  const changeModel = trpc.aiDev.changeConversationModel.useMutation({
+  const planner = plannerDate !== undefined;
+  const api = planner ? trpc.plannerChat : trpc.aiDev;
+  const feature = planner ? 'planner.conversation' : 'aiDev.chat';
+  const dateRef = useRef(plannerDate);
+  dateRef.current = plannerDate;
+  const allUtils = trpc.useUtils();
+  const utils = planner ? allUtils.plannerChat : allUtils.aiDev;
+  const resolution = useFeatureModel(feature, conversation.override);
+  const changeModel = api.changeConversationModel.useMutation({
     onSuccess: async () => {
-      await utils.aiDev.getConversation.invalidate({ id: conversation.id });
+      await utils.getConversation.invalidate({ id: conversation.id });
       onSaved();
     },
   });
   const [transport] = useState(
     () =>
       new DefaultChatTransport({
-        api: '/api/ai-dev/chat',
+        api: planner ? '/api/planner/chat' : '/api/ai-dev/chat',
         prepareSendMessagesRequest: ({ id, messages }) => ({
           body: {
             conversationId: id,
+            ...(dateRef.current ? { date: dateRef.current } : {}),
             message: messages.filter((message) => message.role === 'user').at(-1),
           },
         }),
@@ -384,9 +412,7 @@ function ChatPanel({
                   )}
                 {message.parts.map((part, index) =>
                   part.type === 'text' ? (
-                    <Text key={`${message.id}-${index}`} className={classes.messageText}>
-                      {part.text}
-                    </Text>
+                    <BasicMarkdown key={`${message.id}-${index}`} text={part.text} />
                   ) : null
                 )}
               </Paper>
@@ -484,4 +510,8 @@ function ChatPanel({
       </form>
     </Stack>
   );
+}
+
+export function AiDevView() {
+  return <ConversationChat />;
 }

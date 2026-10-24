@@ -1,3 +1,4 @@
+import { plannerChatRouter } from '@/lib/planner/chat/router';
 import { devicesRouter } from '@/lib/devices/router';
 import { conversationRouter } from '@/lib/planner/conversation/router';
 import { homeAssistantRouter } from '@/lib/integrations/home-assistant/router';
@@ -14,6 +15,7 @@ import { router } from './server';
 import { discoverRouter } from '@/lib/discover/router';
 
 export const appRouter = router({
+  plannerChat: plannerChatRouter,
   devices: devicesRouter,
   discover: discoverRouter,
   planner: plannerRouter,

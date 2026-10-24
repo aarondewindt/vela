@@ -119,6 +119,7 @@ enum AiMessageStatus {
 }
 
 model AiConversation {
+  scope                String      @default("ai-dev") @db.VarChar(32)
   id                   String      @id @default(uuid()) @db.Uuid
   userId               String
   user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
