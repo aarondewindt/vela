@@ -3,7 +3,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: jest.fn(),
-    planningProposal: { findUnique: jest.fn() },
+    planningProposal: { findUnique: jest.fn(), findFirst: jest.fn() },
     task: { findMany: jest.fn() },
   },
 }));
@@ -411,3 +411,65 @@ it.each(['ai', 'deterministic'] as const)(
     );
   }
 );
+
+it('uses enforced free intervals for the existing deterministic placement and saves them for revalidation', async () => {
+  await generateDayPlan('owner', {
+    ...input,
+    mode: 'deterministic',
+    guidance: '',
+    freeTimes: [{ startTime: '09:00', endTime: '12:00' }],
+  });
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.freeIntervals).toEqual([
+    {
+      startsAt: `${date}T09:00:00.000Z`,
+      endsAt: `${date}T12:00:00.000Z`,
+      explanation: expect.any(String),
+    },
+  ]);
+  expect(
+    doc.operations.every((op) => !('block' in op) || op.block.startsAt >= `${date}T12:00:00.000Z`)
+  ).toBe(true);
+  expect(requireModelSelection).not.toHaveBeenCalled();
+});
+it('regenerates a pending proposal through the same scheduler and retains enforced free intervals', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue({
+    status: 'PENDING',
+    baseHash: s.hash,
+    document: {
+      schemaVersion: 1,
+      operations: [],
+      freeIntervals: [
+        {
+          startsAt: `${date}T12:00:00.000Z`,
+          endsAt: `${date}T17:00:00.000Z`,
+          explanation: 'Keep free',
+        },
+      ],
+    },
+  } as any);
+  await generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) });
+  expect(prisma.planningProposal.findFirst).toHaveBeenCalledWith({
+    where: { id: taskId(98), userId: 'owner', planDate: new Date(`${date}T00:00:00Z`) },
+  });
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.freeIntervals).toHaveLength(1);
+  expect(
+    doc.operations.every((op) => !('block' in op) || op.block.endsAt <= `${date}T12:00:00.000Z`)
+  ).toBe(true);
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan');
+});
+it('rejects inaccessible and stale regeneration references before inference', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue(null);
+  await expect(
+    generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) })
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  jest
+    .mocked(prisma.planningProposal.findFirst)
+    .mockResolvedValue({ status: 'PENDING', baseHash: 'changed' } as any);
+  await expect(
+    generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) })
+  ).rejects.toMatchObject({ code: 'CONFLICT' });
+  expect(generateStructured).not.toHaveBeenCalled();
+  expect(proposalService.create).not.toHaveBeenCalled();
+});

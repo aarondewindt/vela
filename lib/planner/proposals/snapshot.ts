@@ -80,4 +80,7 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
   };
   return { ...snapshot, hash: fingerprint(snapshot), timezone: plan?.timezone ?? user.timezone };
 }
-export type Snapshot = Awaited<ReturnType<typeof loadSnapshot>>;
+export type Snapshot = Awaited<ReturnType<typeof loadSnapshot>> & {
+  // Ephemeral constraints used by the same scheduler during proposal generation.
+  planningExclusions?: { startsAt: Date; endsAt: Date }[];
+};

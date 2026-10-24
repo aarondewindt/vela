@@ -2,8 +2,40 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Issue #59 Phase 1 workspace foundation implemented on `feat/59-planner-workspace`. Continue later phases on this same branch and PR. Existing Android checkpoints below are historical.
+**Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
+
+## Conversational planning #37 — Phase 2 — 2026-10-24
+
+- Planner streaming now has typed owner-bound context, generation, edit/progress,
+  review and explanation tools. Generation calls the same `generateDayPlan` as the
+  ordinary UI; review uses `reviewDayPlan`; edits/progress reuse `planInstruction`
+  and `proposalService.replan`. No task/theme CRUD or second scheduler.
+- Conversation model/override remains independent of `planner.dayPlan` and
+  `planner.planReview`. Tools cannot accept proposals or access arbitrary Prisma.
+- Compact typed result parts restore inline application-owned preview/review cards;
+  Apply/Discard/Revise and saved proposal controls retain canonical acceptance.
+  Serial tool calls, deterministic request identities, saved-result recovery,
+  owner/date checks and existing fingerprints/receipts handle retries and stale data.
+- Explicit empty intervals are subtracted by shared availability for task/meal
+  generation and retained as `freeIntervals` in proposal JSON for creation,
+  correction/revision and acceptance checks. These constrain the proposal and its
+  revisions, not later independent planning; use saved availability for persistence.
+  Other hard restrictions report a limitation rather than becoming soft guidance.
+- Transient workspace state contains preview/focus IDs only; TanStack Query owns
+  proposal data. Calendar ghosts are labeled, cannot drag/resize or block manual
+  placement, and task/block selections link across columns. Other zero-allocation
+  outcomes are collapsed, while allocated/deadline-risk work remains prominent.
+- No new migration or dependency. Phase 1's `20261024130000_planner_chat_scope`
+  still needs normal deployment where not applied. No application DB migration,
+  deployment, browser session or actual Ollama inference was performed here.
+- Validation: full Jest 150 suites / 1,190 tests pass, five opt-in skips; final
+  inline-preview focused run 63 tests and bounded-history/tool run 28 tests pass.
+  TypeScript, production build and changed-file lint/style/format pass. Broad
+  lint/format retain untouched baseline violations.
+- See [workspace documentation](PLANNER_WORKSPACE.md) for tools, lifecycle, limits
+  and live acceptance. Keep #37/#59 open pending actual model and authenticated
+  desktop/mobile drag/resize/highlight/reload checks; #38/#39/#40 remain deferred.
 
 ## Planner workspace #59 — Phase 1
 

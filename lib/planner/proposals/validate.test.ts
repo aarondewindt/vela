@@ -392,3 +392,48 @@ describe('saved timezone input', () => {
     );
   });
 });
+
+describe('explicit free intervals', () => {
+  const free = {
+    startsAt: at('12:00').toISOString(),
+    endsAt: at('17:00').toISOString(),
+    explanation: 'Keep afternoon free',
+  };
+  it('validates an empty interval independently of leisure category reservations', () => {
+    const doc = documentSchema.parse({ schemaVersion: 1, operations: [], freeIntervals: [free] });
+    expect(validateProposal(snapshot(), doc, now).freeIntervals).toEqual([free]);
+  });
+  it('rejects additions and revised moves into the requested free interval', () => {
+    const s = snapshot();
+    expect(() =>
+      validateProposal(s, { ...document(add('12:00', '12:30')), freeIntervals: [free] }, now)
+    ).toThrow('free interval');
+    existing(s);
+    expect(() =>
+      validateProposal(
+        s,
+        { ...document(edit('move', '12:00', '12:30')), freeIntervals: [free] },
+        now
+      )
+    ).toThrow('free interval');
+  });
+  it('rechecks new calendar commitments and elapsed intervals before acceptance', () => {
+    const s = snapshot();
+    s.events.push({
+      id: 'calendar',
+      startsAt: at('12:30'),
+      endsAt: at('13:30'),
+      isBusy: true,
+    } as any);
+    expect(() =>
+      validateProposal(s, { schemaVersion: 1, operations: [], freeIntervals: [free] }, now)
+    ).toThrow('free interval');
+    expect(() =>
+      validateProposal(
+        snapshot(),
+        { schemaVersion: 1, operations: [], freeIntervals: [free] },
+        at('12:01')
+      )
+    ).toThrow('already started');
+  });
+});

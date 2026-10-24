@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { planningResultSchema } from '@/lib/planner/chat/result';
 import { modelSelectionSchema } from '@/lib/model-settings/schema';
 
 export const maxMessageLength = 16_000;
@@ -17,7 +18,11 @@ const textPartSchema = z.object({
   state: z.enum(['streaming', 'done']).optional(),
 });
 export const storedPartsSchema = z.array(
-  z.discriminatedUnion('type', [textPartSchema, z.object({ type: z.literal('step-start') })])
+  z.discriminatedUnion('type', [
+    textPartSchema,
+    z.object({ type: z.literal('step-start') }),
+    z.object({ type: z.literal('data-planning'), data: planningResultSchema }),
+  ])
 );
 export const chatInputSchema = z.object({
   conversationId: z.uuid(),

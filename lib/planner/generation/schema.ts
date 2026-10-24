@@ -6,6 +6,18 @@ export const generateDaySchema = z
     date: z.iso.date(),
     mode: z.enum(['ai', 'deterministic']).default('ai'),
     guidance: z.string().trim().max(2000).default(''),
+    reviseProposalId: z.uuid().optional(),
+    freeTimes: z
+      .array(
+        z
+          .object({
+            startTime: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+            endTime: z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/),
+          })
+          .strict()
+      )
+      .max(16)
+      .default([]),
   })
   .strict();
 

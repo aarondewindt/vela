@@ -5,6 +5,9 @@ import {
   createUIMessageStream,
   createUIMessageStreamResponse,
   streamText,
+  stepCountIs,
+  type ToolSet,
+  type UIMessage,
   toUIMessageStream,
 } from 'ai';
 import { discoverModels, resolveChatModel } from '@/lib/ai';
@@ -19,7 +22,13 @@ export function createChatService(store: ConversationStore = conversationService
       return models.filter((model) => model.capabilities.includes('chat'));
     },
 
-    async streamChat(userId: string, input: ChatInput, signal: AbortSignal, system?: string) {
+    async streamChat(
+      userId: string,
+      input: ChatInput,
+      signal: AbortSignal,
+      system?: string,
+      tools?: ToolSet
+    ) {
       const turn = await store.beginTurn(userId, input);
       if (turn.generationId === null) {
         return createUIMessageStreamResponse({
@@ -36,6 +45,11 @@ export function createChatService(store: ConversationStore = conversationService
                   .join(''),
               });
               writer.write({ type: 'text-end', id: 'saved-text' });
+              for (const part of turn.response.parts) {
+                if (part.type === 'data-planning') {
+                  writer.write(part);
+                }
+              }
               writer.write({ type: 'finish', finishReason: 'stop' });
             },
           }),
@@ -44,10 +58,31 @@ export function createChatService(store: ConversationStore = conversationService
       const generationId = turn.generationId;
       try {
         const model = await resolveChatModel(turn.selection);
-        const messages = await convertToModelMessages(turn.history);
+        const history = tools
+          ? turn.history
+              .slice(-12)
+              .map((message) => ({
+                ...message,
+                parts: [
+                  {
+                    type: 'text' as const,
+                    text: message.parts
+                      .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+                      .join('\n')
+                      .slice(0, 2000),
+                  },
+                ],
+              }))
+              .filter((message) =>
+                message.parts.some((part) => part.type === 'text' && part.text.trim())
+              )
+          : turn.history;
+        const messages = await convertToModelMessages(history);
         const result = streamText({
           model,
           system,
+          tools,
+          ...(tools ? { stopWhen: stepCountIs(4) } : {}),
           messages,
           abortSignal: signal,
           timeout: 120_000,
@@ -66,9 +101,33 @@ export function createChatService(store: ConversationStore = conversationService
             sendSources: false,
             onError: () => 'The AI response was interrupted. Check Ollama and try again.',
             onEnd: async ({ responseMessage, outcome, isAborted, isCancelled }) => {
+              let savedMessage = responseMessage;
+              // Persist compact application results, not provider-specific tool transcripts.
+              if (tools) {
+                savedMessage = {
+                  ...savedMessage,
+                  parts: savedMessage.parts.flatMap((part) => {
+                    if (
+                      part.type.startsWith('tool-') &&
+                      'output' in part &&
+                      part.output &&
+                      typeof part.output === 'object' &&
+                      'date' in part.output &&
+                      'reply' in part.output
+                    ) {
+                      return [
+                        { type: 'data-planning', data: part.output } as UIMessage['parts'][number],
+                      ];
+                    }
+                    return part.type.startsWith('tool-') ? [] : [part];
+                  }),
+                };
+              }
               const interrupted = isAborted || isCancelled || signal.aborted;
-              const hasText = responseMessage.parts.some(
-                (part) => part.type === 'text' && part.text.trim().length > 0
+              const hasText = savedMessage.parts.some(
+                (part) =>
+                  (part.type === 'text' && part.text.trim().length > 0) ||
+                  part.type === 'data-planning'
               );
               const status = interrupted
                 ? 'INTERRUPTED'
@@ -80,7 +139,7 @@ export function createChatService(store: ConversationStore = conversationService
                   userId,
                   input.conversationId,
                   generationId,
-                  responseMessage,
+                  savedMessage,
                   status
                 );
               } catch {

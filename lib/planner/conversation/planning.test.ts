@@ -22,6 +22,7 @@ const date = '2026-10-20';
 const block = {
   id: id(1),
   title: 'Write report',
+  taskId: id(7),
   startsAt: '2026-10-20T08:00:00.000Z',
   endsAt: '2026-10-20T09:00:00.000Z',
   status: 'PLANNED',
@@ -96,7 +97,7 @@ it('reserves a specified local interval and releases overlapping flexible alloca
     expect.objectContaining({
       document: expect.objectContaining({
         operations: [{ type: 'remove', blockId: id(1), explanation: 'Keep free' }],
-        reservations: [
+        freeIntervals: [
           expect.objectContaining({
             startsAt: '2026-10-20T08:00:00.000Z',
             endsAt: '2026-10-20T10:00:00.000Z',
@@ -175,6 +176,26 @@ it('refines a pending generated addition in place and preserves unrelated change
     baseHash: 'a'.repeat(64),
     document: {
       schemaVersion: 1,
+      generation: {
+        requestHash: 'hash',
+        mode: 'ai',
+        model: null,
+        guidance: 'Prioritize research',
+        summary: 'Original allocation',
+        selectionSummary: 'Chosen for deadline',
+        warnings: [],
+        outcomes: [
+          {
+            key: 'task',
+            title: 'New task',
+            remainingMinutes: 30,
+            scheduledMinutes: 30,
+            reason: 'Placed in open time',
+            selectionReason: 'Thesis deadline',
+            deadlineRisk: false,
+          },
+        ],
+      },
       operations: [
         addition,
         {
@@ -236,6 +257,27 @@ it('refines a pending generated addition in place and preserves unrelated change
   });
   expect(document.operations[1]).toMatchObject({ block: { taskId: id(6) } });
   expect(document.generation).toBeUndefined();
+  expect(document.selectionExplanation).toEqual({
+    summary: 'Chosen for deadline',
+    reasons: [{ title: 'New task', reason: 'Thesis deadline' }],
+  });
+  await planInstruction(
+    'owner',
+    id(10),
+    {
+      type: 'reserve',
+      date,
+      startTime: '14:00',
+      endTime: '14:30',
+      explanation: 'Keep this slot free',
+    },
+    { date, proposalId: id(8) }
+  );
+  const reserved = jest.mocked(proposalService.create).mock.calls[1][1].document;
+  expect(reserved.operations).toHaveLength(1);
+  expect(reserved.operations[0]).toMatchObject({ block: { taskId: id(6) } });
+  expect(reserved.freeIntervals).toHaveLength(1);
+  expect(reserved.selectionExplanation?.summary).toBe('Chosen for deadline');
 });
 it('asks for missing edit times instead of guessing', async () => {
   await expect(

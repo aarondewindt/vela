@@ -114,3 +114,8 @@
     display: none;
   }
 }
+
+.taskPaneItem[data-planning-focus] {
+  outline: 2px solid var(--mantine-color-blue-5);
+  border-radius: var(--mantine-radius-sm);
+}

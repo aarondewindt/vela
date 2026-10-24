@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Group, ScrollArea, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { trpc } from '@/lib/trpc/client';
 import { IconSearch } from '@tabler/icons-react';
 import { sortTasksByPlanningPriority } from '@/lib/planner/scheduling';
@@ -33,7 +34,13 @@ export function TaskPickerPane({
   onRemoveDrop,
   onOpenTask,
 }: Props) {
+  const focusedTaskId = usePlanningWorkspaceStore((state) => state.focusedTaskId);
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    if (focusedTaskId) {
+      setSearch('');
+    }
+  }, [focusedTaskId]);
   const [semantic, setSemantic] = useState(true);
   const [debouncedSearch] = useDebouncedValue(search.trim(), 350);
   const retrieval = trpc.taskSearch.retrieve.useQuery(
@@ -173,6 +180,7 @@ export function TaskPickerPane({
                 key={task.id}
                 draggable
                 className={classes.taskPaneItem}
+                data-planning-focus={focusedTaskId === task.id || undefined}
                 onDragStart={(event) => {
                   event.dataTransfer.setData(TASK_DRAG_TYPE, task.id);
                   event.dataTransfer.effectAllowed = 'copy';

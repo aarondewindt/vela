@@ -300,5 +300,8 @@ it('restores Planner history and sends the current workspace date after navigati
     conversationId: id,
     message,
     date: '2026-10-25',
+    focusedBlockId: null,
+    focusedTaskId: null,
+    proposalId: null,
   });
 });

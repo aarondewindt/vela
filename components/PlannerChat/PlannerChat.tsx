@@ -5,8 +5,7 @@ import { Button, Paper, Stack, Text } from '@mantine/core';
 import { ConversationChat } from '../AiDevView/AiDevView';
 import { ProposalWorkspace } from '../PlanningProposals/PlanningProposals';
 
-// Application-owned content slot; future typed planning tool results can render
-// ProposalWorkspace with a saved proposal ID through this same boundary.
+// Non-chat entry points remain available alongside inline tool result cards.
 export function PlannerChat({ date }: { date: string }) {
   const [planning, setPlanning] = useState(false);
   return (
@@ -14,8 +13,8 @@ export function PlannerChat({ date }: { date: string }) {
       <Paper withBorder p="sm">
         <Stack gap="xs">
           <Text size="sm">
-            Suggestions here do not change your schedule. Preview and approve changes with the
-            planning controls.
+            Chat creates proposals for review. Your schedule changes only when you explicitly apply
+            a validated preview.
           </Text>
           <Button variant="light" size="xs" onClick={() => setPlanning((value) => !value)}>
             {planning ? 'Hide planning controls' : 'Generate · Review schedule · Replan'}

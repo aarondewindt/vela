@@ -17,7 +17,9 @@ function partsForStorage(value: unknown) {
     .map((part) =>
       part.type === 'text'
         ? { type: 'text' as const, text: part.text, state: 'done' as const }
-        : { type: 'step-start' as const }
+        : part.type === 'data-planning'
+          ? part
+          : { type: 'step-start' as const }
     );
 }
 

@@ -5,6 +5,7 @@ jest.mock('./conversations', () => ({
   conversationService: { beginTurn: jest.fn(), finishTurn: jest.fn() },
 }));
 jest.mock('ai', () => ({
+  stepCountIs: jest.fn(() => 'four-step-limit'),
   convertToModelMessages: jest.fn(),
   streamText: jest.fn(),
   toUIMessageStream: jest.fn(),
@@ -109,4 +110,52 @@ describe('aiDevService', () => {
       })
     ).rejects.toThrow('The response could not be saved.');
   });
+});
+
+it('persists and replays compact typed planning cards, including tool-only responses', async () => {
+  const output = {
+    date: '2030-01-07',
+    proposalId: '00000000-0000-4000-8000-000000000001',
+    reply: 'Preview only',
+  };
+  await aiDevService.streamChat('owner', input, signal, 'Planner', { generateDayPlan: {} as any });
+  const options = jest.mocked(toUIMessageStream).mock.calls[0][0] as any;
+  await options.onEnd({
+    responseMessage: { ...reply, parts: [{ type: 'tool-generateDayPlan', output }] },
+    outcome: { status: 'completed' },
+  });
+  expect(conversationService.finishTurn).toHaveBeenCalledWith(
+    'owner',
+    input.conversationId,
+    'generation-1',
+    { ...reply, parts: [{ type: 'data-planning', data: output }] },
+    'COMPLETED'
+  );
+  jest.mocked(conversationService.beginTurn).mockResolvedValue({
+    ...turn,
+    generationId: null,
+    response: { ...reply, parts: [{ type: 'data-planning', data: output }] },
+  } as any);
+  await aiDevService.streamChat('owner', input, signal);
+  const writer = { write: jest.fn() };
+  (jest.mocked(createUIMessageStream).mock.calls[0][0] as any).execute({ writer });
+  expect(writer.write).toHaveBeenCalledWith({ type: 'data-planning', data: output });
+});
+it('bounds model history for planning without losing the latest user request', async () => {
+  jest.mocked(conversationService.beginTurn).mockResolvedValue({
+    ...turn,
+    history: Array.from({ length: 30 }, (_, i) => ({
+      ...input.message,
+      id: String(i),
+      parts: [
+        { type: 'text', text: 'x'.repeat(1500) },
+        { type: 'text', text: 'y'.repeat(1500) },
+      ],
+    })),
+  } as any);
+  await aiDevService.streamChat('owner', input, signal, 'Planner', { generateDayPlan: {} as any });
+  const history = jest.mocked(convertToModelMessages).mock.calls[0][0];
+  expect(history).toHaveLength(12);
+  expect(history.at(-1)).toMatchObject({ id: '29' });
+  expect(JSON.stringify(history).length).toBeLessThan(26000);
 });

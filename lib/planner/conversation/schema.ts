@@ -57,7 +57,7 @@ export const instructionSchema = z.discriminatedUnion('type', [
       type: z.literal('reserve'),
       date: z.iso.date(),
       startTime: time,
-      endTime: time,
+      endTime: z.union([time, z.literal('24:00')]),
       explanation: z.string().trim().min(1).max(2000),
     })
     .strict(),

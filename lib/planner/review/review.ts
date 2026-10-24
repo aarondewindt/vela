@@ -1,3 +1,4 @@
+import { selectionExplanation } from '../proposals/explanations';
 import type { Snapshot } from '../proposals/snapshot';
 import type { ProposalDocument, ProposalOperation } from '../proposals/schema';
 import {
@@ -70,7 +71,9 @@ function correctedDocument(
   // Generation reports describe the old allocation and must not survive a correction.
   return {
     schemaVersion: 1,
+    selectionExplanation: base ? selectionExplanation(base) : undefined,
     operations,
+    ...(base?.freeIntervals ? { freeIntervals: base.freeIntervals } : {}),
     ...(base?.reservations ? { reservations: base.reservations } : {}),
   };
 }

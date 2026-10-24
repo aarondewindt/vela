@@ -27,6 +27,8 @@ import {
 import type { inferRouterOutputs } from '@trpc/server';
 import { DefaultChatTransport } from 'ai';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
+import { PlanningResult } from '../PlannerChat/PlanningResult';
 import { BasicMarkdown } from './BasicMarkdown';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
@@ -299,7 +301,17 @@ function ChatPanel({
         prepareSendMessagesRequest: ({ id, messages }) => ({
           body: {
             conversationId: id,
-            ...(dateRef.current ? { date: dateRef.current } : {}),
+            ...(dateRef.current
+              ? {
+                  date: dateRef.current,
+                  proposalId:
+                    usePlanningWorkspaceStore.getState().preview?.date === dateRef.current
+                      ? usePlanningWorkspaceStore.getState().preview?.id
+                      : null,
+                  focusedBlockId: usePlanningWorkspaceStore.getState().focusedBlockId,
+                  focusedTaskId: usePlanningWorkspaceStore.getState().focusedTaskId,
+                }
+              : {}),
             message: messages.filter((message) => message.role === 'user').at(-1),
           },
         }),
@@ -313,9 +325,19 @@ function ChatPanel({
     onError: onSaved,
   });
   const [input, setInput] = useState('');
+  const messageInput = useRef<HTMLTextAreaElement>(null);
+  const revise = () => {
+    setInput('Revise the pending proposal: ');
+    messageInput.current?.focus();
+  };
   const viewport = useRef<HTMLDivElement>(null);
   const followResponse = useRef(true);
   const loadedVersion = useRef(conversation.updatedAt.getTime());
+  useEffect(() => {
+    if (planner) {
+      usePlanningWorkspaceStore.getState().showPreview(null);
+    }
+  }, [conversation.id, planner]);
   const busy = status === 'submitted' || status === 'streaming';
   const generatingElsewhere = conversation.generating && !busy;
   const incomplete =
@@ -413,6 +435,18 @@ function ChatPanel({
                 {message.parts.map((part, index) =>
                   part.type === 'text' ? (
                     <BasicMarkdown key={`${message.id}-${index}`} text={part.text} />
+                  ) : planner && part.type === 'data-planning' ? (
+                    <PlanningResult
+                      key={`${message.id}-${index}`}
+                      value={part.data}
+                      onRevise={revise}
+                    />
+                  ) : planner && part.type.startsWith('tool-') && 'output' in part ? (
+                    <PlanningResult
+                      key={`${message.id}-${index}`}
+                      value={part.output}
+                      onRevise={revise}
+                    />
                   ) : null
                 )}
               </Paper>
@@ -456,12 +490,13 @@ function ChatPanel({
       >
         <Stack gap="sm">
           <Textarea
+            ref={messageInput}
             label="Message"
             placeholder="Write a message…"
             autosize
             minRows={2}
             maxRows={8}
-            maxLength={maxMessageLength}
+            maxLength={planner ? 2000 : maxMessageLength}
             value={input}
             onChange={(event) => setInput(event.currentTarget.value)}
             onKeyDown={(event) => {

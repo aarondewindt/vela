@@ -1,4 +1,5 @@
 import 'server-only';
+import { selectionExplanation } from '../proposals/explanations';
 import { prisma } from '@/lib/prisma';
 import { generateDayPlan } from '../generation/service';
 import { proposalService } from '../proposals/service';
@@ -12,7 +13,7 @@ export async function planInstruction(
   userId: string,
   requestId: string,
   instruction: Exclude<Instruction, { type: 'record' | 'clarify' | 'find' }>,
-  previous?: ConversationResult,
+  previous?: Pick<ConversationResult, 'date' | 'proposalId'>,
   userTimezone?: string
 ) {
   const { date } = instruction;
@@ -90,6 +91,9 @@ export async function planInstruction(
     ) ?? []),
   ].map((b) => ({ ...b, label: b.title }));
   const candidates = context.candidates.map((c) => ({ ...c, label: c.title }));
+  if (old && old.baseHash !== context.baseHash) {
+    throw new Clarification('Planning inputs changed. Refresh and generate a fresh proposal.');
+  }
   if (instruction.type === 'reserve') {
     const startsAt = wallInstant(
       date,
@@ -98,7 +102,7 @@ export async function planInstruction(
     ).toISOString();
     const endsAt = wallInstant(
       date,
-      timeMinute(instruction.endTime),
+      instruction.endTime === '24:00' ? 1440 : timeMinute(instruction.endTime),
       context.timezone
     ).toISOString();
     const overlapping = blocks.filter(
@@ -111,29 +115,56 @@ export async function planInstruction(
         overlapping.map((b) => ({ id: b.id, label: b.label }))
       );
     }
-    if (old) {
-      throw new Clarification(
-        'Should this free interval replace the pending proposal? Ask to keep this interval free in a new conversation, or discard the pending proposal first.'
-      );
+    const priorDocument = old ? documentSchema.parse(old.document) : undefined;
+    if (priorDocument?.replan) {
+      throw new Clarification('Accept or discard the progress preview first.');
     }
+    const removed = new Set(overlapping.map((b) => b.id));
+    const operations = (priorDocument?.operations ?? []).filter((op, index) => {
+      if (removed.has(`new:${index}`) && 'block' in op) {
+        return false;
+      }
+      return !('blockId' in op && removed.has(op.blockId));
+    });
     const result = await proposalService.create(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
       document: {
         schemaVersion: 1,
-        operations: overlapping.map((b) => ({
-          type: 'remove',
-          blockId: b.id,
-          explanation: instruction.explanation,
-        })),
-        reservations: [
-          { category: 'LEISURE', startsAt, endsAt, explanation: instruction.explanation },
+        selectionExplanation: priorDocument ? selectionExplanation(priorDocument) : undefined,
+        operations: [
+          ...operations,
+          ...overlapping.flatMap((b) => {
+            if (b.id.startsWith('new:')) {
+              const original = priorDocument?.operations[Number(b.id.slice(4))];
+              return original && 'blockId' in original
+                ? [
+                    {
+                      type: 'remove' as const,
+                      blockId: original.blockId,
+                      explanation: instruction.explanation,
+                    },
+                  ]
+                : [];
+            }
+            return [
+              { type: 'remove' as const, blockId: b.id, explanation: instruction.explanation },
+            ];
+          }),
+        ],
+        reservations: priorDocument?.reservations?.filter(
+          (r) => r.endsAt <= startsAt || r.startsAt >= endsAt
+        ),
+        freeIntervals: [
+          ...(priorDocument?.freeIntervals ?? []),
+          { startsAt, endsAt, explanation: instruction.explanation },
         ],
       },
     });
     return {
-      reply: 'Review the free-time reservation and any released task blocks below. Tasks are kept.',
+      reply:
+        'Review the enforced free interval and released blocks below. Tasks are kept. This constraint belongs to this proposal; change availability separately for future generation.',
       proposalId: result.id,
     };
   }
@@ -274,7 +305,7 @@ export async function planInstruction(
         operation,
       ];
     }
-    if (!operations.length && !document.reservations?.length) {
+    if (!operations.length && !document.reservations?.length && !document.freeIntervals?.length) {
       throw new Clarification(
         'This would remove every proposed change. Use Discard conversation preview to keep the current plan.'
       );
@@ -283,7 +314,13 @@ export async function planInstruction(
       requestId,
       date,
       baseHash: context.baseHash,
-      document: { schemaVersion: 1, operations, reservations: document.reservations },
+      document: {
+        schemaVersion: 1,
+        selectionExplanation: selectionExplanation(document),
+        operations,
+        reservations: document.reservations,
+        freeIntervals: document.freeIntervals,
+      },
     });
     return {
       reply: 'Review this revised proposal. It replaces the previous preview.',

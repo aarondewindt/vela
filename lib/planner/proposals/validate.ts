@@ -131,7 +131,23 @@ export function availability(s: Snapshot) {
       merged.push({ ...interval });
     }
   }
-  return merged;
+  let available = merged;
+  for (const excluded of s.planningExclusions ?? []) {
+    available = available.flatMap((window) => {
+      if (!overlap(window, excluded)) {
+        return [window];
+      }
+      return [
+        ...(window.startsAt < excluded.startsAt
+          ? [{ startsAt: window.startsAt, endsAt: excluded.startsAt }]
+          : []),
+        ...(window.endsAt > excluded.endsAt
+          ? [{ startsAt: excluded.endsAt, endsAt: window.endsAt }]
+          : []),
+      ];
+    });
+  }
+  return available;
 }
 
 export function validateProposal(s: Snapshot, document: ProposalDocument, now = new Date()) {
@@ -325,6 +341,20 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   const isOccupied = (b: ProposalBlock) =>
     occupied(b) &&
     (!b.calendarEventId || s.events.find((e) => e.id === b.calendarEventId)?.isBusy !== false);
+  for (const interval of document.freeIntervals ?? []) {
+    const free = { startsAt: new Date(interval.startsAt), endsAt: new Date(interval.endsAt) };
+    if (
+      free.startsAt < cutoff ||
+      free.endsAt <= free.startsAt ||
+      free.endsAt > dayEnd ||
+      final.some((block) => isOccupied(block) && overlap(free, block)) ||
+      busy.some((event) => overlap(free, event))
+    ) {
+      fail(
+        'The requested free interval contains occupied time, crosses the selected day, or has already started. Adjust protected commitments explicitly.'
+      );
+    }
+  }
   for (const [index, slot] of reservations.entries()) {
     if (slot.startsAt < cutoff) {
       fail(
@@ -588,6 +618,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     warnings.push('An existing category reservation extends outside availability. It is retained.');
   }
   return {
+    freeIntervals: document.freeIntervals,
     sessionViolations: [...sessionMetrics(final, totals, allocations)]
       .filter(([, metric]) => metric.invalid)
       .map(([id]) => id),

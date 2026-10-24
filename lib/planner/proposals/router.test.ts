@@ -50,7 +50,7 @@ it('authenticates generation and validates its mode, date and guidance before de
   });
   expect(generateDayPlan).not.toHaveBeenCalled();
   await caller.generate(input);
-  expect(generateDayPlan).toHaveBeenCalledWith('owner', input);
+  expect(generateDayPlan).toHaveBeenCalledWith('owner', { ...input, freeTimes: [] });
 });
 it('rejects malformed proposal IDs and dates at the boundary', async () => {
   const caller = proposalRouter.createCaller({ userId: 'owner' });
@@ -120,6 +120,7 @@ it('uses AI by default for API callers while retaining an explicit deterministic
     date: '2030-01-07',
     mode: 'ai',
     guidance: '',
+    freeTimes: [],
   });
   await caller.generate({ requestId, date: '2030-01-07', mode: 'deterministic' });
   expect(generateDayPlan).toHaveBeenLastCalledWith('owner', {
@@ -127,5 +128,6 @@ it('uses AI by default for API callers while retaining an explicit deterministic
     date: '2030-01-07',
     mode: 'deterministic',
     guidance: '',
+    freeTimes: [],
   });
 });

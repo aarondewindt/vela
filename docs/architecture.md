@@ -93,6 +93,18 @@ work, independently of tasks and Nutrition. See [scheduler evaluation](PLANNER_E
 for AI defaults/fallback/evidence and [routine architecture review](PLANNER_ROUTINES_REVIEW.md)
 for deferred sleep and cross-day considerations.
 
+## Conversational Planner orchestration
+
+Phase 2 Planner chat uses typed AI SDK tools in `lib/planner/chat/tools.ts`, bound
+to the authenticated owner. Generation invokes the existing AI scheduler; edits,
+review and replanning reuse their existing services. Conversation overrides never
+select the scheduler model. Compact typed message parts restore application-owned
+proposal/review cards; workspace UI state stores references and highlights only.
+The shared validator enforces requested free intervals throughout proposal revisions
+and acceptance. See [Planner workspace](PLANNER_WORKSPACE.md) for tools, lifecycle,
+limits and pending live acceptance. No second scheduling engine or record-CRUD
+agent is introduced.
+
 ## Scheduler replacement policy
 
 The current generator remains available. The replacement scheduler policy under

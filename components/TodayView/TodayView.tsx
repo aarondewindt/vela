@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
+import { trpc } from '@/lib/trpc/client';
 import { PlannerChat } from '../PlannerChat/PlannerChat';
 import {
   ActionIcon,
@@ -171,6 +173,23 @@ function currentDateInTimezone(timezone: string) {
 export function TodayView() {
   const [workspaceSurface, setWorkspaceSurface] = useState('schedule');
   const selectedDate = usePlannerStore((state) => state.selectedDate);
+  const previewReference = usePlanningWorkspaceStore((state) => state.preview);
+  const focusedBlockId = usePlanningWorkspaceStore((state) => state.focusedBlockId);
+  const focus = usePlanningWorkspaceStore((state) => state.focus);
+  const previewQuery = trpc.planningProposals.get.useQuery(
+    { id: previewReference?.id ?? '' },
+    {
+      enabled: Boolean(previewReference && previewReference.date === selectedDate),
+      refetchInterval: 15000,
+    }
+  );
+  const pendingPreview =
+    previewReference?.date === selectedDate &&
+    !previewQuery.error &&
+    previewQuery.data?.status === 'PENDING' &&
+    !previewQuery.data.invalidReason
+      ? previewQuery.data.preview
+      : undefined;
   const setSelectedDate = usePlannerStore((state) => state.setSelectedDate);
   const setAsideOpened = useAppShellStore((state) => state.set_aside_opened);
   const dayQuery = useDayDataQuery(selectedDate);
@@ -297,7 +316,7 @@ export function TodayView() {
         ? []
         : (dayData?.plan?.dailyBlocks ?? []).map((block) => ({
             id: block.id,
-            title: block.title,
+            title: `${focusedBlockId === block.id ? 'Selected · ' : ''}${block.title}`,
             start: localDateTime(block.startsAt, timezone),
             end: localDateTime(block.endsAt, timezone),
             color: block.calendarEventId
@@ -341,8 +360,35 @@ export function TodayView() {
               display: event.isBusy ? ('background' as const) : ('default' as const),
               payload: { kind: 'calendar', isBusy: event.isBusy },
             }));
-    return [...availabilityEvents, ...categorySlotEvents, ...blockEvents, ...calendarEvents];
+    const proposedEvents =
+      layer !== 'tasks'
+        ? []
+        : (pendingPreview?.changes ?? []).flatMap((change) => {
+            const block = change.after ?? change.before;
+            return block
+              ? [
+                  {
+                    id: `proposal:${block.id}`,
+                    title: `${focusedBlockId === block.id ? 'Selected · ' : ''}Proposed ${change.type} · ${block.title}`,
+                    start: localDateTime(new Date(block.startsAt), timezone),
+                    end: localDateTime(new Date(block.endsAt), timezone),
+                    color: 'blue',
+                    variant: 'light' as const,
+                    payload: { kind: 'proposal', blockId: block.id, taskId: block.taskId },
+                  },
+                ]
+              : [];
+          });
+    return [
+      ...availabilityEvents,
+      ...categorySlotEvents,
+      ...blockEvents,
+      ...calendarEvents,
+      ...proposedEvents,
+    ];
   }, [
+    pendingPreview,
+    focusedBlockId,
     colorBy,
     dayData?.availability,
     dayData?.events,
@@ -873,6 +919,7 @@ export function TodayView() {
                 onTaskDragStart={setDraggedTask}
                 onTaskDragEnd={() => setDraggedTask(null)}
                 onOpenTask={(task) => {
+                  focus(null, task.id);
                   setSelectedBlockId(null);
                   setInspectedTaskId(task.id);
                 }}
@@ -906,6 +953,22 @@ export function TodayView() {
             data-active={workspaceSurface === 'schedule' || undefined}
             aria-label="Day schedule"
           >
+            {previewReference?.date === selectedDate && (
+              <Group justify="space-between" p="xs">
+                <Text size="xs" c="dimmed">
+                  {pendingPreview
+                    ? 'Proposed changes · blue blocks are previews'
+                    : 'Preview unavailable or stale. Refresh or select another proposal.'}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  onClick={() => usePlanningWorkspaceStore.getState().showPreview(null)}
+                >
+                  Clear preview
+                </Button>
+              </Group>
+            )}
             {scheduleView === 'schedule' ? (
               <DayView
                 date={selectedDate}
@@ -956,7 +1019,9 @@ export function TodayView() {
                   }
                 }}
                 onEventClick={(event) => {
-                  if (layer === 'categories' && event.payload?.kind === 'category-slot') {
+                  if (event.payload?.kind === 'proposal') {
+                    focus(event.payload.blockId, event.payload.taskId);
+                  } else if (layer === 'categories' && event.payload?.kind === 'category-slot') {
                     setSelectedCategorySlotId(String(event.payload.slotId));
                   } else if (layer === 'availability' && event.payload?.kind === 'availability') {
                     setSelectedAvailabilityWindow({
@@ -965,6 +1030,7 @@ export function TodayView() {
                     });
                   } else if (layer === 'tasks' && event.payload?.kind === 'block') {
                     setInspectedTaskId(null);
+                    focus(String(event.payload.blockId));
                     setSelectedBlockId(String(event.payload.blockId));
                   }
                 }}
@@ -1019,6 +1085,8 @@ export function TodayView() {
                 }
                 preventEventOverlap={(stillEvent, movingEvent) => {
                   if (
+                    stillEvent.payload?.kind === 'proposal' ||
+                    movingEvent.payload?.kind === 'proposal' ||
                     stillEvent.payload?.kind === 'category-slot' ||
                     movingEvent.payload?.kind === 'category-slot'
                   ) {
@@ -1039,7 +1107,9 @@ export function TodayView() {
                 rangeStart={selectedDate}
                 rangeEnd={selectedDate}
                 onEventClick={(event) => {
-                  if (layer === 'categories' && event.payload?.kind === 'category-slot') {
+                  if (event.payload?.kind === 'proposal') {
+                    focus(event.payload.blockId, event.payload.taskId);
+                  } else if (layer === 'categories' && event.payload?.kind === 'category-slot') {
                     setSelectedCategorySlotId(String(event.payload.slotId));
                   } else if (layer === 'availability' && event.payload?.kind === 'availability') {
                     setSelectedAvailabilityWindow({
@@ -1048,6 +1118,7 @@ export function TodayView() {
                     });
                   } else if (layer === 'tasks' && event.payload?.kind === 'block') {
                     setInspectedTaskId(null);
+                    focus(String(event.payload.blockId));
                     setSelectedBlockId(String(event.payload.blockId));
                   }
                 }}

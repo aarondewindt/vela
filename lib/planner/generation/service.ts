@@ -12,8 +12,8 @@ import { blockNoteText } from '@/lib/task-search/text';
 import { fingerprint, loadSnapshot } from '../proposals/snapshot';
 import { proposalService } from '../proposals/service';
 import { documentSchema, generationReportSchema } from '../proposals/schema';
-import { availability, existingBlocks } from '../proposals/validate';
-import { wallInstant } from '../proposals/time';
+import { availability, existingBlocks, validateProposal } from '../proposals/validate';
+import { timeMinute, wallInstant } from '../proposals/time';
 import { planningCandidates } from './candidates';
 import { generateDaySchema, type Selection } from './schema';
 import { selectionContract } from './selection';
@@ -45,6 +45,70 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
     isolationLevel: 'RepeatableRead',
     timeout: 15000,
   });
+  if (input.freeTimes.length && s.timezone !== s.user.timezone) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message:
+        'This saved plan uses a different timezone from your current preference. Review its timezone before specifying local free intervals.',
+    });
+  }
+  let inherited: ReturnType<typeof documentSchema.parse> | undefined;
+  if (input.reviseProposalId) {
+    const previous = await prisma.planningProposal.findFirst({
+      where: { id: input.reviseProposalId, userId, planDate: new Date(`${input.date}T00:00:00Z`) },
+    });
+    if (!previous) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Planning proposal not found.' });
+    }
+    if (previous.status !== 'PENDING' || previous.baseHash !== s.hash) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message: 'The proposal is stale. Refresh planning data.',
+      });
+    }
+    inherited = documentSchema.parse(previous.document);
+    if (inherited.replan) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: 'Accept or discard the progress preview before regenerating.',
+      });
+    }
+  }
+  const freeIntervals = [
+    ...(inherited?.freeIntervals ?? []),
+    ...input.freeTimes.map((time) => ({
+      startsAt: wallInstant(input.date, timeMinute(time.startTime), s.timezone).toISOString(),
+      endsAt: wallInstant(
+        input.date,
+        time.endTime === '24:00' ? 1440 : timeMinute(time.endTime),
+        s.timezone
+      ).toISOString(),
+      explanation: 'Keep this interval free as explicitly requested.',
+    })),
+  ];
+  if (freeIntervals.length > 16 || freeIntervals.some((time) => time.endsAt <= time.startsAt)) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Choose up to 16 valid free intervals within the selected day.',
+    });
+  }
+  const constrained = {
+    ...s,
+    planningExclusions: freeIntervals.map((interval) => ({
+      startsAt: new Date(interval.startsAt),
+      endsAt: new Date(interval.endsAt),
+    })),
+  };
+  if (freeIntervals.length) {
+    try {
+      validateProposal(s, { schemaVersion: 1, operations: [], freeIntervals });
+    } catch (error) {
+      throw new TRPCError({
+        code: 'BAD_REQUEST',
+        message: error instanceof Error ? error.message : 'Invalid free interval.',
+      });
+    }
+  }
   const { candidates, warnings } = planningCandidates(s);
   const defaultEstimates = candidates.filter(
     (c) => s.tasks.find((t) => t.id === c.taskId)?.estimatedMinutes === null
@@ -109,7 +173,7 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
       timezone: s.timezone,
       guidance: input.guidance,
       earliestPlanningStart: promptCutoff.toISOString(),
-      availability: availability(s)
+      availability: availability(constrained)
         .map((window) => ({
           ...window,
           startsAt: new Date(Math.max(window.startsAt.getTime(), promptCutoff.getTime())),
@@ -233,7 +297,10 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
     }
   }
   const intent = placementIntent(candidates, selection, input.mode === 'ai' ? input.guidance : '');
-  const result = scheduleDay(s, intent.ordered, intent.workBudgetMinutes);
+  const result = scheduleDay(constrained, intent.ordered, intent.workBudgetMinutes);
+  if (freeIntervals.length) {
+    result.document.freeIntervals = freeIntervals;
+  }
   const actual = placementReport(
     candidates,
     new Set(intent.ordered.map((item) => item.candidate.key)),
@@ -269,7 +336,11 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
           'Outside the bounded AI candidate pool; not selected for this proposal.'),
     })),
   });
-  if (!result.document.operations.length && !result.document.reservations?.length) {
+  if (
+    !result.document.operations.length &&
+    !result.document.reservations?.length &&
+    !result.document.freeIntervals?.length
+  ) {
     return { id: null, report };
   }
   const saved = await proposalService.create(userId, {

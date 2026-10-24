@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('./tools', () => ({ planningTools: jest.fn(() => ({ generateDayPlan: {} })) }));
 jest.mock('@/lib/ai-dev/conversations', () => ({
   createConversationService: jest.fn(() => ({ get: jest.fn() })),
 }));
@@ -57,7 +58,7 @@ it('authorizes the conversation before loading context or starting inference', a
   expect(proposalService.context).not.toHaveBeenCalled();
   expect(chatStream).not.toHaveBeenCalled();
 });
-it('reuses streaming with specialized advisory-only instructions and authoritative date', async () => {
+it('reuses streaming with typed orchestration instructions and authoritative date', async () => {
   const signal = new AbortController().signal;
   await streamPlannerChat('owner', input, signal);
   const stream = chatStream;
@@ -65,7 +66,8 @@ it('reuses streaming with specialized advisory-only instructions and authoritati
     'owner',
     input,
     signal,
-    expect.stringContaining('You have no tools to change tasks or schedules')
+    expect.stringContaining('existing AI scheduler'),
+    expect.objectContaining({ generateDayPlan: {} })
   );
   expect(stream.mock.calls[0][3]).toContain('2026-10-24');
 });
@@ -75,5 +77,26 @@ it('requires a valid calendar date and text-only user message', () => {
   expect(
     plannerChatInputSchema.safeParse({ ...input, message: { ...input.message, role: 'system' } })
       .success
+  ).toBe(false);
+});
+it('verifies explicit workspace proposal references against owner and selected date before inference', async () => {
+  const get = jest.fn().mockRejectedValue(new Error('Not found'));
+  Object.assign(proposalService, { get });
+  await expect(
+    streamPlannerChat(
+      'other',
+      { ...input, proposalId: input.conversationId },
+      new AbortController().signal
+    )
+  ).rejects.toThrow('Not found');
+  expect(get).toHaveBeenCalledWith('other', input.conversationId);
+  expect(chatStream).not.toHaveBeenCalled();
+});
+it('rejects oversized Planner messages rather than silently losing hard constraints during truncation', () => {
+  expect(
+    plannerChatInputSchema.safeParse({
+      ...input,
+      message: { ...input.message, parts: [{ type: 'text', text: 'x'.repeat(2001) }] },
+    }).success
   ).toBe(false);
 });
