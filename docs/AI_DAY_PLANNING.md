@@ -168,7 +168,7 @@ can return `plannedMinutes` for each selected candidate. Deterministic placement
 that allocation at remaining effort, available time and existing session constraints.
 Unguided fill ignores unsolicited model allocation targets, preserving normal fill behavior.
 
-An explicit maximum, such as “clean my room for max 30 minutes,” uses typed
+Application callers can request an explicit maximum, such as “clean my room for max 30 minutes,” using typed
 `taskLimits: [{taskQuery, maxMinutes}]`. The generation service resolves names/IDs
 within the owner's snapshot and clarifies unknown/ambiguous matches before inference.
 Canonical limits retain the owned task ID, title, a stable request-time boundary and
@@ -179,5 +179,9 @@ explicit adjustment rather than silent removal. Generation, revision, correction
 acceptance use the same accounting function and validator. Limits survive regeneration,
 are shown in previews, and do not alter task effort or future independent plans.
 
-Unsupported-constraint messages name the actual unsupported requirement. They do not
-ask users to re-enter saved availability or reserve an empty interval for a task.
+Conversational generation passes the original request and relevant context as
+guidance; the chat does not classify hard requirements or reject the request before
+calling the scheduler. Typed limits remain an application API feature. Guidance
+alone is not represented as a verified arbitrary hard constraint. Scheduler reports
+and validated proposals describe the actual result; chat must not ask users to
+re-enter saved availability or reserve an empty interval for a task.

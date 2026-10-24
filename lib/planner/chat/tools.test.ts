@@ -19,11 +19,11 @@ import { planInstruction } from '../conversation/planning';
 import { proposalService } from '../proposals/service';
 import { reviewDayPlan } from '../review/service';
 import { Clarification } from '../conversation/resolve';
-import { planningTools } from './tools';
+import { planningTools, planningGuidance } from './tools';
 
 const date = '2030-01-07';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const generation = { date, guidance: 'Prioritize thesis work', hardConstraints: [], freeTimes: [] };
+const generation = { date, guidance: 'Prioritize thesis work' };
 const edit = {
   type: 'edit',
   date,
@@ -70,23 +70,21 @@ it('calls the existing scheduler with an independent scheduler model and leaves 
   expect(proposalService.accept).not.toHaveBeenCalled();
   expect(tools).not.toHaveProperty('accept');
 });
-it('rejects unsupported hard restrictions instead of forwarding them as scheduler guidance', async () => {
-  const response = await execute(planningTools('owner', 'turn'), 'generateDayPlan', {
-    ...generation,
-    hardConstraints: ['Work at home only'],
-  });
-  expect(response.reply).toContain('cannot enforce');
-  expect(generateDayPlan).not.toHaveBeenCalled();
-});
-it('passes explicit local free intervals through the shared scheduler pipeline', async () => {
-  await execute(planningTools('owner', 'turn'), 'generateDayPlan', {
-    ...generation,
-    freeTimes: [{ startTime: '17:00', endTime: '24:00' }],
-  });
+it('forwards all constraints as scheduler guidance without classifying or rejecting them', async () => {
+  const guidance = 'Keep after 17:00 free, clean for max 30 minutes, and work at home.';
+  await execute(planningTools('owner', 'turn'), 'generateDayPlan', { date, guidance });
   expect(generateDayPlan).toHaveBeenCalledWith(
     'owner',
-    expect.objectContaining({ freeTimes: [{ startTime: '17:00', endTime: '24:00' }] })
+    expect.objectContaining({ date, guidance })
   );
+});
+it('exposes only date and guidance for scheduling instead of asking chat to define hard requirements', () => {
+  const schema = planningTools('owner', 'turn').generateDayPlan.inputSchema as any;
+  expect(schema.parse({ date, guidance: 'Plan the rest of the day' })).toEqual({
+    date,
+    guidance: 'Plan the rest of the day',
+  });
+  expect(() => schema.parse({ date, guidance: '', hardConstraints: [] })).toThrow();
 });
 it('uses stable owner/turn/argument identities for retries and recovers a saved result without inference', async () => {
   await execute(planningTools('owner', 'turn'), 'generateDayPlan', generation);
@@ -217,25 +215,23 @@ it('plans the remaining day with saved availability, approximate durations and a
   const response = await execute(planningTools('owner', 'duration-turn'), 'generateDayPlan', {
     date,
     guidance,
-    taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
-    freeTimes: [],
-    hardConstraints: [],
   });
   expect(response.proposalId).toBe(id(1));
   expect(generateDayPlan).toHaveBeenCalledWith(
     'owner',
     expect.objectContaining({
       guidance,
-      taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
     })
   );
   expect(response.reply).not.toContain('availability editor');
 });
-it('names the actual unsupported restriction instead of asking for availability again', async () => {
-  const response = await execute(planningTools('owner', 'turn'), 'generateDayPlan', {
-    ...generation,
-    hardConstraints: ['Require a location that is not configured'],
+it('keeps the original message intact when chat summarizes its interpretation', async () => {
+  const original = 'Vela maybe an hour; room max 30min; most evening on video; some guitar.';
+  await execute(planningTools('owner', 'turn', undefined, undefined, original), 'generateDayPlan', {
+    date,
+    guidance: 'Focus on the video',
   });
-  expect(response.reply).toContain('Require a location that is not configured');
-  expect(response.reply).toContain('do not need to enter availability again');
+  expect(jest.mocked(generateDayPlan).mock.calls[0][1].guidance).toContain(original);
+  expect(planningGuidance('x'.repeat(2000), 'context')).toBe('x'.repeat(2000));
+  expect(planningGuidance('latest', 'x'.repeat(2000))).toHaveLength(2000);
 });

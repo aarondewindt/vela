@@ -305,3 +305,44 @@ it('restores Planner history and sends the current workspace date after navigati
     proposalId: null,
   });
 });
+
+it('restores saved per-response Planner diagnostics behind a collapsed inspector', async () => {
+  const user = userEvent.setup();
+  Object.assign(trpc, { plannerChat: trpc.aiDev });
+  (trpc.useUtils as jest.Mock).mockReturnValue({
+    plannerChat: { listConversations: { invalidate }, getConversation: { invalidate } },
+  });
+  (useChat as jest.Mock).mockReturnValue({
+    ...chat,
+    messages: [
+      {
+        id: 'a',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'data-plannerDebug',
+            data: {
+              omittedEvents: 0,
+              events: [
+                {
+                  id: '1',
+                  at: '2026-10-24T10:00:00Z',
+                  elapsedMs: 100,
+                  kind: 'tool-error',
+                  label: 'Tool failed',
+                  details: 'Scheduler unavailable',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  });
+  render(<ConversationChat plannerDate="2026-10-24" />);
+  const toggle = await screen.findByRole('button', { name: 'Planner debug · 1 events' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await user.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByText('Scheduler unavailable')).toBeInTheDocument();
+});

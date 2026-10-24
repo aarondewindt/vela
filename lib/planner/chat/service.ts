@@ -1,4 +1,5 @@
 import 'server-only';
+import { PLANNER_CHAT_INSTRUCTIONS } from './prompt';
 import { TRPCError } from '@trpc/server';
 import { planningTools } from './tools';
 import { proposalService } from '../proposals/service';
@@ -50,12 +51,7 @@ export async function streamPlannerChat(
     input,
     signal,
     [
-      'You are Vela’s planning assistant. Help the user understand and organize the selected day.',
-      'You orchestrate the existing AI scheduler, review and replanning services through tools. Never calculate a schedule yourself.',
-      'Tools only create validated previews. Never claim changes were applied; the user must use the proposal Accept button. Use tools for planning requests, not textual promises.',
-      'Use saved availability automatically; planning the rest of the day is supported and already excludes elapsed time. Approximate durations (maybe another hour), relative emphasis (most of the evening), preferred order and practice for a bit go in guidance. Explicit maximum task durations (clean my room for max 30 minutes) go in generateDayPlan.taskLimits with the exact task title or ID. Do not classify those as unsupported hardConstraints or ask the user to re-enter availability. Never propose a free interval to reserve time for a task: free intervals prohibit all tasks there.',
-      'Distinguish soft preferences from hard constraints. Explicit empty intervals use generateDayPlan.freeTimes. List only genuinely unsupported hard constraints in generateDayPlan.hardConstraints; never put them only in guidance. Timed free intervals use reserve, with endTime 24:00 for end of day. Free intervals constrain generation and the pending proposal and its revisions, not future independent generation. Never suggest accepting a free interval then generating without changing availability. Unsupported restrictions require clarification. Afternoon/evening/morning boundaries require explicit times.',
-      'Resolve today/tomorrow relative to the current local date below. Use getPlanningContext for other dates. Resolve references exactly and clarify ambiguity. Task/theme CRUD is not supported.',
+      ...PLANNER_CHAT_INSTRUCTIONS,
       `Current local date: ${new Intl.DateTimeFormat('en-CA', { timeZone: context.userTimezone ?? context.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}.`,
       `Pending proposal: ${pending?.type === 'data-planning' ? JSON.stringify({ date: pending.data.date, proposalId: pending.data.proposalId }) : 'none'}.`,
       `Pending preview context: ${JSON.stringify({ guidance: projection?.generation?.guidance, taskLimits: projection?.taskLimits, focusedBlock: projection?.changes.flatMap((c) => (c.after ? [c.after] : [])).find((b) => b.id === input.focusedBlockId), changes: projection?.changes.slice(0, 12).map((change) => ({ ...change, explanation: change.explanation.slice(0, 300), before: change.before ? { ...change.before, title: change.before.title.slice(0, 240) } : null, after: change.after ? { ...change.after, title: change.after.title.slice(0, 240) } : null })) })}.`,
@@ -71,7 +67,8 @@ export async function streamPlannerChat(
       pending?.type === 'data-planning' && pending.data.proposalId
         ? { date: pending.data.date, proposalId: pending.data.proposalId }
         : undefined,
-      context.userTimezone
+      context.userTimezone,
+      input.message.parts.map((part) => part.text).join('\n')
     )
   );
 }

@@ -5,6 +5,27 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Planner guidance and debug continuation — 2026-10-24
+
+- Generation chat tool now takes only date/guidance. Removed chat-side hard
+  classification/rejection and forced typed duration/free-time extraction; latest
+  user request is preserved with bounded prior context for the existing scheduler.
+  Deterministic constraints, typed application APIs and proposal approval remain.
+- Planner stream now records owner-scoped `data-plannerDebug` parts: bounded model
+  request, tool input/output/error, finish reason/token counts and status. Collapsed
+  Mantine inspector streams/restores these beneath each response. Redaction,
+  escaped text and payload/event bounds avoid raw SDK/config/header serialization.
+- Planner uses Ollama think:false, 4,096 output tokens and a 150s deadline. Empty
+  completions, output exhaustion, setup/provider/tool failures get visible text and
+  persisted trace; cancellation remains distinct. Existing AI Dev behavior retained.
+- Real AI SDK stream composition verified with a mock provider, then live qwen3:8b
+  verified against all five production tool schemas with synthetic context and stub
+  operations: generateDayPlan received durations and produced a complete visible
+  response/card/debug trace. No real planning records were read or changed. No
+  application migration/restart/deployment performed. Full Jest: 1,211 passed, five
+  opt-in skips; TypeScript, production build and changed-file lint/format pass.
+  #37 remains open for actual scheduler/browser acceptance.
+
 ## Conversational duration fix — 2026-10-24
 
 - Fixed the broad unsupported-constraint response for normal remaining-day requests.

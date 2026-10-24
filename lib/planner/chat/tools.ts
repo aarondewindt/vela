@@ -20,12 +20,23 @@ const actionSchema = z.union(
   )
 );
 
+export function planningGuidance(latestRequest: string | undefined, context: string) {
+  const latest = latestRequest?.trim();
+  if (!latest || latest === context.trim()) {
+    return latest || context;
+  }
+  const suffix = `\n\nPlanning context: ${context}`;
+  const remaining = 2000 - latest.length;
+  return latest + (remaining > 24 ? suffix.slice(0, remaining) : '');
+}
+
 // The conversation owns references; models cannot supply a foreign proposal ID or approve it.
 export function planningTools(
   userId: string,
   turnKey: string,
   pending?: { date: string; proposalId: string },
-  userTimezone?: string
+  userTimezone?: string,
+  latestRequest?: string
 ) {
   let current = pending;
   let queue = Promise.resolve();
@@ -72,33 +83,12 @@ export function planningTools(
     }),
     generateDayPlan: tool({
       description:
-        'Call the existing AI scheduler using saved availability and the current-time cutoff automatically. Put approximate durations (maybe/about an hour), preferred order, focus and most of the evening in guidance. Explicit per-task caps (clean my room for max 30 minutes) use taskLimits [{taskQuery: exact task title or ID, maxMinutes: 30}]; application code resolves the task and enforces the cap. Guidance is SOFT only. Explicit empty intervals use freeTimes in local HH:mm (24:00 means end of day); these are enforced by the existing placement and validator. List all OTHER hard restrictions separately; unsupported restrictions return a limitation without generating. Retain relevant previous preferences in guidance. Scheduler model is independently configured.',
-      inputSchema: generateDaySchema
-        .pick({ date: true, guidance: true, freeTimes: true, taskLimits: true })
-        .extend({
-          hardConstraints: z
-            .array(z.string().max(500))
-            .max(16)
-            .describe(
-              'Only genuinely unsupported restrictions. Saved availability, planning the remaining day, approximate durations, priorities and order are supported; omit them here. Explicit per-task maximums belong in taskLimits, empty intervals in freeTimes.'
-            ),
-        }),
-      execute: async ({ date, guidance, freeTimes, taskLimits, hardConstraints }) =>
+        'Invoke the existing AI scheduler using saved availability and the current-time cutoff. Pass the user’s requests, constraints, hints, durations, preferred order and priorities as guidance, preserving relevant conversation context. The scheduler interprets and places tasks; do not classify requirements as unsupported or demand exact time slots before calling it. Returns a validated pending preview, never applies changes.',
+      inputSchema: generateDaySchema.pick({ date: true, guidance: true }),
+      execute: async ({ date, guidance }) =>
         sequential(async () => {
-          if (hardConstraints.length) {
-            return result(
-              date,
-              `I cannot enforce these additional restrictions: ${hardConstraints.join('; ')}. Saved availability, remaining-day planning, approximate durations, priorities, task time caps and free intervals are supported. Clarify only the unsupported requirement; you do not need to enter availability again. No schedule was changed.`
-            );
-          }
-          const id = requestId({
-            type: 'generate',
-            date,
-            guidance,
-            freeTimes,
-            taskLimits,
-            hardConstraints,
-          });
+          const schedulerGuidance = planningGuidance(latestRequest, guidance);
+          const id = requestId({ type: 'generate', date, guidance: schedulerGuidance });
           const saved = await replay(id);
           if (saved) {
             return result(date, 'Recovered the saved proposal. Review before accepting.', saved.id);
@@ -108,9 +98,7 @@ export function planningTools(
             requestId: id,
             date,
             mode: 'ai',
-            guidance,
-            freeTimes,
-            taskLimits,
+            guidance: schedulerGuidance,
             reviseProposalId: old?.proposalId,
           });
           if (old && generated.id && old.proposalId !== generated.id) {

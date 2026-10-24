@@ -146,40 +146,45 @@ Review findings can highlight affected blocks, and their corrections use the sam
 proposal/acceptance flow. A correction created from a review card becomes the
 selected workspace proposal; after reload it is also available in Saved proposals.
 
-### Hard constraints and context limits
+### Scheduling guidance and diagnostics
 
-Timed empty intervals use `freeTimes` for generation or `reserve` for revisions.
-Local HH:mm inputs resolve through the existing saved-timezone/DST functions;
-24:00 is supported as an interval end. Ambiguous/nonexistent DST times fail instead
-of shifting silently. User and saved-plan timezone disagreement requires review
-before interpreting new local interval times.
+The conversational generation tool accepts only a date and guidance. The chat
+passes requests, hints, constraints, durations, ordering and priorities to the
+existing scheduler instead of classifying or rejecting hard requirements itself.
+The latest user message is preserved verbatim, with bounded conversation guidance
+appended when space permits. The scheduler handles interpretation and reports the
+actual placements and unmet requests. Saved availability, task eligibility,
+placement rules, proposal validation and explicit approval remain deterministic.
+Guidance is not a guarantee that an arbitrary requested restriction was enforced.
+Typed `freeTimes`/`taskLimits` remain available to application services, but chat
+no longer has to extract them before requesting a plan.
 
-The shared availability calculation subtracts generation exclusions for both task
-and meal placement. `freeIntervals` in the canonical proposal document then
-rejects any overlapping occupied block or busy calendar event during creation,
-revision and acceptance, including leisure/rest blocks. Explicit interval revisions
-can release flexible pending/persisted blocks; protected commitments require
-separate explicit adjustment. Existing commitments overlapping a generation
-restriction cause an error rather than silent removal. Corrections retain these
-constraints. Explicit task duration maximums use owner-resolved `taskLimits`;
-approximate durations and relative emphasis go in guidance and the shared scheduler
-can assign per-task allocation targets. Saved availability and the rest-of-day
-cutoff are already applied. Other hard restrictions return a limitation without invoking the
-scheduler; soft guidance is never represented as enforced.
+Each assistant turn has a collapsed **Planner debug** inspector below its content.
+It streams and persists selected model-request settings/context, structured tool
+arguments (the observable interpretation), tool replies, argument/execution errors,
+model step finish reasons and token counts, elapsed time and final status. It does
+not expose raw reasoning, HTTP headers, environment values or arbitrary SDK error
+objects. Details are rendered as escaped text; credential-shaped fields/messages
+are redacted. Payloads cap at 8,000 characters, with at most 40 events / roughly
+48,000 characters per response; omissions/truncation are explicit. Diagnostics use
+existing owner/scope-protected message JSON and restore after reload/replay. They
+are not sent back as model conversation context. Old responses cannot recover
+previously discarded tool/error information; retrying records a new trace.
 
-Free intervals constrain this proposal and its revisions, including regeneration;
-they do not alter recurring availability or constrain later independent plans.
-For a persistent restriction, use the availability editor. No new availability
-profiles/templates (#69/#70) are introduced.
+Planner orchestration disables Ollama thinking, allows 4,096 output tokens and
+uses a 150-second total deadline within the existing 180-second turn lease. This
+prevents a thinking model from spending the previous 2,048-token budget entirely
+on hidden reasoning. Empty/length-limited responses, model startup errors and tool-only
+failures get explicit user-visible failure text and a saved diagnostic trace;
+cancellation remains distinct. Normal AI Dev chat keeps its existing behavior.
+Successful tools can still leave recoverable pending previews if a later model
+step fails; nothing is applied automatically.
 
 Planner input is limited to 2,000 characters. Inference uses the most recent 12
-text messages (at most 2,000 characters each), fresh bounded day context and the
-pending preview summary, rather than complete provider tool history. Context
-records remain untrusted data. Review cards cap findings/blocks/corrections and
-trim large correction documents to a roughly 12,000-character result, explicitly
-indicating omitted options. Full reviews remain available through Review day plan.
-No new migration or dependency is needed for Phase 2; the Phase 1 scope migration
-still needs deployment where not already applied.
+text messages (at most 2,000 characters each), fresh bounded day context and a
+pending preview summary. Review cards cap findings/blocks/corrections to a roughly
+12,000-character result and indicate omitted options. No new migration or dependency
+is needed; the Phase 1 scope migration still needs deployment where absent.
 
 ### Verification still requiring a live environment
 

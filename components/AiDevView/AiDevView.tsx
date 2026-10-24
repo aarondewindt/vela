@@ -28,6 +28,7 @@ import type { inferRouterOutputs } from '@trpc/server';
 import { DefaultChatTransport } from 'ai';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
+import { PlannerDebug } from '../PlannerChat/PlannerDebug';
 import { PlanningResult } from '../PlannerChat/PlanningResult';
 import { BasicMarkdown } from './BasicMarkdown';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
@@ -449,6 +450,22 @@ function ChatPanel({
                     />
                   ) : null
                 )}
+                {planner &&
+                  message.role === 'assistant' &&
+                  message.parts.map((part, index) =>
+                    part.type === 'data-plannerDebug' && 'data' in part ? (
+                      <PlannerDebug key={`${message.id}-debug-${index}`} value={part.data} />
+                    ) : null
+                  )}
+                {planner &&
+                  !busy &&
+                  message.role === 'assistant' &&
+                  message.parts.every((part) => part.type === 'step-start') && (
+                    <Text size="xs" c="dimmed">
+                      No debug details were recorded for this older response. Retry to capture a
+                      trace.
+                    </Text>
+                  )}
               </Paper>
             ))}
             {busy && (
