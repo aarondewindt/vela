@@ -13,8 +13,11 @@ export function selectionContract(candidates: readonly { key: string }[], fill =
   }));
   const key = z.enum(references.map((reference) => reference.key) as [string, ...string[]]);
   const assessment = z.object({ key, reason: z.string().trim().min(1).max(700) }).strict();
+  const selectedAssessment = assessment.extend({
+    plannedMinutes: z.number().int().positive().max(1440).nullable().optional(),
+  });
   const schema = selectionSchema.extend({
-    selected: z.array(assessment).max(candidates.length),
+    selected: z.array(selectedAssessment).max(candidates.length),
     omitted: z.array(assessment).max(fill ? 0 : candidates.length),
   });
   return {

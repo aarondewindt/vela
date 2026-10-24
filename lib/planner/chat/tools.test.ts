@@ -210,3 +210,32 @@ it('does not expose record CRUD, database access or foreign proposal arguments',
     (tools.reviewDayPlan.inputSchema as any).parse({ date, proposalId: id(8) })
   ).toThrow();
 });
+
+it('plans the remaining day with saved availability, approximate durations and a supported cleaning cap', async () => {
+  const guidance =
+    'Work on Vela for maybe another hour, then clean my room for max 30min, spend most of the evening on the solocos video, and practice guitar for a bit.';
+  const response = await execute(planningTools('owner', 'duration-turn'), 'generateDayPlan', {
+    date,
+    guidance,
+    taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
+    freeTimes: [],
+    hardConstraints: [],
+  });
+  expect(response.proposalId).toBe(id(1));
+  expect(generateDayPlan).toHaveBeenCalledWith(
+    'owner',
+    expect.objectContaining({
+      guidance,
+      taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
+    })
+  );
+  expect(response.reply).not.toContain('availability editor');
+});
+it('names the actual unsupported restriction instead of asking for availability again', async () => {
+  const response = await execute(planningTools('owner', 'turn'), 'generateDayPlan', {
+    ...generation,
+    hardConstraints: ['Require a location that is not configured'],
+  });
+  expect(response.reply).toContain('Require a location that is not configured');
+  expect(response.reply).toContain('do not need to enter availability again');
+});

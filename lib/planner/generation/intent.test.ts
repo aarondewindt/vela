@@ -88,3 +88,44 @@ it('fills standard weekday availability around leisure rather than stopping afte
   expect(minutes).toBeLessThanOrEqual(450); // 510 available minutes less reserved leisure.
   expect(() => validateProposal(s, result.document, at('00:00'))).not.toThrow();
 });
+
+it('allocates approximate per-task durations within the existing scheduler without changing estimates', () => {
+  const s = fixture([240, 120, 240, 60]);
+  const candidates = planningCandidates(s).candidates;
+  const before = s.tasks.map((task) => task.estimatedMinutes);
+  const intent = placementIntent(
+    candidates,
+    {
+      summary: 'Vela, cleaning, a little guitar and mostly video',
+      workBudgetMinutes: null,
+      selected: candidates.map((candidate, index) => ({
+        key: candidate.key,
+        reason: 'Requested',
+        plannedMinutes: [60, 30, 120, 15][index],
+      })),
+      omitted: [],
+    },
+    'About an hour Vela; max half an hour cleaning; mostly video; some guitar'
+  );
+  const result = scheduleDay(s, intent.ordered, intent.workBudgetMinutes, at('00:00'));
+  expect([...result.scheduled.values()]).toEqual([60, 30, 120, 15]);
+  expect(s.tasks.map((task) => task.estimatedMinutes)).toEqual(before);
+  expect(() => validateProposal(s, result.document, at('00:00'))).not.toThrow();
+});
+it('does not let unsolicited per-task model targets shrink an unguided fill plan', () => {
+  const s = fixture([60]);
+  const candidates = planningCandidates(s).candidates;
+  const intent = placementIntent(
+    candidates,
+    {
+      summary: 'Small',
+      workBudgetMinutes: null,
+      selected: [{ key: candidates[0].key, reason: 'Pick', plannedMinutes: 15 }],
+      omitted: [],
+    },
+    ''
+  );
+  expect(scheduleDay(s, intent.ordered, null, at('00:00')).scheduled.get(candidates[0].key)).toBe(
+    60
+  );
+});

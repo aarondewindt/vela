@@ -1,3 +1,4 @@
+import { limitedTaskMinutes } from '../proposals/task-limits';
 import { placeMeals } from './meals';
 import type { Snapshot } from '../proposals/snapshot';
 import type { ProposalDocument, ProposalOperation } from '../proposals/schema';
@@ -34,7 +35,7 @@ function subtract(windows: Interval[], obstacles: Interval[]) {
 /** Application-owned placement. Model output never supplies timestamps or constraint exceptions. */
 export function scheduleDay(
   s: Snapshot,
-  ordered: { candidate: Candidate; reason: string }[],
+  ordered: { candidate: Candidate; reason: string; plannedMinutes?: number | null }[],
   workBudget: number | null,
   now = new Date()
 ) {
@@ -55,7 +56,12 @@ export function scheduleDay(
     end: b.endsAt.getTime(),
   }));
   const existingSlots = s.plan?.categorySlots ?? [];
-  const document: ProposalDocument = { schemaVersion: 1, operations: [], reservations: [] };
+  const document: ProposalDocument = {
+    schemaVersion: 1,
+    operations: [],
+    reservations: [],
+    ...(s.planningTaskLimits?.length ? { taskLimits: s.planningTaskLimits } : {}),
+  };
   const meals = placeMeals(s, document, now);
   const warnings: string[] = meals.filter((m) => m.status === 'unmet').map((m) => m.reason);
   obstacles.push(
@@ -132,8 +138,31 @@ export function scheduleDay(
       return false;
     } // Pure constraint rejection; try a different placement.
   };
-  for (const { candidate } of ordered) {
-    let remaining = candidate.remaining;
+  for (const { candidate, plannedMinutes } of ordered) {
+    const limit = s.planningTaskLimits?.find((item) => item.taskId === candidate.taskId);
+    const proposed = document.operations.flatMap((op) =>
+      op.type === 'add' && op.block.kind === 'TASK'
+        ? [
+            {
+              taskId: op.block.taskId,
+              status: 'PLANNED',
+              startsAt: new Date(op.block.startsAt),
+              endsAt: new Date(op.block.endsAt),
+            },
+          ]
+        : []
+    );
+    const preferred = Math.min(candidate.remaining, plannedMinutes ?? candidate.remaining);
+    const target = limit
+      ? Math.min(
+          preferred,
+          Math.max(
+            0,
+            limit.maxMinutes - limitedTaskMinutes([...existingBlocks(s), ...proposed], limit)
+          )
+        )
+      : preferred;
+    let remaining = target;
     let earliest =
       Math.ceil(
         (s.tasks.find((t) => t.id === candidate.taskId)?.earliestStartAt?.getTime() ?? cutoff) /
@@ -305,7 +334,7 @@ export function scheduleDay(
         break;
       }
     }
-    scheduled.set(candidate.key, candidate.remaining - remaining);
+    scheduled.set(candidate.key, target - remaining);
   }
   if (document.operations.length || document.reservations!.length) {
     validateProposal(s, document, now);

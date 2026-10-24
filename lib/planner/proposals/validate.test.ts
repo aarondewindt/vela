@@ -437,3 +437,37 @@ describe('explicit free intervals', () => {
     ).toThrow('already started');
   });
 });
+
+it('revalidates per-task caps against revised additions and rejects inaccessible references', () => {
+  const s = snapshot();
+  const limit = { taskId, title: 'Task', startsAt: at('00:00').toISOString(), maxMinutes: 30 };
+  expect(() =>
+    validateProposal(s, { ...document(add('09:00', '09:30')), taskLimits: [limit] }, now)
+  ).not.toThrow();
+  expect(() =>
+    validateProposal(s, { ...document(add('09:00', '10:00')), taskLimits: [limit] }, now)
+  ).toThrow('maximum of 30 minutes');
+  expect(() =>
+    validateProposal(
+      s,
+      { ...document(add('09:00', '09:30')), taskLimits: [{ ...limit, taskId: 'foreign' }] },
+      now
+    )
+  ).toThrow('owned tasks');
+});
+it('counts preserved future allocations toward a task cap rather than granting another full allowance', () => {
+  const s = snapshot();
+  existing(s);
+  const limit = { taskId, title: 'Task', startsAt: at('09:15').toISOString(), maxMinutes: 30 };
+  const addition = (end: string) => {
+    const operation = add('10:00', end);
+    return { ...operation, block: { ...operation.block, occurrenceId } };
+  };
+  // existing() retains 09:00–09:30; only its final 15 minutes fall after this request boundary.
+  expect(() =>
+    validateProposal(s, { ...document(addition('10:15')), taskLimits: [limit] }, now)
+  ).not.toThrow();
+  expect(() =>
+    validateProposal(s, { ...document(addition('10:30')), taskLimits: [limit] }, now)
+  ).toThrow('maximum of 30 minutes');
+});

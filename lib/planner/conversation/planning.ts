@@ -132,6 +132,7 @@ export async function planInstruction(
       baseHash: context.baseHash,
       document: {
         schemaVersion: 1,
+        taskLimits: priorDocument?.taskLimits,
         selectionExplanation: priorDocument ? selectionExplanation(priorDocument) : undefined,
         operations: [
           ...operations,
@@ -305,7 +306,12 @@ export async function planInstruction(
         operation,
       ];
     }
-    if (!operations.length && !document.reservations?.length && !document.freeIntervals?.length) {
+    if (
+      !operations.length &&
+      !document.reservations?.length &&
+      !document.freeIntervals?.length &&
+      !document.taskLimits?.length
+    ) {
       throw new Clarification(
         'This would remove every proposed change. Use Discard conversation preview to keep the current plan.'
       );
@@ -316,6 +322,7 @@ export async function planInstruction(
       baseHash: context.baseHash,
       document: {
         schemaVersion: 1,
+        taskLimits: document.taskLimits,
         selectionExplanation: selectionExplanation(document),
         operations,
         reservations: document.reservations,

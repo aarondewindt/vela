@@ -176,6 +176,9 @@ it('refines a pending generated addition in place and preserves unrelated change
     baseHash: 'a'.repeat(64),
     document: {
       schemaVersion: 1,
+      taskLimits: [
+        { taskId: id(7), title: 'New task', startsAt: `${date}T00:00:00.000Z`, maxMinutes: 30 },
+      ],
       generation: {
         requestHash: 'hash',
         mode: 'ai',
@@ -257,6 +260,7 @@ it('refines a pending generated addition in place and preserves unrelated change
   });
   expect(document.operations[1]).toMatchObject({ block: { taskId: id(6) } });
   expect(document.generation).toBeUndefined();
+  expect(document.taskLimits?.[0].maxMinutes).toBe(30);
   expect(document.selectionExplanation).toEqual({
     summary: 'Chosen for deadline',
     reasons: [{ title: 'New task', reason: 'Thesis deadline' }],
@@ -277,6 +281,7 @@ it('refines a pending generated addition in place and preserves unrelated change
   expect(reserved.operations).toHaveLength(1);
   expect(reserved.operations[0]).toMatchObject({ block: { taskId: id(6) } });
   expect(reserved.freeIntervals).toHaveLength(1);
+  expect(reserved.taskLimits?.[0].maxMinutes).toBe(30);
   expect(reserved.selectionExplanation?.summary).toBe('Chosen for deadline');
 });
 it('asks for missing edit times instead of guessing', async () => {

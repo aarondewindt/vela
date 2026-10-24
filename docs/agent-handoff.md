@@ -5,6 +5,24 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Conversational duration fix — 2026-10-24
+
+- Fixed the broad unsupported-constraint response for normal remaining-day requests.
+  Saved availability/current-time cutoffs, approximate durations, ordering and focus
+  are supported. Prompt/tool schema distinguish these from unsupported restrictions;
+  errors now name the restriction and do not advise reserving empty time for tasks.
+- Existing AI scheduler selection supports optional per-task `plannedMinutes` for
+  guided allocation; unguided fill ignores unsolicited model targets. Explicit
+  `taskLimits` resolve task names/IDs against the owner's snapshot, share deterministic
+  future-minute accounting with the proposal validator and survive revisions,
+  corrections, regeneration and acceptance. No task estimate or schedule writes
+  occur before normal explicit approval. No migration/dependency added.
+- Full Jest: 1,199 passed, five opt-in skips; focused checks cover the reported mix
+  of approximate duration, cleaning cap, main-task emphasis and practice. TypeScript,
+  production build and changed-file lint/format pass. Live Ollama interpretation
+  and authenticated browser behavior remain unverified. No application restart,
+  migration or deployment was performed.
+
 ## Conversational planning #37 — Phase 2 — 2026-10-24
 
 - Planner streaming now has typed owner-bound context, generation, edit/progress,

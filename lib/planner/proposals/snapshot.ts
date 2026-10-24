@@ -82,5 +82,6 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
 }
 export type Snapshot = Awaited<ReturnType<typeof loadSnapshot>> & {
   // Ephemeral constraints used by the same scheduler during proposal generation.
+  planningTaskLimits?: { taskId: string; title: string; startsAt: string; maxMinutes: number }[];
   planningExclusions?: { startsAt: Date; endsAt: Date }[];
 };

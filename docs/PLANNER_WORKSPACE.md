@@ -161,7 +161,10 @@ revision and acceptance, including leisure/rest blocks. Explicit interval revisi
 can release flexible pending/persisted blocks; protected commitments require
 separate explicit adjustment. Existing commitments overlapping a generation
 restriction cause an error rather than silent removal. Corrections retain these
-constraints. Other hard restrictions return a limitation without invoking the
+constraints. Explicit task duration maximums use owner-resolved `taskLimits`;
+approximate durations and relative emphasis go in guidance and the shared scheduler
+can assign per-task allocation targets. Saved availability and the rest-of-day
+cutoff are already applied. Other hard restrictions return a limitation without invoking the
 scheduler; soft guidance is never represented as enforced.
 
 Free intervals constrain this proposal and its revisions, including regeneration;

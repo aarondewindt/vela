@@ -7,6 +7,17 @@ export const generateDaySchema = z
     mode: z.enum(['ai', 'deterministic']).default('ai'),
     guidance: z.string().trim().max(2000).default(''),
     reviseProposalId: z.uuid().optional(),
+    taskLimits: z
+      .array(
+        z
+          .object({
+            taskQuery: z.string().trim().min(1).max(240),
+            maxMinutes: z.number().int().min(0).max(1440),
+          })
+          .strict()
+      )
+      .max(40)
+      .default([]),
     freeTimes: z
       .array(
         z
@@ -27,7 +38,15 @@ export const selectionSchema = z
     // A planning preference; never changes task facts or session/availability constraints.
     workBudgetMinutes: z.number().int().min(0).max(1440).nullable(),
     selected: z
-      .array(z.object({ key: z.string(), reason: z.string().trim().min(1).max(700) }).strict())
+      .array(
+        z
+          .object({
+            key: z.string(),
+            reason: z.string().trim().min(1).max(700),
+            plannedMinutes: z.number().int().positive().max(1440).nullable().optional(),
+          })
+          .strict()
+      )
       .max(80),
     omitted: z
       .array(z.object({ key: z.string(), reason: z.string().trim().min(1).max(700) }).strict())

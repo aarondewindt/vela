@@ -473,3 +473,68 @@ it('rejects inaccessible and stale regeneration references before inference', as
   expect(generateStructured).not.toHaveBeenCalled();
   expect(proposalService.create).not.toHaveBeenCalled();
 });
+
+it('enforces a task maximum even when the scheduler model asks for more time', async () => {
+  s = fixture([180, 120]);
+  s.tasks[0].title = 'Clean my room';
+  jest.mocked(generateStructured).mockResolvedValue({
+    summary: 'Clean',
+    workBudgetMinutes: null,
+    selected: [{ key: 'C1', reason: 'Requested', plannedMinutes: 90 }],
+    omitted: [],
+  });
+  const result = await generateDayPlan('owner', {
+    ...input,
+    guidance: 'Clean my room for max 30 minutes',
+    taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
+  });
+  expect(result.report.outcomes[0].scheduledMinutes).toBe(30);
+  expect(s.tasks[0].estimatedMinutes).toBe(180);
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.taskLimits).toEqual([
+    {
+      taskId: s.tasks[0].id,
+      title: 'Clean my room',
+      maxMinutes: 30,
+      startsAt: `${date}T00:00:00.000Z`,
+    },
+  ]);
+});
+it('clarifies missing, foreign and ambiguous task references before calling the model', async () => {
+  s.tasks[0].title = 'Clean';
+  s.tasks[1].title = 'Clean';
+  await expect(
+    generateDayPlan('owner', { ...input, taskLimits: [{ taskQuery: 'Clean', maxMinutes: 30 }] })
+  ).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+    message: expect.stringContaining('Several tasks'),
+  });
+  await expect(
+    generateDayPlan('owner', { ...input, taskLimits: [{ taskQuery: taskId(999), maxMinutes: 30 }] })
+  ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: expect.stringContaining('No task') });
+  expect(generateStructured).not.toHaveBeenCalled();
+  expect(proposalService.create).not.toHaveBeenCalled();
+});
+it('carries task caps through regeneration without mutating recorded task facts', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue({
+    status: 'PENDING',
+    baseHash: s.hash,
+    document: {
+      schemaVersion: 1,
+      operations: [],
+      taskLimits: [
+        {
+          taskId: s.tasks[0].id,
+          title: s.tasks[0].title,
+          startsAt: `${date}T00:00:00.000Z`,
+          maxMinutes: 15,
+        },
+      ],
+    },
+  } as any);
+  const result = await generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) });
+  expect(result.report.outcomes[0].scheduledMinutes).toBe(15);
+  expect(
+    jest.mocked(proposalService.create).mock.calls[0][1].document.taskLimits?.[0].maxMinutes
+  ).toBe(15);
+});

@@ -42,7 +42,7 @@ now generates proposals instead of calling it.
 
 ## Responsibilities and persistence
 
-Protected `planningProposals.generate({requestId,date,mode,guidance})` delegates to
+Protected `planningProposals.generate({requestId,date,mode,guidance,freeTimes?,taskLimits?,reviseProposalId?})` delegates to
 `lib/planner/generation/service.ts`. Generation reads a consistent owner-scoped
 snapshot, performs inference outside transactions, computes placements, and calls
 the existing proposal creation service with that snapshot's fingerprint. Input
@@ -50,9 +50,9 @@ changes during generation require a fresh preview. Nothing updates planning
 records before acceptance.
 
 AI chooses candidate order, explains selections/omissions, and may suggest a
-smaller work-minute budget when guidance was supplied. Unguided generation tries
+smaller work-minute budget and per-task `plannedMinutes` allocations when guidance was supplied. Approximate requests such as “about an hour” become bounded allocation targets rather than changes to recorded task estimates. Unguided generation tries
 remaining eligible candidates after the AI shortlist, without a model-imposed
-work cap. It cannot supply placement timestamps, alter task
+work cap or unsolicited per-task allocation target. It cannot supply placement timestamps, alter task
 properties, waive constraints, complete prerequisites, or apply changes. The
 application calculates availability, remaining estimates, category compatibility,
 leisure reservations, task splitting and rest. Trial placements use the shared
@@ -159,3 +159,25 @@ light-day guidance, preview isolation, deferred recurrence creation, atomic leis
 insertion, owner isolation, stale inputs and duplicate acceptance. Browser checks
 exercise unavailable-model errors, explicit deterministic fallback, preview/apply
 and desktop/390px layouts. Temporary fixtures are removed after verification.
+
+## Requested task durations
+
+Chat planning uses saved availability and the existing current-time cutoff automatically.
+Approximate durations, ordering and relative emphasis belong in guidance; the scheduler
+can return `plannedMinutes` for each selected candidate. Deterministic placement caps
+that allocation at remaining effort, available time and existing session constraints.
+Unguided fill ignores unsolicited model allocation targets, preserving normal fill behavior.
+
+An explicit maximum, such as “clean my room for max 30 minutes,” uses typed
+`taskLimits: [{taskQuery, maxMinutes}]`. The generation service resolves names/IDs
+within the owner's snapshot and clarifies unknown/ambiguous matches before inference.
+Canonical limits retain the owned task ID, title, a stable request-time boundary and
+maximum. All remaining PLANNED/IN_PROGRESS minutes for that task after the boundary,
+including preserved commitments and separate occurrences, count toward the maximum;
+completed history is retained. Existing commitments already above the maximum require
+explicit adjustment rather than silent removal. Generation, revision, correction and
+acceptance use the same accounting function and validator. Limits survive regeneration,
+are shown in previews, and do not alter task effort or future independent plans.
+
+Unsupported-constraint messages name the actual unsupported requirement. They do not
+ask users to re-enter saved availability or reserve an empty interval for a task.

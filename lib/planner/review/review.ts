@@ -71,6 +71,7 @@ function correctedDocument(
   // Generation reports describe the old allocation and must not survive a correction.
   return {
     schemaVersion: 1,
+    taskLimits: base?.taskLimits,
     selectionExplanation: base ? selectionExplanation(base) : undefined,
     operations,
     ...(base?.freeIntervals ? { freeIntervals: base.freeIntervals } : {}),

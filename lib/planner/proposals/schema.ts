@@ -145,9 +145,18 @@ const selectionExplanationSchema = z.object({
     .array(z.object({ title: z.string().max(240), reason: z.string().max(1000) }))
     .max(1000),
 });
+export const taskLimitSchema = z
+  .object({
+    taskId: z.uuid(),
+    title: z.string().max(240),
+    startsAt: instant,
+    maxMinutes: z.number().int().min(0).max(1440),
+  })
+  .strict();
 export const documentSchema = z
   .object({
     schemaVersion: z.literal(1),
+    taskLimits: z.array(taskLimitSchema).max(40).optional(),
     selectionExplanation: selectionExplanationSchema.optional(),
     freeIntervals: z.array(freeIntervalSchema).max(16).optional(),
     operations: z.array(operationSchema).max(100),
@@ -167,7 +176,8 @@ export const documentSchema = z
     (d) =>
       d.operations.length > 0 ||
       Boolean(d.reservations?.length) ||
-      Boolean(d.freeIntervals?.length),
+      Boolean(d.freeIntervals?.length) ||
+      Boolean(d.taskLimits?.length),
     'A proposal needs a change.'
   );
 export const createProposalSchema = z
@@ -214,6 +224,7 @@ const previewBlock = z.object({
   status: z.string().optional(),
 });
 export const previewSchema = z.object({
+  taskLimits: z.array(taskLimitSchema).max(40).optional(),
   selectionExplanation: selectionExplanationSchema.optional(),
   freeIntervals: z.array(freeIntervalSchema).max(16).optional(),
   replan: z.object({ warnings: z.array(z.string()), reviewBy: instant.optional() }).optional(),

@@ -477,6 +477,12 @@ export function ProposalWorkspace({
               Show preview in calendar
             </Button>
           )}
+          {current.preview.taskLimits?.map((limit) => (
+            <Text key={limit.taskId} size="sm">
+              {limit.title}: at most {limit.maxMinutes} minutes of planned work after{' '}
+              {format(limit.startsAt)}. Recorded task effort is unchanged.
+            </Text>
+          ))}
           {current.preview.freeIntervals?.map((interval) => (
             <Paper withBorder p="sm" key={interval.startsAt}>
               <Text fw={600}>

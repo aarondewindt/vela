@@ -1,3 +1,4 @@
+import { limitedTaskMinutes } from './task-limits';
 import { mealKindSchema, mealTitles, readMealPreferences, type MealKind } from '../meals';
 import type { Snapshot } from './snapshot';
 import type { Addition, ProposalDocument } from './schema';
@@ -341,6 +342,24 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   const isOccupied = (b: ProposalBlock) =>
     occupied(b) &&
     (!b.calendarEventId || s.events.find((e) => e.id === b.calendarEventId)?.isBusy !== false);
+  const limited = new Set<string>();
+  for (const limit of document.taskLimits ?? []) {
+    const start = new Date(limit.startsAt);
+    if (
+      !s.tasks.some((task) => task.id === limit.taskId) ||
+      limited.has(limit.taskId) ||
+      start < dayStart ||
+      start >= dayEnd
+    ) {
+      fail('Task time limits require unique owned tasks and a boundary within the selected day.');
+    }
+    limited.add(limit.taskId);
+    if (limitedTaskMinutes(final, limit) > limit.maxMinutes) {
+      fail(
+        `${limit.title}: proposed remaining-day task time exceeds the requested maximum of ${limit.maxMinutes} minutes. Adjust existing commitments or revise this limit explicitly.`
+      );
+    }
+  }
   for (const interval of document.freeIntervals ?? []) {
     const free = { startsAt: new Date(interval.startsAt), endsAt: new Date(interval.endsAt) };
     if (
@@ -618,6 +637,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     warnings.push('An existing category reservation extends outside availability. It is retained.');
   }
   return {
+    taskLimits: document.taskLimits,
     freeIntervals: document.freeIntervals,
     sessionViolations: [...sessionMetrics(final, totals, allocations)]
       .filter(([, metric]) => metric.invalid)

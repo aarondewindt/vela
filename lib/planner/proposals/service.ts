@@ -46,6 +46,7 @@ function previewOf(result: ReturnType<typeof validateProposal>) {
       before: blockPreview(c.before),
       after: blockPreview(c.after),
     })),
+    taskLimits: result.taskLimits,
     freeIntervals: result.freeIntervals,
     warnings: result.warnings,
     taskChanges: result.taskChanges,

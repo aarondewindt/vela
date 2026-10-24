@@ -72,19 +72,33 @@ export function planningTools(
     }),
     generateDayPlan: tool({
       description:
-        'Call the existing AI scheduler. Guidance is SOFT only. Explicit empty intervals use freeTimes in local HH:mm (24:00 means end of day); these are enforced by the existing placement and validator. List all OTHER hard restrictions separately; unsupported restrictions return a limitation without generating. Retain relevant previous preferences in guidance. Scheduler model is independently configured.',
+        'Call the existing AI scheduler using saved availability and the current-time cutoff automatically. Put approximate durations (maybe/about an hour), preferred order, focus and most of the evening in guidance. Explicit per-task caps (clean my room for max 30 minutes) use taskLimits [{taskQuery: exact task title or ID, maxMinutes: 30}]; application code resolves the task and enforces the cap. Guidance is SOFT only. Explicit empty intervals use freeTimes in local HH:mm (24:00 means end of day); these are enforced by the existing placement and validator. List all OTHER hard restrictions separately; unsupported restrictions return a limitation without generating. Retain relevant previous preferences in guidance. Scheduler model is independently configured.',
       inputSchema: generateDaySchema
-        .pick({ date: true, guidance: true, freeTimes: true })
-        .extend({ hardConstraints: z.array(z.string().max(500)).max(16) }),
-      execute: async ({ date, guidance, freeTimes, hardConstraints }) =>
+        .pick({ date: true, guidance: true, freeTimes: true, taskLimits: true })
+        .extend({
+          hardConstraints: z
+            .array(z.string().max(500))
+            .max(16)
+            .describe(
+              'Only genuinely unsupported restrictions. Saved availability, planning the remaining day, approximate durations, priorities and order are supported; omit them here. Explicit per-task maximums belong in taskLimits, empty intervals in freeTimes.'
+            ),
+        }),
+      execute: async ({ date, guidance, freeTimes, taskLimits, hardConstraints }) =>
         sequential(async () => {
           if (hardConstraints.length) {
             return result(
               date,
-              'Generation cannot enforce additional hard restrictions yet. Use the availability editor before generation, or refine an existing preview with a timed free interval. No schedule was changed.'
+              `I cannot enforce these additional restrictions: ${hardConstraints.join('; ')}. Saved availability, remaining-day planning, approximate durations, priorities, task time caps and free intervals are supported. Clarify only the unsupported requirement; you do not need to enter availability again. No schedule was changed.`
             );
           }
-          const id = requestId({ type: 'generate', date, guidance, freeTimes, hardConstraints });
+          const id = requestId({
+            type: 'generate',
+            date,
+            guidance,
+            freeTimes,
+            taskLimits,
+            hardConstraints,
+          });
           const saved = await replay(id);
           if (saved) {
             return result(date, 'Recovered the saved proposal. Review before accepting.', saved.id);
@@ -96,6 +110,7 @@ export function planningTools(
             mode: 'ai',
             guidance,
             freeTimes,
+            taskLimits,
             reviseProposalId: old?.proposalId,
           });
           if (old && generated.id && old.proposalId !== generated.id) {
