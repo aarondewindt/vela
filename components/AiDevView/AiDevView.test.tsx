@@ -6,6 +6,7 @@ jest.mock('@/lib/trpc/client', () => ({
     settings: { getAiModels: { useQuery: jest.fn() } },
     useUtils: jest.fn(),
     aiDev: {
+      pendingRecordPreview: { useQuery: () => ({ data: null }) },
       listChatModels: { useQuery: jest.fn() },
       listConversations: { useQuery: jest.fn() },
       getConversation: { useQuery: jest.fn() },

@@ -102,8 +102,11 @@ select the scheduler model. Compact typed message parts restore application-owne
 proposal/review cards; workspace UI state stores references and highlights only.
 The shared validator enforces requested free intervals throughout proposal revisions
 and acceptance. See [Planner workspace](PLANNER_WORKSPACE.md) for tools, lifecycle,
-limits and pending live acceptance. No second scheduling engine or record-CRUD
-agent is introduced.
+limits and pending live acceptance. No second scheduling engine is introduced. Issue #38 adds bounded task/theme
+lookup and durable record-preview tools to the same conversation.
+`PlannerRecordProposal` links previews/receipts to the streaming conversation;
+acceptance reuses the existing record validator and normal task/theme services.
+See [workspace record management](PLANNER_WORKSPACE.md#task-and-theme-management-38).
 
 ## Scheduler replacement policy
 

@@ -10,6 +10,7 @@ import { requireModelSelection } from '@/lib/model-settings/service';
 import { dateInTimezone, shiftDiaryDate } from '@/lib/nutrition/dates';
 import { fingerprint } from '../proposals/snapshot';
 import { proposalService } from '../proposals/service';
+import { locked } from './transaction';
 import { applyRecord, previewRecord, recordContext } from './records';
 import { planInstruction } from './planning';
 import { Clarification, conflict, findMatches, relativeDueDate } from './resolve';
@@ -30,29 +31,6 @@ Interpret the latest user message as ONE proposed planning or task/theme instruc
 Dates are calendar dates in the supplied timezone: use authoritative today/tomorrow, selected date when unspecified. Local times use HH:mm and are validated by application code for DST. Clarify unspecified materially important times (including what 'afternoon' means), AM/PM, or timezone changes. For an extension by N minutes use replan.extend with additionalMinutes N and endTime null; never calculate timestamps. completeTask is true ONLY when explicitly requested. Replacing a task with 'something easier' requires clarification or a find request, never choose an arbitrary match. Use exact record IDs when resolving a clearly identified name; repeated names require clarification. Pronouns refer to the latest clearly identified record/block; otherwise clarify. Do not treat date text in a task title as a due date.
 Record operations support the properties in the schema and the task-to-theme relationship. For a task's theme use themeQuery (exact known name/ID); null explicitly clears it. Missing patch fields retain current values; null clears only nullable fields. Theme colors use existing palette token values from the supplied themes or an explicit user value. Create includes title/name. For a correction to a pending creation, return create again with corrected properties; retain prior fields. Corrections to pending updates retain prior requested fields. To intentionally create a second record ask the user to accept/discard the first preview. Delete requests only produce deletion previews; user confirmation is handled separately by the app. 'Yes', 'apply' or 'confirm' messages do not authorize mutations: ask the user to use the preview acceptance button.
 For full day planning use generate with guidance containing ALL still-applicable preferences from previous turns and the latest correction. Explicit appointments without a stored calendar event need clarification; do not invent calendar writes. Use edit for specific additions/moves/removals of existing blocks, replan for progress and downstream shifts, reserve for explicitly timed free intervals, and explain for why a day/task was selected. Free-time reservation may release flexible blocks; explain this. Pending proposal changes remain previews. Existing future manual/fixed commitments require explicit selection and application validation. Unsupported dependencies, recurrence, location, rich notes or availability-profile changes require the regular editor, never claim to have changed them.`;
-
-async function locked<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) {
-  try {
-    return await prisma.$transaction(
-      async (tx) => {
-        await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
-        // Same ordering as proposal acceptance. Covers legacy writers and phantoms.
-        await tx.$executeRaw`LOCK TABLE "user", "themes", "tasks", "task_dependencies", "task_occurrences", "availability_windows", "day_overrides", "date_availability_windows", "calendar_events", "planner_generation_settings", "daily_plans", "daily_blocks", "daily_plan_category_slots", "planning_proposals", "planner_conversations", "planner_conversation_turns" IN SHARE ROW EXCLUSIVE MODE`;
-        return fn(tx);
-      },
-      { timeout: 15000, maxWait: 5000 }
-    );
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      (['P2002', 'P2034'].includes(error.code) ||
-        (error.code === 'P2010' && ['40001', '40P01', '55P03'].includes(String(error.meta?.code))))
-    ) {
-      throw conflict('The records changed or are busy. Refresh and retry.');
-    }
-    throw error;
-  }
-}
 
 export const conversationService = {
   create(userId: string) {

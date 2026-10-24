@@ -1,3 +1,5 @@
+import { z } from 'zod';
+import { workspaceRecords } from './records';
 import { TRPCError } from '@trpc/server';
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import { getAiDevError } from '@/lib/ai-dev/errors';
@@ -24,7 +26,30 @@ async function call<T>(operation: () => Promise<T>): Promise<T> {
   }
 }
 
+const recordReference = z.object({ conversationId: z.uuid(), id: z.uuid() }).strict();
 export const plannerChatRouter = router({
+  pendingRecordPreview: protectedProcedure
+    .input(conversationIdSchema)
+    .query(({ ctx, input }) => workspaceRecords.pending(ctx.userId, input.id)),
+  getRecordPreview: protectedProcedure
+    .input(recordReference)
+    .query(({ ctx, input }) => workspaceRecords.get(ctx.userId, input.conversationId, input.id)),
+  resolveRecordPreview: protectedProcedure
+    .input(
+      recordReference.extend({
+        action: z.enum(['accept', 'discard']),
+        confirmDeletion: z.boolean().default(false),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      workspaceRecords.resolve(
+        ctx.userId,
+        input.conversationId,
+        input.id,
+        input.action,
+        input.confirmDeletion
+      )
+    ),
   listChatModels: protectedProcedure.query(() => call(() => aiDevService.listChatModels())),
   listConversations: protectedProcedure.query(({ ctx }) =>
     call(() => conversationService.list(ctx.userId))

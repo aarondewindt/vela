@@ -25,10 +25,11 @@ import {
   IconTrash,
 } from '@tabler/icons-react';
 import type { inferRouterOutputs } from '@trpc/server';
-import { DefaultChatTransport } from 'ai';
+import { DefaultChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { PlannerDebug } from '../PlannerChat/PlannerDebug';
+import { RecordResult } from '../PlannerChat/RecordResult';
 import { PlanningResult } from '../PlannerChat/PlanningResult';
 import { BasicMarkdown } from './BasicMarkdown';
 import { maxMessageLength } from '@/lib/ai-dev/schema';
@@ -441,12 +442,16 @@ function ChatPanel({
                       key={`${message.id}-${index}`}
                       value={part.data}
                       onRevise={revise}
+                      conversationId={conversation.id}
+                      onChoose={(recordId) => setInput(`I mean ${recordId}.`)}
                     />
                   ) : planner && part.type.startsWith('tool-') && 'output' in part ? (
                     <PlanningResult
                       key={`${message.id}-${index}`}
                       value={part.output}
                       onRevise={revise}
+                      conversationId={conversation.id}
+                      onChoose={(recordId) => setInput(`I mean ${recordId}.`)}
                     />
                   ) : null
                 )}
@@ -468,6 +473,13 @@ function ChatPanel({
                   )}
               </Paper>
             ))}
+            {planner && (
+              <PendingRecordRecovery
+                conversationId={conversation.id}
+                messages={messages}
+                onRevise={revise}
+              />
+            )}
             {busy && (
               <Group gap="xs" role="status">
                 <Loader size="xs" />
@@ -566,4 +578,49 @@ function ChatPanel({
 
 export function AiDevView() {
   return <ConversationChat />;
+}
+
+function PendingRecordRecovery({
+  conversationId,
+  messages,
+  onRevise,
+}: {
+  conversationId: string;
+  messages: UIMessage[];
+  onRevise: () => void;
+}) {
+  const pending = trpc.plannerChat.pendingRecordPreview.useQuery(
+    { id: conversationId },
+    { refetchInterval: 5000 }
+  );
+  if (pending.error) {
+    return (
+      <Alert color="red" role="alert">
+        {pending.error.message}
+      </Alert>
+    );
+  }
+  const row = pending.data;
+  if (
+    !row ||
+    messages.some((message) =>
+      message.parts.some((part) => {
+        const value =
+          part.type === 'data-planning' && 'data' in part
+            ? part.data
+            : 'output' in part
+              ? part.output
+              : null;
+        return (
+          value &&
+          typeof value === 'object' &&
+          'recordProposalId' in value &&
+          value.recordProposalId === row.id
+        );
+      })
+    )
+  ) {
+    return null;
+  }
+  return <RecordResult conversationId={conversationId} id={row.id} onRevise={onRevise} />;
 }

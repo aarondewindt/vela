@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { PlanningResult } from './PlanningResult';
 
+jest.mock('./RecordResult', () => ({ RecordResult: () => <div>Record preview</div> }));
 jest.mock('../PlanningProposals/PlanningProposals', () => ({
   ProposalWorkspace: ({ date, initialProposalId, onRevise }: any) => (
     <div>
@@ -64,4 +65,23 @@ it('shows the first line for older saved generation results without a separate s
   );
   expect(screen.getByText('2030-01-07 · Planned 216 minutes.')).toBeInTheDocument();
   expect(screen.queryByText(/Task allocation details/)).not.toBeInTheDocument();
+});
+
+it('restores record preview references and presents ambiguous records as explicit choices', () => {
+  const choose = jest.fn();
+  render(
+    <PlanningResult
+      value={{
+        date: value.date,
+        reply: 'Which task?',
+        recordProposalId: value.proposalId,
+        matches: [{ id: value.proposalId, label: 'Report' }],
+      }}
+      conversationId={value.proposalId}
+      onChoose={choose}
+    />
+  );
+  expect(screen.getByText('Record preview')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('Use this record'));
+  expect(choose).toHaveBeenCalledWith(value.proposalId);
 });

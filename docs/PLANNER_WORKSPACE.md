@@ -89,8 +89,8 @@ chat or give the model unrestricted database access.
 The same Planner chat now exposes a bounded AI SDK tool loop. It does not run the
 older command conversation UI or a second scheduler. `lib/planner/chat/tools.ts`
 is the authenticated-user-bound adapter; arguments use the existing Zod planning
-schemas. Tools cannot approve changes, mutate task/theme inventory or query Prisma
-arbitrarily.
+schemas. Tools cannot approve changes or query Prisma arbitrarily. Issue #38 below adds
+record previews with explicit application-owned acceptance.
 
 | Tool | Application behavior |
 | --- | --- |
@@ -199,5 +199,63 @@ streaming/retry and the sequence Generate → Move → Keep free → Accept. Ver
 model unavailability, switching dates/conversations, reload, and a manual edit
 between preview and acceptance. Automated service/component checks do not replace
 these authenticated browser and actual-model acceptance checks. Keep #37 open until
-that acceptance is confirmed; #38/#39/#40 and the full #73 modal redesign remain
-outside this phase.
+that acceptance is confirmed; #39/#40 and the full #73 modal redesign remain outside this phase. Record
+management from #38 is described below.
+
+## Task and theme management (#38)
+
+The integrated Today conversation now exposes `findPlannerRecords`,
+`proposeRecordChange` and `reviseRecordChange`. There is no additional chat screen.
+Find covers the owner's inventory, including unscheduled/completed tasks, with exact
+name/ID precedence, bounded substring matches and explicit ID choice buttons.
+Proposals reuse `conversation/records.ts` and the regular task/theme services.
+Supported fields are title/name, brief, task status, priority, size, due date,
+estimate, lead time, category, tags, task theme assignment/clearing, theme color and
+active state. Recurrence, dependencies, locations and rich notes remain in the
+regular editor. An explicit relative deadline uses the saved user timezone.
+
+Inline cards share `RecordReview` with the older command interface and show resolved
+records, before/after fields, relationship names and deletion effects. Accept changes
+applies one record; deletion additionally requires its checkbox and Confirm deletion.
+Discard and Revise in chat remain available. No chat confirmation invokes acceptance.
+Accepted changes invalidate ordinary Tasks, Today, proposals, task search and reviews;
+Open Tasks links to the ordinary inventory. Planning previews become stale when
+accepted record changes affect their source fingerprint.
+
+`PlannerRecordProposal` belongs to a Planner-scoped `AiConversation` and cascades on
+conversation deletion. Compact saved `data-planning` parts retain preview IDs and
+bounded match choices; server reads own preview contents/status. A pending preview
+can be recovered even if interruption prevented saving its message card. Owner and
+scope checks protect lookup, creation and resolution. Existing records and related
+occurrence/block/dependency versions are fingerprinted and rechecked inside the
+same short transaction as the domain mutation and durable receipt. Preview lifecycle
+uses the existing planner lock order, then locks conversation/record-preview tables.
+This retains the existing brief cross-user serialization cost.
+
+One stable owner/conversation/message identity permits one record preview per turn;
+changed retry arguments reject instead of creating another record. Concurrent accepts
+replay the receipt, including after later deletion. Late tools from earlier messages
+cannot supersede the latest preview. Acceptance waits for active response generation.
+Failed or ambiguous proposals retain the prior preview; successful corrections
+supersede it. `reviseRecordChange` derives the action/target from the pending preview,
+so correcting an unaccepted creation does not require an existing task. It retains
+previous fields and uses the same stale fingerprint checks. Deletion previews must
+be discarded before changing their action.
+
+Deploy additive migration `20261024140000_planner_record_proposals`, regenerate
+Prisma and rebuild/restart before use. It was applied only in an isolated synthetic
+PostgreSQL schema during implementation, not to the application database.
+
+Automated tests cover authentication, record resolution, previews, retry identity,
+late turns, correction preservation, stale edits, destructive confirmation, receipt
+replay, cache invalidation wiring and card restoration. Isolated PostgreSQL checks
+cover concurrent acceptance, replay after deletion, stale rejection, receipt-failure
+rollback, pending creation correction, theme assignment/clearing, status updates,
+deletion confirmation and cascading conversation cleanup. A live `qwen3:8b` smoke
+check used production tool schemas with synthetic context and stubbed operations;
+it called create, find, delete and the dedicated correction tool. This does not
+verify end-to-end model persistence or authenticated desktop/mobile interactions.
+The model can still describe a preview imprecisely; application-owned card status
+and confirmation controls remain authoritative. Keep #38 open until live workspace
+acceptance confirms create → correct → accept, ambiguity selection, theme changes,
+reload/retry and deletion cancel/confirm in desktop/mobile layouts.

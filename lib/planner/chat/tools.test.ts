@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('./records', () => ({ workspaceRecords: { propose: jest.fn(), find: jest.fn() } }));
 jest.mock('ai', () => ({ tool: (value: unknown) => value }));
 jest.mock('../generation/service', () => ({ generateDayPlan: jest.fn() }));
 jest.mock('../conversation/planning', () => ({ planInstruction: jest.fn() }));
@@ -46,12 +47,10 @@ async function execute(
 }
 beforeEach(() => {
   jest.resetAllMocks();
-  jest
-    .mocked(generateDayPlan)
-    .mockResolvedValue({
-      id: id(1),
-      report: { summary: 'Existing scheduler', outcomes: [], warnings: [] },
-    } as any);
+  jest.mocked(generateDayPlan).mockResolvedValue({
+    id: id(1),
+    report: { summary: 'Existing scheduler', outcomes: [], warnings: [] },
+  } as any);
   jest.mocked(proposalService.get).mockResolvedValue({
     id: id(1),
     status: 'PENDING',
@@ -202,7 +201,7 @@ it('answers explanation questions from stored results without new scheduler or r
   expect(generateDayPlan).not.toHaveBeenCalled();
   expect(reviewDayPlan).not.toHaveBeenCalled();
 });
-it('does not expose record CRUD, database access or foreign proposal arguments', () => {
+it('keeps inventory mutations separate from scheduling and rejects foreign proposal arguments', () => {
   const tools = planningTools('owner', 'turn');
   expect(() =>
     (tools.proposeScheduleChanges.inputSchema as any).parse({ type: 'record', entity: 'task' })
@@ -277,4 +276,89 @@ it('reports actual allocations and omissions to chat instead of only the total',
   expect(response.reply).toContain('Work on Vela: 229 minutes scheduled');
   expect(response.reply).toContain('SoLocos blooper video: 0 minutes scheduled');
   expect(response.reply).toContain('Some requested work remains unscheduled');
+});
+
+it('uses a separate inventory tool, normalizes relative deadlines and returns application-owned preview references', async () => {
+  const { workspaceRecords } = await import('./records');
+  jest.mocked(workspaceRecords.propose).mockResolvedValue({
+    id: id(1),
+    preview: { entity: 'task', action: 'create', patch: { title: 'Report' } },
+  } as any);
+  const tools = planningTools(
+    'owner',
+    `${id(9)}:message`,
+    undefined,
+    'Pacific/Kiritimati',
+    'Create Report due tomorrow',
+    id(9),
+    date
+  );
+  const response = await execute(tools, 'proposeRecordChange', {
+    entity: 'task',
+    action: 'create',
+    query: null,
+    task: { title: 'Report' },
+    theme: null,
+  });
+  expect(workspaceRecords.propose).toHaveBeenCalledWith(
+    'owner',
+    id(9),
+    expect.any(String),
+    expect.objectContaining({
+      type: 'record',
+      task: { title: 'Report', dueDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+    }),
+    'message',
+    false
+  );
+  expect(response).toMatchObject({ date, recordProposalId: id(1) });
+  expect(generateDayPlan).not.toHaveBeenCalled();
+  expect(tools).not.toHaveProperty('acceptRecord');
+});
+it('returns bounded ambiguity choices rather than applying an arbitrary record', async () => {
+  const { workspaceRecords } = await import('./records');
+  jest
+    .mocked(workspaceRecords.propose)
+    .mockRejectedValue(new Clarification('Which Report?', [{ id: id(1), label: 'Report' }]));
+  const response = await execute(
+    planningTools('owner', `${id(9)}:message`, undefined, undefined, '', id(9), date),
+    'proposeRecordChange',
+    {
+      entity: 'task',
+      action: 'delete',
+      query: 'Report',
+      task: null,
+      theme: null,
+    }
+  );
+  expect(response).toMatchObject({
+    reply: 'Which Report?',
+    matches: [{ id: id(1), label: 'Report' }],
+  });
+});
+
+it('revises pending creations without asking the model to identify a saved task or repeat its action', async () => {
+  const { workspaceRecords } = await import('./records');
+  jest
+    .mocked(workspaceRecords.propose)
+    .mockResolvedValue({ id: id(1), preview: { entity: 'task', action: 'create' } } as any);
+  const tools = planningTools(
+    'owner',
+    `${id(9)}:message`,
+    undefined,
+    undefined,
+    'Make that 60 minutes',
+    id(9),
+    date
+  );
+  const response = await execute(tools, 'reviseRecordChange', { task: { estimatedMinutes: 60 } });
+  expect(workspaceRecords.propose).toHaveBeenCalledWith(
+    'owner',
+    id(9),
+    expect.any(String),
+    expect.objectContaining({ task: { estimatedMinutes: 60 } }),
+    'message',
+    true
+  );
+  expect(response.recordProposalId).toBe(id(1));
 });

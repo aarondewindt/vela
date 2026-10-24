@@ -5,6 +5,34 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Integrated task/theme conversation #38 — 2026-10-24
+
+- Existing Today chat now has owner-bound inventory find/propose/revise tools,
+  inline shared record-review cards, explicit deletion confirmation, match choices,
+  ordinary Tasks links and planner/search/review cache invalidation. No new chat.
+- `PlannerRecordProposal` persists preview state and transactional receipts linked
+  to the Planner-scoped streaming conversation. Stable per-message identity blocks
+  duplicate creates; current-message fencing, stale fingerprints, serial acceptance
+  and superseded/discarded statuses protect retries and corrections. Interrupted
+  pending cards recover independently of message persistence. Existing domain record
+  services and lock ordering are reused; shared locks moved into conversation/transaction.ts.
+- Dedicated revision tool derives target/action from the pending preview. Live
+  qwen3:8b initially tried updating an unaccepted creation and omitted irrelevant
+  nullable tool fields; optional tool arguments and the dedicated revision tool
+  corrected tool invocation in synthetic smoke checks. Model prose can still
+  describe previews imprecisely; canonical cards/explicit acceptance own state.
+- Migration `20261024140000_planner_record_proposals` is additive and NOT applied
+  to the application DB. Isolated PostgreSQL tests passed concurrency, replay after
+  deletion, stale rejection, receipt-write rollback, theme relationships, status,
+  creation corrections and destructive confirmation. No deployment/restart.
+- Production build and TypeScript pass. Synthetic live model used production tool
+  schemas with stub operations, not actual record persistence. Authenticated desktop/
+  mobile acceptance remains; keep #38 open. See PLANNER_WORKSPACE.md for supported
+  properties, persistence, deployment and acceptance. Final checks: full Jest 1,256 passed / eight opt-in skips; three isolated
+  PostgreSQL checks passed; changed-file Oxlint/format, Prisma validation, TypeScript
+  and production build passed. Sandbox build stalled, was stopped, and its stale
+  lock removed after checking no build process remained; external build passed.
+
 ## Planner guidance and debug continuation — 2026-10-24
 
 - Generation chat tool now takes only date/guidance. Removed chat-side hard

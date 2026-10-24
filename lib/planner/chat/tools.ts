@@ -1,18 +1,23 @@
 import 'server-only';
 
+import { workspaceRecords } from './records';
+import { dateInTimezone } from '@/lib/nutrition/dates';
 import { createHash } from 'node:crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
 import { generateDaySchema } from '../generation/schema';
 import { generateDayPlan } from '../generation/service';
 import { planInstruction } from '../conversation/planning';
-import { Clarification } from '../conversation/resolve';
+import { Clarification, relativeDueDate } from '../conversation/resolve';
 import { instructionSchema, replaceBlocksSchema } from '../conversation/schema';
 import { proposalService } from '../proposals/service';
 import { reviewDayPlan } from '../review/service';
 import { reviewDaySchema } from '../review/schema';
 import { plannerChatContext } from './context';
 
+const recordToolSchema = instructionSchema.options[2]
+  .omit({ type: true })
+  .partial({ query: true, task: true, theme: true });
 const dateSchema = z.object({ date: z.iso.date() }).strict();
 const actionSchema = z.union(
   instructionSchema.options.filter((option) =>
@@ -36,7 +41,9 @@ export function planningTools(
   turnKey: string,
   pending?: { date: string; proposalId: string },
   userTimezone?: string,
-  latestRequest?: string
+  latestRequest?: string,
+  conversationId?: string,
+  workspaceDate?: string
 ) {
   let current = pending;
   let queue = Promise.resolve();
@@ -108,7 +115,76 @@ export function planningTools(
         throw error;
       }
     });
+  const executeRecord = async (input: z.output<typeof recordToolSchema>, revise = false) =>
+    sequential(async () => {
+      if (!conversationId || !workspaceDate) {
+        throw new Error('Workspace conversation required.');
+      }
+      const instruction = {
+        ...input,
+        type: 'record' as const,
+        query: input.query ?? null,
+        task: input.task ?? null,
+        theme: input.theme ?? null,
+      };
+      const due = relativeDueDate(
+        latestRequest ?? '',
+        dateInTimezone(userTimezone ?? 'Europe/Amsterdam'),
+        instruction.task?.title
+      );
+      if (due && instruction.entity === 'task' && instruction.action !== 'delete') {
+        instruction.task = { ...instruction.task, dueDate: due };
+      }
+      try {
+        const preview = await workspaceRecords.propose(
+          userId,
+          conversationId,
+          requestId({ type: 'record' }),
+          instruction,
+          turnKey.slice(conversationId.length + 1),
+          revise
+        );
+        return {
+          date: workspaceDate,
+          recordProposalId: preview.id,
+          reply: `A ${preview.preview.entity} ${preview.preview.action} preview is ready. Nothing has been applied. Use Accept changes in the card; deletion requires the confirmation checkbox and Confirm deletion.`,
+          record: preview.preview,
+        };
+      } catch (error) {
+        if (error instanceof Clarification) {
+          return { date: workspaceDate, reply: error.message, matches: error.matches };
+        }
+        throw error;
+      }
+    });
   return {
+    findPlannerRecords: tool({
+      description:
+        'Find owner tasks or themes by exact name/ID or substring, including unscheduled and completed records. Show ambiguous choices with IDs; never guess. Use before updating/deleting or assigning a theme.',
+      inputSchema: instructionSchema.options[1].omit({ type: true }),
+      execute: async ({ entity, query }) =>
+        sequential(async () => {
+          if (!conversationId || !workspaceDate) {
+            throw new Error('Workspace conversation required.');
+          }
+          return {
+            date: workspaceDate,
+            ...(await workspaceRecords.find(userId, conversationId, entity, query)),
+          };
+        }),
+    }),
+    proposeRecordChange: tool({
+      description:
+        'Preview ONE task/theme create, update or delete. Missing fields retain current values; null clears nullable fields. Task themeQuery accepts exact theme name/ID or null to clear. Use reviseRecordChange to correct an existing pending preview. Deletes need explicit confirmation in the card. Unsupported recurrence, dependencies, locations or rich notes need the regular editor.',
+      inputSchema: recordToolSchema,
+      execute: (input) => executeRecord(input),
+    }),
+    reviseRecordChange: tool({
+      description:
+        'Correct the single pending task/theme preview, including a task that has not been created yet. Use for “make that 60 minutes instead” and other follow-up corrections. The application retains the original action, target and prior fields. Supply only changed task or theme fields. Never use update on an unaccepted creation.',
+      inputSchema: recordToolSchema.pick({ task: true, theme: true }),
+      execute: (input) => executeRecord({ ...input, entity: 'task', action: 'update' }, true),
+    }),
     getPlanningContext: tool({
       description:
         'Retrieve bounded authorized tasks, blocks and availability for a date. Use to resolve references; ask if ambiguous.',

@@ -1,13 +1,24 @@
 'use client';
 
 import { Button, Paper, Stack, Text } from '@mantine/core';
+import { RecordResult } from './RecordResult';
 import { useState } from 'react';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { planningResultSchema } from '@/lib/planner/chat/result';
 import { PlanReview } from '../PlanningProposals/PlanReview';
 import { ProposalWorkspace } from '../PlanningProposals/PlanningProposals';
 
-export function PlanningResult({ value, onRevise }: { value: unknown; onRevise?: () => void }) {
+export function PlanningResult({
+  value,
+  onRevise,
+  conversationId,
+  onChoose,
+}: {
+  value: unknown;
+  onRevise?: () => void;
+  conversationId?: string;
+  onChoose?: (id: string) => void;
+}) {
   const parsed = planningResultSchema.safeParse(value);
   const [open, setOpen] = useState(true);
   const [correctionId, setCorrectionId] = useState<string>();
@@ -21,6 +32,25 @@ export function PlanningResult({ value, onRevise }: { value: unknown; onRevise?:
         <Text size="sm">
           {result.date} · {result.summary ?? result.reply.split('\n')[0]}
         </Text>
+        {result.matches?.map((match) => (
+          <Stack gap={2} key={match.id}>
+            <Text size="sm">
+              {match.label} · {match.id}
+            </Text>
+            {onChoose && (
+              <Button size="xs" variant="subtle" onClick={() => onChoose(match.id)}>
+                Use this record
+              </Button>
+            )}
+          </Stack>
+        ))}
+        {result.recordProposalId && conversationId && (
+          <RecordResult
+            conversationId={conversationId}
+            id={result.recordProposalId}
+            onRevise={onRevise}
+          />
+        )}
         {result.review && (
           <PlanReview
             date={result.date}

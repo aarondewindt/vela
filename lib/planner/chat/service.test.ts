@@ -1,5 +1,6 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('./records', () => ({ workspaceRecords: { pending: jest.fn() } }));
 jest.mock('./tools', () => ({ planningTools: jest.fn(() => ({ generateDayPlan: {} })) }));
 jest.mock('@/lib/ai-dev/conversations', () => ({
   createConversationService: jest.fn(() => ({ get: jest.fn() })),
