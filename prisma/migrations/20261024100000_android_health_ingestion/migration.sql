@@ -1,0 +1,2 @@
+ALTER TYPE "HealthMetricKind" ADD VALUE 'ACTIVE_CALORIES';
+ALTER TABLE "health_metrics" ADD COLUMN "metadata" JSONB NOT NULL DEFAULT '{}';

@@ -76,7 +76,9 @@ it('restricts manual deletion and mapping reads to their owner', async () => {
   });
   await healthService.mappings('alice');
   expect(prisma.healthEntityMapping.findMany).toHaveBeenCalledWith(
-    expect.objectContaining({ where: { userId: 'alice' } })
+    expect.objectContaining({
+      where: { userId: 'alice', metric: { in: ['WEIGHT', 'BODY_FAT', 'LEAN_MASS'] } },
+    })
   );
 });
 it('rejects reuse of a manual request ID for different data', async () => {
@@ -102,7 +104,7 @@ it('diagnoses only the owner’s saved mappings and returns selected sensor fiel
   (settingsService.getPreferences as jest.Mock).mockResolvedValue({ timezone: 'Europe/Amsterdam' });
   (prisma.healthEntityMapping.findMany as jest.Mock).mockResolvedValue([
     { metric: 'WEIGHT', entityId: 'sensor.weight' },
-    { metric: 'SLEEP', entityId: 'sensor.sleep' },
+    { metric: 'BODY_FAT', entityId: 'sensor.fat' },
     { metric: 'LEAN_MASS', entityId: 'sensor.missing' },
   ]);
   (ownerClient as jest.Mock).mockResolvedValue({
@@ -116,7 +118,7 @@ it('diagnoses only the owner’s saved mappings and returns selected sensor fiel
           last_updated: '2026-01-10T23:45:00Z',
         },
         {
-          entity_id: 'sensor.sleep',
+          entity_id: 'sensor.fat',
           state: '480',
           attributes: { unit_of_measurement: 'unsupported' },
           last_changed: '2026-01-10T23:30:00Z',
@@ -130,7 +132,7 @@ it('diagnoses only the owner’s saved mappings and returns selected sensor fiel
   expect(ownerClient).toHaveBeenCalledWith('alice');
   expect(settingsService.getPreferences).toHaveBeenCalledWith('alice');
   expect(prisma.healthEntityMapping.findMany).toHaveBeenCalledWith({
-    where: { userId: 'alice' },
+    where: { userId: 'alice', metric: { in: ['WEIGHT', 'BODY_FAT', 'LEAN_MASS'] } },
     select: { metric: true, entityId: true },
   });
   expect(result.sensors).toHaveLength(3);

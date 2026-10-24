@@ -13,12 +13,12 @@ const context = {
   leaseId: 'lease',
   sourceNamespace: 'instance1',
   timezone: 'UTC',
-  mappings: [{ metric: 'TOTAL_CALORIES' as const, entityId: 'sensor.burn' }],
+  mappings: [{ metric: 'WEIGHT' as const, entityId: 'sensor.weight' }],
 };
 const state = {
-  entity_id: 'sensor.burn',
-  state: '2500',
-  attributes: { unit_of_measurement: 'kcal' },
+  entity_id: 'sensor.weight',
+  state: '80',
+  attributes: { unit_of_measurement: 'kg' },
   last_changed: '2026-01-10T23:30:00Z',
   last_updated: '2026-01-10T23:30:00Z',
 };
@@ -44,7 +44,7 @@ it('requires matching owner, connection revision and a live lease before writing
   );
   expect(db.healthMetric.upsert).not.toHaveBeenCalled();
 });
-it('ignores unmapped and unavailable sensors; daily total updates use an instance-scoped key', async () => {
+it('ignores unmapped and unavailable sensors; body readings use an instance-scoped key', async () => {
   await importHealthStates(context, [
     state,
     { ...state, entity_id: 'sensor.bob' },
@@ -56,15 +56,23 @@ it('ignores unmapped and unavailable sensors; daily total updates use an instanc
       where: {
         userId_sourceKey: {
           userId: 'alice',
-          sourceKey: 'ha:instance1:sensor.burn:TOTAL_CALORIES:2026-01-10',
+          sourceKey: 'ha:instance1:sensor.weight:WEIGHT:2026-01-10T23:30:00.000Z',
         },
       },
-      create: expect.objectContaining({ userId: 'alice', value: '2500.000000' }),
+      create: expect.objectContaining({ userId: 'alice', value: '80.000000' }),
     })
   );
 });
-it('does not let replayed history overwrite a newer daily total', async () => {
+it('does not let replayed history overwrite a newer body reading', async () => {
   db.healthMetric.findUnique.mockResolvedValue({ observedAt: new Date('2026-01-10T23:59:00Z') });
   await importHealthStates(context, [state]);
+  expect(db.healthMetric.upsert).not.toHaveBeenCalled();
+});
+
+it('ignores retained obsolete mappings without writing historical measurements', async () => {
+  await importHealthStates(
+    { ...context, mappings: [{ metric: 'SLEEP', entityId: state.entity_id }] },
+    [state]
+  );
   expect(db.healthMetric.upsert).not.toHaveBeenCalled();
 });

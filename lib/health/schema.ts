@@ -1,7 +1,16 @@
 import { goalOptionsSchema, validateGoalBounds } from '@/lib/goals/semantics';
 import { z } from 'zod';
 import { diaryDateSchema } from '@/lib/nutrition/dates';
-export const metricKinds = ['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP', 'TOTAL_CALORIES'] as const;
+export const metricKinds = [
+  'WEIGHT',
+  'BODY_FAT',
+  'LEAN_MASS',
+  'SLEEP',
+  'TOTAL_CALORIES',
+  'ACTIVE_CALORIES',
+  'STEPS',
+  'BMR',
+] as const;
 export type MetricKind = (typeof metricKinds)[number];
 export const metricLabels: Record<MetricKind, string> = {
   WEIGHT: 'Weight',
@@ -9,6 +18,9 @@ export const metricLabels: Record<MetricKind, string> = {
   LEAN_MASS: 'Lean mass',
   SLEEP: 'Sleep',
   TOTAL_CALORIES: 'Total calories burned',
+  ACTIVE_CALORIES: 'Active calories burned',
+  STEPS: 'Steps',
+  BMR: 'Basal metabolic rate (BMR)',
 };
 export const metricUnits: Record<MetricKind, string> = {
   WEIGHT: 'kg',
@@ -16,6 +28,9 @@ export const metricUnits: Record<MetricKind, string> = {
   LEAN_MASS: 'kg',
   SLEEP: 'hours',
   TOTAL_CALORIES: 'kcal',
+  ACTIVE_CALORIES: 'kcal',
+  STEPS: 'steps',
+  BMR: 'kcal/day',
 };
 export const goalMetricKinds = ['WEIGHT', 'BODY_FAT', 'SLEEP'] as const;
 const metricGoalSchema = z
@@ -96,17 +111,20 @@ export const goalSchema = z
       });
     }
   });
+export const haMetricKinds = ['WEIGHT', 'BODY_FAT', 'LEAN_MASS'] as const;
+export const isHaMetric = (metric: MetricKind) =>
+  (haMetricKinds as readonly string[]).includes(metric);
 export const mappingSchema = z
   .array(
     z.object({
-      metric: z.enum(metricKinds),
+      metric: z.enum(haMetricKinds),
       entityId: z
         .string()
         .regex(/^sensor\.[a-z0-9_]+$/)
         .max(240),
     })
   )
-  .max(5)
+  .max(3)
   .superRefine((items, ctx) => {
     if (
       new Set(items.map((x) => x.metric)).size !== items.length ||
@@ -120,7 +138,7 @@ export const manualMetricSchema = z
     requestId: z.uuid(),
     metric: z.enum(metricKinds),
     date: diaryDateSchema,
-    value: z.number().finite().nonnegative().max(100000),
+    value: z.number().finite().nonnegative().max(200000),
   })
   .superRefine((input, ctx) => {
     if (!validMetricValue(input.metric, input.value)) {
@@ -132,7 +150,18 @@ export function validMetricValue(metric: MetricKind, value: number) {
     Number.isFinite(value) &&
     value >= 0 &&
     value <=
-      { WEIGHT: 1000, BODY_FAT: 100, LEAN_MASS: 1000, SLEEP: 24, TOTAL_CALORIES: 100000 }[metric] &&
-    (!['WEIGHT', 'LEAN_MASS'].includes(metric) || value > 0)
+      {
+        WEIGHT: 1000,
+        BODY_FAT: 100,
+        LEAN_MASS: 1000,
+        SLEEP: 24,
+        TOTAL_CALORIES: 100000,
+        ACTIVE_CALORIES: 100000,
+        STEPS: 200000,
+        BMR: 12000,
+      }[metric] &&
+    (!['WEIGHT', 'LEAN_MASS'].includes(metric) || value > 0) &&
+    (metric !== 'STEPS' || Number.isInteger(value)) &&
+    (metric !== 'BMR' || value >= 100)
   );
 }

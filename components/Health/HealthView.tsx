@@ -48,8 +48,9 @@ function ManualEntry({ date }: { date: string }) {
       <Stack>
         <Title order={3}>Add a manual reading</Title>
         <Text size="sm">
-          Recorded for {date}. A daily total replaces the displayed total; it is never added to
-          other totals.
+          Recorded for {date}. Samsung Health is authoritative for calories, steps, sleep and BMR.
+          Manually entered values and legacy Home Assistant data fill gaps; values are never added
+          across sources.
         </Text>
         <Group align="flex-end">
           <Select
@@ -109,6 +110,10 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
       lean: day.metrics.LEAN_MASS?.carriedForward ? null : (day.metrics.LEAN_MASS?.value ?? null),
       fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
       sleep: day.metrics.SLEEP?.value ?? null,
+      steps: day.metrics.STEPS?.value ?? null,
+      bmr: day.metrics.BMR?.carriedForward ? null : (day.metrics.BMR?.value ?? null),
+      total: day.metrics.TOTAL_CALORIES?.value ?? null,
+      active: day.metrics.ACTIVE_CALORIES?.value ?? null,
       balance: day.balance,
     })) ?? [];
   return (
@@ -121,9 +126,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
           </Button>
         </Group>
         <Text c="dimmed">
-          Track body composition, sleep and calorie balance. Dates use {timezone}. Gaps mean no data
-          was recorded. Body composition cards and the table use the latest known reading; charts
-          show actual readings only.
+          Track Withings body composition and Samsung Health sleep, steps, BMR and calorie balance.
+          Dates use {timezone}. Gaps mean no data was recorded. Body composition cards and the table
+          use the latest known reading; charts show actual readings only.
         </Text>
         {connection.error && (
           <Alert color="red">Could not load connection status: {connection.error.message}</Alert>
@@ -139,7 +144,8 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
         )}
         {connection.isSuccess && !connection.data && (
           <Alert color="gray">
-            Connect Home Assistant to import your health sensors, or add readings manually below.
+            Connect Home Assistant for Withings weight, body fat and lean mass. Pair the Android
+            companion for Samsung Health measurements.
           </Alert>
         )}
         <Group align="flex-end">
@@ -170,7 +176,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
               {date === dateInTimezone(timezone) ? ' · Today (provisional)' : ''}
             </Title>
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-              {(['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP'] as const).map((metric) => {
+              {metricKinds.map((metric) => {
                 const record = selected.metrics[metric];
                 return (
                   <Paper withBorder p="md" key={metric}>
@@ -187,8 +193,26 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                           <Text size="xs" c="dimmed">
                             {record.source === 'manual'
                               ? 'Manual reading'
-                              : 'Home Assistant · sensor state time'}{' '}
+                              : record.source === 'samsung_health'
+                                ? metric === 'BMR'
+                                  ? 'Samsung Health · imported BMR point (not daily expenditure)'
+                                  : metric === 'SLEEP'
+                                    ? 'Samsung Health · sleep-date duration'
+                                    : metric === 'STEPS'
+                                      ? 'Samsung Health · daily step total'
+                                      : 'Samsung Health · SDK query capture · calorie semantics unverified'
+                                : 'Home Assistant · sensor state time'}{' '}
                             · {record.observedAt.toLocaleString()}
+                            {record.metadata &&
+                            typeof record.metadata === 'object' &&
+                            'timezone' in record.metadata
+                              ? ` · ${String(record.metadata.timezone)}`
+                              : ''}
+                            {record.metadata &&
+                            typeof record.metadata === 'object' &&
+                            'sourceObservedAt' in record.metadata
+                              ? ` · Measured ${String(record.metadata.sourceObservedAt)}`
+                              : ''}
                             {record.entityId ? ` · ${record.entityId}` : ''}
                           </Text>
                           {record.source === 'manual' && !record.carriedForward && (
@@ -208,6 +232,11 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 );
               })}
             </SimpleGrid>
+            <Text size="sm" c="dimmed">
+              BMR is an optional Samsung body-composition reading in kcal/day, not total daily
+              expenditure. Missing BMR means Samsung has not supplied a value; Vela does not
+              estimate it.
+            </Text>
             <Paper withBorder p="md">
               <Stack gap="xs">
                 <Title order={3}>Calorie balance</Title>
@@ -282,6 +311,27 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   series: [{ name: 'sleep', label: 'Sleep', color: 'indigo.6' }],
                 },
                 {
+                  title: 'Steps',
+                  metric: 'STEPS' as const,
+                  unit: ' steps',
+                  series: [{ name: 'steps', label: 'Steps', color: 'teal.6' }],
+                },
+                {
+                  title: 'BMR',
+                  metric: 'BMR' as const,
+                  unit: ' kcal/day',
+                  series: [{ name: 'bmr', label: 'BMR', color: 'blue.6' }],
+                },
+                {
+                  title: 'Calories burned',
+                  metric: 'TOTAL_CALORIES' as const,
+                  unit: ' kcal',
+                  series: [
+                    { name: 'total', label: 'Total', color: 'orange.6' },
+                    { name: 'active', label: 'Active (included in total)', color: 'teal.6' },
+                  ],
+                },
+                {
                   title: 'Calorie balance',
                   metric: null,
                   unit: ' kcal',
@@ -302,11 +352,16 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                           data.goal.calorieBalance?.toString() ?? null,
                           data.goal.semantics
                         )
-                      : item.metric === 'LEAN_MASS'
+                      : !(['WEIGHT', 'BODY_FAT', 'SLEEP'] as readonly string[]).includes(
+                            item.metric
+                          )
                         ? goalChartReferences(null)
                         : goalChartReferences(
-                            data.goal.metricGoals?.[item.metric]?.target?.toString() ?? null,
-                            data.goal.metricGoals?.[item.metric]?.semantics
+                            data.goal.metricGoals?.[
+                              item.metric as 'WEIGHT' | 'BODY_FAT' | 'SLEEP'
+                            ]?.target?.toString() ?? null,
+                            data.goal.metricGoals?.[item.metric as 'WEIGHT' | 'BODY_FAT' | 'SLEEP']
+                              ?.semantics
                           ))}
                     unit={item.unit}
                     connectNulls={false}
@@ -320,9 +375,10 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
             <Table.ScrollContainer minWidth={800}>
               <Table>
                 <Table.Caption>
-                  Latest known body composition (carried values labeled). Sleep and burn are
-                  date-specific. Sensor times may differ from measurement times; sleep is grouped by
-                  the sensor update date.
+                  Latest known body composition and BMR (carried values labeled). Sleep uses Samsung
+                  sleep dates, including overnight sessions; steps and burn are date-specific.
+                  Legacy HA readings retain sensor update-date semantics. BMR is never added to
+                  burn.
                 </Table.Caption>
                 <Table.Thead>
                   <Table.Tr>
@@ -332,6 +388,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                       'Body fat',
                       'Lean mass',
                       'Sleep',
+                      'Steps',
+                      'BMR',
+                      'Active burn',
                       'Intake',
                       'Burned',
                       'Balance',
@@ -344,7 +403,17 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   {data.days.map((day) => (
                     <Table.Tr key={day.date}>
                       <Table.Td>{day.date}</Table.Td>
-                      {(['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP'] as const).map((metric) => (
+                      {(
+                        [
+                          'WEIGHT',
+                          'BODY_FAT',
+                          'LEAN_MASS',
+                          'SLEEP',
+                          'STEPS',
+                          'BMR',
+                          'ACTIVE_CALORIES',
+                        ] as const
+                      ).map((metric) => (
                         <Table.Td key={metric}>
                           {amount(day.metrics[metric]?.value, metricUnits[metric])}
                           {day.metrics[metric]?.carriedForward && (

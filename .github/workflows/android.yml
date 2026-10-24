@@ -1,0 +1,49 @@
+name: Android companion
+
+on:
+  pull_request:
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore licensed Samsung Health Data SDK
+        env:
+          SAMSUNG_SDK_URL: ${{ secrets.SAMSUNG_HEALTH_DATA_SDK_AAR_URL }}
+        run: |
+          if [ -z "$SAMSUNG_SDK_URL" ]; then
+            echo 'Samsung SDK download secret unavailable. See docs/ANDROID_HEALTH_VALIDATION.md.' >&2
+            exit 1
+          fi
+          mkdir -p app/libs
+          if ! curl --fail --silent --location --proto '=https' --proto-redir '=https' \
+            "$SAMSUNG_SDK_URL" --output app/libs/samsung-health-data-api-1.1.0.aar; then
+            echo 'Could not retrieve the licensed Samsung SDK from the configured private URL.' >&2
+            exit 1
+          fi
+          unzip -t app/libs/samsung-health-data-api-1.1.0.aar > /dev/null
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned SDK packages
+        run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build, unit test, lint and compile device tests
+        run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleDebugAndroidTest

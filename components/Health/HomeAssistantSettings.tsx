@@ -17,7 +17,7 @@ import {
 } from '@mantine/core';
 import { SensorDiagnostics } from './SensorDiagnostics';
 import { trpc } from '@/lib/trpc/client';
-import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
+import { haMetricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
 
 function ConnectionForm({
   initial,
@@ -124,20 +124,17 @@ function MappingsForm({ initial }: { initial: { metric: MetricKind; entityId: st
           </Button>
         </Group>
         <Text size="sm" c="dimmed">
-          Choose the sensors belonging to you. For calories, select total daily burn including basal
-          metabolism. Active calories alone are insufficient.
+          Choose your Withings weight, body fat and lean mass sensors. Calories, steps, sleep and
+          BMR come from the Samsung Health Android companion.
         </Text>
         {entities.error && <Alert color="red">{entities.error.message}</Alert>}
         {entities.isSuccess && (
           <Alert color="teal">Connection successful. {entities.data.length} sensors found.</Alert>
         )}
-        {metricKinds.map((metric) => (
+        {haMetricKinds.map((metric) => (
           <Select
             key={metric}
             label={`${metricLabels[metric]} (${metricUnits[metric]})`}
-            description={
-              metric === 'SLEEP' ? 'Select the latest sleep duration sensor.' : undefined
-            }
             searchable
             clearable
             data={options}
@@ -151,7 +148,7 @@ function MappingsForm({ initial }: { initial: { metric: MetricKind; entityId: st
           loading={save.isPending}
           onClick={() =>
             save.mutate(
-              metricKinds.flatMap((metric) =>
+              haMetricKinds.flatMap((metric) =>
                 mapping[metric] ? [{ metric, entityId: mapping[metric] }] : []
               )
             )

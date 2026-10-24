@@ -2,8 +2,188 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Discover MVP and reviewed URL enrichment ready for review in PR #74; prior checkpoints retained.
-**Last updated:** 2026-10-22
+**Status:** Issue #90 manual Android health synchronization implemented on the current branch. Full Jest, isolated PostgreSQL ingestion, TypeScript and Android build/JVM/lint/device-test compilation pass. Physical phone-to-Vela verification and Samsung elapsed/projected semantic classification remain manual gates. No #91 background sync implemented.
+**Last updated:** 2026-10-24
+
+## Android manual synchronization #90 — 2026-10-24
+
+- `/api/health/ingest` reuses scoped #93 authentication and bounds versioned JSON snapshots. `lib/health/ingestion.ts` validates local calendar intervals, units and capture times, and serializes owner/device/source/day snapshot upserts. Downward corrections replace prior values; equal retries and stale captures do not write.
+- Additive migration `20261024100000_android_health_ingestion` adds ACTIVE_CALORIES and metadata to the existing store. Tested in an isolated PostgreSQL schema; **not applied to the application database**. Deploy it, regenerate Prisma and rebuild/restart before phone testing. No new dependencies or configuration secrets.
+- Health shows separate total/active cards and Samsung query-capture/uncertainty labels. Calorie priority: manual override, Samsung Health, HA; active is excluded from balance. Owner/date series are never summed.
+- Android Sync now uses existing Keystore credentials and HTTPS client, reads elapsed today plus the selected historical date, and reports progress/status/skips and persistent last-success time. No automatic retries/queue/background scheduler.
+- Full Jest: 1,127 passed, four opt-in tests skipped. Separate isolated PostgreSQL ingestion test passed, including simultaneous retry, six-decimal precision, stale/corrected captures, owner isolation, HA/Samsung priority and manual override. Changed TS files pass lint/format and TypeScript passes. Repository-wide lint/format retain unrelated failures.
+- Production `NODE_ENV=production yarn build` passed outside the sandbox. Inherited nonstandard NODE_ENV caused the initial prerender failure; restricted Turbopack stalled and its stale build lock was removed after confirming no build remained. No application deployment was performed.
+- Android `assembleDebug`, `testDebugUnitTest` (17 tests), `lintDebug` (zero errors, ten advisory warnings), and `assembleDebugAndroidTest` passed offline with the existing temporary `/tmp/vela-android-toolchain`. Host `local.properties` restored. No connected tests or phone sync performed; rebuild on host to preserve Samsung signing identity.
+- See [manual sync](ANDROID_MANUAL_SYNC.md) for deployment, full physical phone acceptance, API contract, calorie semantics and #91 recommendations. Stop for manual testing/review before #91.
+
+## Device authentication #93 — 2026-10-24
+
+- Generic account-owned hashed credentials and ten-minute, separate-secret pairing
+  live in `lib/devices/`; external REST routes are under `/api/devices/`.
+  Protected tRPC and Settings → Devices support review/approval/list/revocation.
+  Android uses manual HTTPS pairing and AES-GCM Android Keystore storage.
+- Apply `20261024000000_device_credentials` using `yarn prisma migrate deploy`,
+  regenerate Prisma and restart. Only an isolated test schema was migrated during
+  validation; the application database has not had this migration applied.
+  Device issuance/verification requires canonical HTTPS `BETTER_AUTH_URL`; no new
+  configuration secret. See [device authentication](DEVICE_AUTH.md) for contracts,
+  rate budgets, recovery and complete verification steps.
+- PostgreSQL tests prove concurrent redemption issues exactly one token, owner
+  isolation, expiry, immediate subsequent-request revocation and atomic rate limits.
+  Android device tests were compiled, not executed on a phone. Real pairing and
+  Samsung calorie semantics must be verified before #90 ingestion work.
+- Full Jest passed (1,104 tests before the final route/page tests); focused final
+  route/settings checks pass. Changed files pass formatting/lint; repository-wide
+  formatting/lint retain unrelated baseline failures; broad Stylelint also includes
+  ignored generated Android test-report CSS. Normal production build and TypeScript
+  pass outside the restricted sandbox. Webpack fallback encounters an existing
+  Mantine schedule/rrule import error.
+
+## Android #89 user acceptance — 2026-10-24
+
+- User confirmed permission granting worked and calorie values looked good on the
+  S25 FE, then explicitly requested closure of #89 and commit/push of the changes.
+- ADB shell/install hangs resolved after disconnecting/reconnecting USB. No app
+  logic fault was established; progress output and optional push install remain.
+- No exact measurement values, elapsed/projected classification, or individual
+  midnight/watch-delay/revoke/reboot outcomes were supplied. Record acceptance
+  without inventing those results. Future ingestion must not assume semantics.
+- Local Android build/JVM/lint/device-test-compilation and offline lock checks
+  passed; connected device tests were not run by this agent. SDK AAR, local SDK
+  paths, environment files, keys and private health readings remain outside Git.
+
+## Phone deployment diagnosis — 2026-10-24
+
+- User reports `deploy.sh` prints successful build/APK path but no visible phone
+  change. Device listing works; install/launch success is not established.
+- Added explicit installation/launch progress messages and opt-in `--no-streaming`
+  for ADB push installation. Default install behavior is unchanged. Thirteen
+  host-script Jest tests pass; shell syntax and diff whitespace checks pass.
+- Subsequent shell test also hung. User disconnected/reconnected USB and confirmed
+  communication worked, then confirmed successful Samsung permission/read access.
+
+## Samsung Health diagnostic implementation (#89) — 2026-10-24
+
+- Read #58/#88/#89, Android instructions/project and architecture/frontend/project
+  documentation. Official Samsung docs currently list Data SDK 1.1.0, Samsung
+  Health 6.30.2+, Android 10/API 29+, Java 17+, physical smartphones only.
+- Added provider-neutral `HealthProvider`, typed query/result diagnostics and
+  `SamsungHealthProvider` requesting only ACTIVITY_SUMMARY READ. Total and active
+  calories remain separate; no missing-to-zero conversion, uploads, backend,
+  persistence or background jobs. Samsung SDK imports stay in the adapter.
+- Manual refresh queries today-to-captured-time, today's full calendar day and a
+  selected completed historical day, with local/derived UTC bounds, raw returned
+  aggregate rows, request/response instants, platform source filter and versions.
+  Permission/manage action, resume recheck, partial query errors and actionable
+  SDK errors/resolution are visible. Revoke/authorization failure discards data;
+  explicit clipboard copy is the only export. Aggregate intervals are explicitly
+  not measurement/last-sync timestamps; observed semantics stay UNVERIFIED.
+- User supplied SDK archive's library as
+  `android/app/libs/samsung-health-data-api-1.1.0.aar` (Git-ignored). Embedded version
+  1.1.0/code 1010004 verified; SHA-256 recorded/enforced in Gradle. Samsung AAR
+  contributes normal INTERNET permission; Vela has no backend client or upload
+  path. Gradle prerequisite and CI missing-secret failures explain local setup.
+  CI needs a privately supplied
+  `SAMSUNG_HEALTH_DATA_SDK_AAR_URL` private HTTPS download URL repository secret, subject to SDK license.
+- Kept #88 host scripts/devcontainer/web workflow; minSdk raised 28→29 for Samsung
+  Health compatibility. Added documented Gson/Parcelize and explicit coroutines,
+  regenerated only the six existing debug/test dependency locks. No unrelated
+  web or local environment changes.
+- Validation: 11 Kotlin/JUnit domain tests passed in a temporary JVM harness using
+  the actual provider-independent production/test sources, Kotlin 2.3.10,
+  coroutines 1.10.2 and JDK 17.0.21 under `/tmp/vela-android-toolchain`. Covers DST
+  23/25-hour days, captured-time/midnight boundaries, completed dates, missing/null/
+  multirow data, total/active separation, denial/revocation, query failure,
+  authorization failure and cancellation. Nine existing Jest host-script tests
+  passed. Dependency graph resolution and lock regeneration passed.
+- Full Gradle `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+  :app:assembleDebugAndroidTest --write-locks` passed (81 tasks) using the actual
+  supplied Samsung AAR; offline rerun with enforced locks also passed. Temporary
+  JDK/Android SDK under `/tmp` used without changing
+  the devcontainer or ignored host local.properties. All 12 Android JVM tests pass
+  (11 domain + manifest test). Lint: zero errors/seven warnings (six dependency/
+  tool update notices and existing Android 12 backup-rules advisory). APK manifest
+  verifies INTERNET from Samsung and AndroidX internal receiver permission only;
+  no health runtime/write permissions. SDK binary stays ignored; no health data
+  logged. Connected UI test and actual Samsung reads are not run here.
+- See [validation guide](ANDROID_HEALTH_VALIDATION.md) for licensed SDK setup,
+  host deployment, test commands and physical comparison/revoke/midnight/
+  watch-delay/reboot gates. Rebuild on Ubuntu before installing so the host
+  debug signing key is used; a container-built APK may have a different key.
+- User subsequently accepted #89 for closure; see the acceptance checkpoint above.
+  No server ingestion/sync (#90/#91) changes are included.
+
+## Android completion confirmation — 2026-10-24
+
+- User confirmed the build/deployment scripts work and the app launches on the
+  S25 FE. This meets #88 acceptance; debugger, connected smoke test and layout
+  checks remain explicitly unverified.
+- Development port 3000 is now published on the LAN; Next.js development origins
+  include hostnames from `BETTER_AUTH_TRUSTED_ORIGINS`. Deployment documentation
+  covers LAN origin configuration. Android README clarifies ADB reverse is optional
+  when the phone can access the desktop LAN address. Local environment files are
+  excluded from the commit.
+
+## Android host shortcuts — 2026-10-24
+
+- User confirmed successful Ubuntu host build and USB installation/launch on the
+  S25 FE. Added executable `android/scripts/build.sh` and `deploy.sh`, with shared
+  JDK 17/SDK/ADB discovery. Java 25 remains the user's system default. Build accepts
+  extra Gradle options/tasks; deploy checks device access before building, updates
+  via `install -r`, then launches. `--no-build`, `--serial` and `ANDROID_SERIAL`
+  support existing APKs and explicit devices. No automatic tooling installation,
+  uninstall, network changes or devcontainer changes.
+- README documents shortcuts and custom tool locations. Nine focused Jest tests
+  pass with mocked Java/Gradle/ADB: path/argument handling, default SDK discovery,
+  device selection, sequencing, incompatible JDK and failure propagation. Bash
+  syntax and diff whitespace checks pass. Actual `build.sh --offline --no-daemon`
+  with the temporary JDK/SDK succeeded; Gradle reported the expected inaccessible
+  host SDK path in ignored local.properties, then used the temporary ANDROID_HOME.
+  That local configuration was not modified. Deploy script itself is mocked here;
+  the user's earlier manual phone install/launch is confirmed. Android Studio
+  debugger, connected smoke test and layout acceptance remain manual gates.
+
+## Android Companion Phase 1 (#88) — 2026-10-23
+
+- Read #58/#88, root instructions, architecture/frontend/project docs and all
+  existing devcontainer configuration. Follow the updated phase split: #88 is
+  bootstrap/workflow only; Samsung Health feasibility is #89, secure device
+  pairing/ingestion/manual sync #90, background synchronization #91.
+- Added independent `android/` Kotlin DSL single-app Compose/Material 3 project,
+  unconnected status screen, native vector from the existing Vela favicon,
+  JVM manifest-permission test and compiled Compose device smoke test. No Samsung
+  SDK, health/network/runtime permissions, credentials, API or schema changes.
+  AndroidX injects its own signature-protected internal receiver permission.
+- Pinned Gradle 8.13 (official generated wrapper/JAR and distribution checksum
+  verified), AGP 8.13.2, Kotlin/Compose compiler 2.3.10, Compose BOM 2025.12.00,
+  Activity Compose 1.12.4, API 36 and Build Tools 35.0.0, JDK/JVM 17, min API 28.
+  `android/app/gradle.lockfile` locks resolved debug/test dependency versions.
+  Separate path-scoped Android CI compiles APK/device tests, runs JVM tests/lint;
+  its YAML was parsed locally, but the hosted workflow has not been executed.
+- [Android README](../android/README.md) documents the shared host/container
+  checkout, JDK/SDK setup, host build fallback, optional container tooling,
+  local.properties path conflicts, signing identity, S25 FE USB authorization,
+  install/launch/debug commands, connected tests and physical acceptance steps.
+  Host `adb reverse tcp:3000 tcp:3000` uses existing Ubuntu-loopback publication;
+  no dev-server LAN exposure or host ADB/USB sharing with the container.
+- Validation: temporary JDK 17.0.17+10, SDK command-line tools 19.0 and SDK packages
+  under `/tmp/vela-android-toolchain`, without modifying the devcontainer image.
+  Wrapper `clean :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+  :app:assembleDebugAndroidTest --write-locks` passed; a second clean build with
+  `--offline` and enforced lockfile also passed (81 tasks). JVM test: one pass.
+  APK metadata verifies app ID, launcher, min/target SDK, and absence of network/
+  health permissions. Online lint: zero errors/five warnings (four deliberate
+  older-version notices and one Android 12 backup-rule advisory); offline lint:
+  zero errors/one backup-rule warning. No app data is stored in this shell.
+  XML parsing, wrapper shell syntax, ignore rules, web `yarn typecheck` and
+  tracked-file whitespace checks passed. Existing devcontainer, package.json,
+  yarn.lock and web runtime code are unchanged; no service restart or deployment.
+- Remaining gate: use **host** Android Studio/ADB to install and launch on the
+  real Galaxy S25 FE, check rotation/font size/light-dark behavior, hit the
+  `MainActivity.onCreate` debugger breakpoint and run
+  `./gradlew :app:connectedDebugAndroidTest`. Device test APK compilation does
+  not establish physical-device success. The same README records recovery and
+  networking checks. No issue/PR comments, commits, publishing or merges made.
 
 ## Discover URL metadata (#75) — 2026-10-22
 
@@ -600,3 +780,67 @@ User authorized implementing the reusable per-user Home Assistant connector and 
   Do not merge automatically. Future metadata integrations should preserve
   editable fields separately from provider snapshots and reuse existing shared
   AI/embedding infrastructure when requested.
+
+## Issue #91 — Android background sync (2026-10-24)
+
+Implementation is in the current working tree alongside existing #90 changes.
+WorkManager 2.10.1 adds hourly unique connected/battery-not-low work; `HealthSync`
+shares the manual/worker mutex and durable outbox, rereads today plus seven days,
+and replays original capture timestamps. Permanent failures pause automatic sync;
+UI supports recovery, pause/resume and single-day historical backfill. Credentials
+remain Keystore encrypted. See `docs/ANDROID_BACKGROUND_SYNC.md` for design and
+physical-phone acceptance. Do not close #91 without device cadence/reboot/offline/
+revision and battery checks. No device execution or deployment performed here.
+
+#91 validation: `assembleDebug`, `testDebugUnitTest` (21 passed), `lintDebug`
+(zero errors, 21 advisories) and `assembleDebugAndroidTest` passed offline with
+locks enforced. Seventeen focused ingestion/route Jest tests passed. Recovery
+instrumentation test compiled but was not run. Host local.properties restored.
+
+## Issue #92 review — 2026-10-24
+
+Completed scoped code review and available automated verification. See
+`docs/ANDROID_END_TO_END.md` for findings, source/security review, setup/recovery,
+manual S25 FE acceptance and proposed follow-up issue scopes. Fixed clearing the
+outbox without a complete server acknowledgement, silent skipping of unexpected
+SDK aggregate cardinality, misleading post-pairing messaging and Stylelint scanning
+native generated reports. No new health permissions/integrations or #94 work.
+
+Checks: Android build/25 JVM tests/lint (zero errors)/device-test compilation pass;
+full Jest 1,131 pass and opt-in isolated PostgreSQL four pass; TypeScript/production
+build pass. Stylelint passes after generated-report exclusion. Broad Oxlint and
+format retain unrelated baseline failures. Connected tests, exact calorie semantics,
+unattended cadence/reboot/offline phone flows and battery remain unverified; no
+issue closure, deployment, application migration or Samsung registration performed.
+Stop after #92 and await user review before expanding integrations.
+
+## #92 required source-matrix continuation — 2026-10-24
+
+Implemented steps and Samsung sleep-date duration plus actual optional SDK BMR in
+the existing Android HealthSync/outbox/API. SDK BMR is BodyCompositionType's
+BASAL_METABOLIC_RATE (100–12000 kcal/day), not a derived burn value. It retains
+point ID/time and optional modification time; bounded raw-record pagination and
+latest-point bootstrap allow older BMR to carry forward with original date.
+Sleep filter explicitly uses [date,next date), verified against the pinned SDK.
+Four READ types now required: activity summary, steps, sleep, body composition.
+
+HA settings/diagnostics/worker and normalization permit only Withings weight,
+body fat and lean mass. Old mappings are inert until replaced; historical rows
+remain. Samsung beats manual/legacy HA for its five metrics. General HA client,
+connections, discovery and Withings worker behavior are retained. Health adds
+steps/BMR and total/active charts/history, sleep date labels, source-zone/point
+provenance; balance continues to use only intake minus total burned.
+
+Migration `20261024120000_companion_source_matrix` adds STEPS/BMR enum values,
+bumps HA revisions and resets recovery cursor without deleting data/mappings.
+Not applied to app DB. Deploy backend/migration and restart HA worker before
+updating phone and regranting consent. See `docs/ANDROID_SOURCE_MATRIX.md`.
+
+Final checks: 29 Android JVM tests; debug build/lint (zero errors)/device test APK
+compile; full Jest 1,141 pass; isolated PostgreSQL five pass; Prisma generation/
+validation, typecheck, production build and changed-file lint/format pass. Broad
+lint/format unrelated baseline failures persist. No phone/production deployment,
+connected test execution, live Withings/Samsung validation or issue closure.
+Stop after this continuation for user review; #12/#94/heart-rate/Health Connect
+were excluded. Remaining live-device, cadence, BMR availability and calorie
+semantics checks are in the source-matrix guide.

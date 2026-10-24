@@ -1,6 +1,6 @@
 # Vela Architecture
 
-Vela is a Next.js App Router application for private daily planning. PostgreSQL is the source of truth, accessed through Prisma. The application uses tRPC for ordinary web-client requests and an authenticated HTTP route for AI Dev chat streaming. REST integration APIs and a Vela-owned MCP API remain future directions in [the project plan](PROJECT_PLAN.md), not alternate current persistence paths.
+Vela is a Next.js App Router application for private daily planning. PostgreSQL is the source of truth, accessed through Prisma. The application uses tRPC for ordinary web-client requests and an authenticated HTTP route for AI Dev chat streaming. Scoped device pairing/verification REST APIs are implemented; other integration APIs and a Vela-owned MCP API remain future directions in [the project plan](PROJECT_PLAN.md), not alternate current persistence paths.
 
 ```text
 Next.js pages and Mantine components
@@ -53,6 +53,36 @@ occurrence materialization and proposal eligibility resolve it through
 existing tasks. TaskView edits the anchor through the owner-scoped task service;
 existing occurrences and plans are retained when recurrence settings change.
 
+## Android companion
+
+`android/` is an independent single-module Kotlin/Material 3 Compose Gradle project.
+Phase 1 (#88) establishes the host/container workflow. Phase 2 (#89) adds manual,
+read-only Samsung Health activity-summary calorie diagnostics behind a small
+`HealthProvider` interface; only `SamsungHealthProvider` imports Samsung SDK types.
+`ReadCalorieDiagnostics` owns day ranges and refresh coordination. Missing readings
+remain unknown and total/active calories are never added together. Diagnostics
+stay in memory, with explicit clipboard copy and no automatic health logging.
+
+Samsung Health Data SDK 1.1.0 is a locally supplied, Git-ignored AAR. Debug reads
+require Samsung Health Data Read developer mode plus user consent. The user accepted the
+S25 FE read diagnostics for #89; detailed elapsed/projected semantics are not
+classified in the recorded evidence; manual ingestion is implemented in #90; background synchronization is implemented in #91 with physical-device acceptance pending.
+
+Issue #93 adds generic account-owned device credentials, separate-secret one-time
+pairing, protected Settings → Devices management and Android Keystore-backed
+credential storage. `lib/devices/` owns deterministic issuance, verification, scope
+checks, revocation and database-backed rate limits; `/api/devices/` exposes the
+external protocol. Browser authentication remains Better Auth. See
+[device authentication](DEVICE_AUTH.md) for migrations, HTTPS, pairing and tests.
+
+VS Code/Codex edits the shared checkout in the existing Node devcontainer;
+Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
+tooling remains opt-in and Android CI is separate from web checks. See
+[Android setup](../android/README.md) and [calorie validation](ANDROID_HEALTH_VALIDATION.md)
+for the licensed SDK setup, signing/developer-mode limits, deployment and tests.
+
+Manual sync (#90) uses `/api/health/ingest` and `lib/health/ingestion.ts` to authenticate scoped device uploads, validate bounded versioned snapshots and upsert the existing Health records. Total/active calories remain separate; manual calorie overrides take priority, then Samsung Health, then HA. Query interval/timezone and unverified calorie semantics persist as metadata. See [Android manual sync](ANDROID_MANUAL_SYNC.md).
+
 ## Daily meal requirements
 
 [Meal scheduling](PLANNER_MEALS.md) uses versioned finite preferences on existing
@@ -91,4 +121,16 @@ Important future product goals and deployment assumptions are documented in [PRO
 
 ## Experimental desktop deployment
 
-The initial daily-use deployment runs the app and PostgreSQL in the existing Ubuntu desktop dev container, with the Pi retaining gateway services. Public `yarn public:build` / `yarn public:start` commands serve an optimized Next.js build on port 3001 with a fixed HTTPS auth origin; local `yarn dev` remains on desktop-loopback port 3000. Both processes share the database. The existing Cloudflare Tunnel points directly from the Pi to the desktop, without Caddy or Access. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md) for setup, account provisioning, Docker volume retention, tested database backup/restore commands and operational limitations.
+The initial daily-use deployment runs the app and PostgreSQL in the existing Ubuntu desktop dev container, with the Pi retaining gateway services. Public `yarn public:build` / `yarn public:start` commands serve an optimized Next.js build on port 3001 with a fixed HTTPS auth origin; local `yarn dev` is available on desktop LAN port 3000. Both processes share the database. The existing Cloudflare Tunnel points directly from the Pi to the desktop, without Caddy or Access. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md) for setup, account provisioning, Docker volume retention, tested database backup/restore commands and operational limitations.
+
+Background sync (#91) schedules unique hourly WorkManager work with connectivity
+and battery constraints. `HealthSync` shares manual/worker serialization and a
+durable bounded outbox; SDK reads reconcile today and seven completed days. See
+[Android background sync](ANDROID_BACKGROUND_SYNC.md) for retries and acceptance.
+
+The #92 source-matrix continuation adds Samsung steps, SDK sleep-date totals and
+optional body-composition BMR through the same Android outbox and ingestion service.
+HA health mapping/worker normalization now permits only Withings weight/body fat/
+lean mass. Legacy health rows remain preserved; Samsung is authoritative for its
+metrics. BMR retains actual point provenance and carries forward without entering
+calorie balance. See [source matrix](ANDROID_SOURCE_MATRIX.md).

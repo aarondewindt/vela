@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native vector version of public/favicon.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <path
+        android:fillColor="#1971C2"
+        android:pathData="M14,0 H50 Q64,0 64,14 V50 Q64,64 50,64 H14 Q0,64 0,50 V14 Q0,0 14,0 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M16,17 L32,48 L48,17"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

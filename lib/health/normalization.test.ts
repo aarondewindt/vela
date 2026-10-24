@@ -23,21 +23,11 @@ it('normalizes body metrics and preserves sensor time provenance across local mi
     )?.value
   ).toBe('68.038855');
 });
-it('converts sleep and calories and rejects unavailable, invalid units and impossible values', () => {
-  expect(
-    normalizeMetric(
-      'SLEEP',
-      { ...state, state: '480', attributes: { unit_of_measurement: 'min' } },
-      'UTC'
-    )?.value
-  ).toBe('8.000000');
-  expect(
-    normalizeMetric(
-      'TOTAL_CALORIES',
-      { ...state, state: '4184', attributes: { unit_of_measurement: 'kJ' } },
-      'UTC'
-    )?.value
-  ).toBe('1000.000000');
+it('rejects obsolete HA metrics and mappings while preserving body value validation', () => {
+  for (const metric of ['SLEEP', 'TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'BMR'] as const) {
+    expect(normalizeMetric(metric, state, 'UTC')).toBeNull();
+    expect(mappingSchema.safeParse([{ metric, entityId: 'sensor.legacy' }]).success).toBe(false);
+  }
   for (const value of ['unavailable', 'unknown', '', 'Infinity', 'NaN', '0x12', '-1', '101']) {
     expect(
       normalizeMetric(
@@ -47,44 +37,6 @@ it('converts sleep and calories and rejects unavailable, invalid units and impos
       )
     ).toBeNull();
   }
-  expect(
-    normalizeMetric(
-      'TOTAL_CALORIES',
-      { ...state, state: '1500', attributes: { unit_of_measurement: 'kcal/day' } },
-      'UTC'
-    )
-  ).toBeNull();
-});
-it('updates cumulative daily totals under a stable daily identity and uses the sensor update day', () => {
-  const original = normalizeMetric(
-    'TOTAL_CALORIES',
-    { ...state, state: '1200', attributes: { unit_of_measurement: 'kcal' } },
-    'UTC'
-  )!;
-  const corrected = normalizeMetric(
-    'TOTAL_CALORIES',
-    {
-      ...state,
-      state: '1100',
-      attributes: { unit_of_measurement: 'kcal' },
-      last_updated: '2026-01-10T23:50:00Z',
-    },
-    'UTC'
-  )!;
-  expect(original.sourceKey).toBe(corrected.sourceKey);
-  expect(corrected.observedAt).toEqual(new Date('2026-01-10T23:50:00Z'));
-  expect(
-    normalizeMetric(
-      'TOTAL_CALORIES',
-      {
-        ...state,
-        state: '0',
-        attributes: { unit_of_measurement: 'kcal' },
-        last_updated: '2026-01-11T00:00:01Z',
-      },
-      'UTC'
-    )?.sourceKey
-  ).not.toBe(original.sourceKey);
 });
 it('keeps equal-valued body readings stable on attribute updates and handles DST dates', () => {
   const before = normalizeMetric('WEIGHT', state, 'UTC');
@@ -93,11 +45,11 @@ it('keeps equal-valued body readings stable on attribute updates and handles DST
   ).toBe(before?.sourceKey);
   expect(
     normalizeMetric(
-      'SLEEP',
+      'WEIGHT',
       {
         ...state,
-        state: '8',
-        attributes: { unit_of_measurement: 'h' },
+        state: '80',
+        attributes: { unit_of_measurement: 'kg' },
         last_changed: '2026-03-29T01:30:00Z',
       },
       'Europe/Amsterdam'

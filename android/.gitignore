@@ -1,0 +1,20 @@
+# Host/container-specific SDK paths and IDE state
+local.properties
+.idea/
+*.iml
+.gradle/
+.kotlin/
+**/build/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Signing material and local configuration
+*.jks
+*.keystore
+keystore.properties
+*.apk
+*.aab
+
+# Samsung SDK is supplied locally under its own license
+app/libs/*.aar

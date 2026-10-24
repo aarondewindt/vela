@@ -21,6 +21,8 @@ model User {
   timezone                  String                     @default("Europe/Amsterdam") @db.VarChar(64)
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
+  deviceCredentials         DeviceCredential[]
+  devicePairings            DevicePairing[]
   sessions                  Session[]
   accounts                  Account[]
   themes                    Theme[]
@@ -1008,6 +1010,9 @@ enum HealthMetricKind {
   LEAN_MASS
   SLEEP
   TOTAL_CALORIES
+  ACTIVE_CALORIES
+  STEPS
+  BMR
 }
 
 model HealthMetric {
@@ -1023,6 +1028,7 @@ model HealthMetric {
   entityId       String?          @db.VarChar(240)
   sourceKey      String           @db.VarChar(500)
   timestampBasis String           @db.VarChar(32)
+  metadata       Json             @default("{}")
 
   @@unique([userId, sourceKey])
   @@index([userId, date, metric, observedAt])
@@ -1130,4 +1136,44 @@ model PlannerConversationTurn {
 
   @@unique([conversationId, revision])
   @@map("planner_conversation_turns")
+}
+
+model DeviceCredential {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String    @db.VarChar(100)
+  clientType String    @db.VarChar(40)
+  tokenHash  String    @unique @db.Char(64)
+  scopes     String[]
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId, createdAt])
+  @@map("device_credentials")
+}
+
+model DevicePairing {
+  id         String    @id @default(uuid()) @db.Uuid
+  codeHash   String    @unique @db.Char(64)
+  secretHash String    @unique @db.Char(64)
+  name       String    @db.VarChar(100)
+  clientType String    @db.VarChar(40)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("device_pairings")
+}
+
+model DeviceRateLimit {
+  key    String   @id
+  window DateTime
+  count  Int
+
+  @@map("device_rate_limits")
 }
