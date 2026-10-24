@@ -28,10 +28,10 @@ it('shows each saved sensor’s state, unit, rejection reason or converted readi
           lastUpdated: '2026-01-10T11:00:00Z',
         },
         {
-          metric: 'SLEEP',
-          entityId: 'sensor.sleep',
+          metric: 'BODY_FAT',
+          entityId: 'sensor.fat',
           state: 'unavailable',
-          unit: 'min',
+          unit: '%',
           issue: 'Home Assistant reports this sensor as unavailable.',
           normalized: null,
         },

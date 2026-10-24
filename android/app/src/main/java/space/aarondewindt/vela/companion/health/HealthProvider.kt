@@ -12,6 +12,7 @@ interface HealthProvider {
     suspend fun hasReadPermission(): Boolean
     suspend fun requestReadPermission(): Boolean
     suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading
+    suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> = emptyList()
     fun resolveAvailability()
 }
 

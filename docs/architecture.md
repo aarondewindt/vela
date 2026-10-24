@@ -127,3 +127,10 @@ Background sync (#91) schedules unique hourly WorkManager work with connectivity
 and battery constraints. `HealthSync` shares manual/worker serialization and a
 durable bounded outbox; SDK reads reconcile today and seven completed days. See
 [Android background sync](ANDROID_BACKGROUND_SYNC.md) for retries and acceptance.
+
+The #92 source-matrix continuation adds Samsung steps, SDK sleep-date totals and
+optional body-composition BMR through the same Android outbox and ingestion service.
+HA health mapping/worker normalization now permits only Withings weight/body fat/
+lean mass. Legacy health rows remain preserved; Samsung is authoritative for its
+metrics. BMR retains actual point provenance and carries forward without entering
+calorie balance. See [source matrix](ANDROID_SOURCE_MATRIX.md).

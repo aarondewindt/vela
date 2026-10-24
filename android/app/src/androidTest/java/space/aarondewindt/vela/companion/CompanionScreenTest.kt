@@ -28,7 +28,7 @@ class CompanionScreenTest {
         composeRule.setContent { VelaCompanionApp(provider) }
         composeRule.onNodeWithText("Not granted").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Grant / manage read access").performScrollTo().performClick()
-        composeRule.onNodeWithText("Granted: ACTIVITY_SUMMARY READ").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Granted: activity summary, steps, sleep and body composition READ").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Refresh readings").performScrollTo().performClick()
         composeRule.onNodeWithText("Today to refresh time").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Copy diagnostic report").performScrollTo().assertIsDisplayed()

@@ -96,7 +96,7 @@ it('shows current metric and signed balance reference bands even with no observa
   query.mockReturnValue({ data });
   render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
   const charts = (LineChart as unknown as jest.Mock).mock.calls.map(([props]) => props);
-  expect(charts).toHaveLength(5);
+  expect(charts).toHaveLength(8);
   expect(screen.getByRole('heading', { name: 'Weight' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Lean mass' })).toBeInTheDocument();
   expect(charts[0].series).toEqual([{ name: 'weight', label: 'Weight', color: 'teal.6' }]);
@@ -107,7 +107,7 @@ it('shows current metric and signed balance reference bands even with no observa
   expect(charts[0].referenceAreas).toEqual([expect.objectContaining({ y1: 80, y2: 85 })]);
   expect(charts[2].referenceLines).toEqual([expect.objectContaining({ y: 20 })]);
   expect(charts[3].referenceLines).toEqual([expect.objectContaining({ y: 8 })]);
-  expect(charts[4].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
+  expect(charts[7].referenceAreas).toEqual([expect.objectContaining({ y1: -400, y2: -200 })]);
   expect(charts[0].data[0].weight).toBeNull();
   for (const chart of charts) {
     expect(chart.yAxisProps.domain).toEqual(['auto', 'auto']);
@@ -143,4 +143,33 @@ it('removes chart references when health targets are cleared', () => {
     expect(props.referenceAreas).toEqual([]);
     expect(props.referenceLines).toEqual([]);
   }
+});
+
+it('displays Samsung steps sleep active burn and real BMR with distinct units and provenance', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  for (const [metric, value] of [
+    ['STEPS', 12345],
+    ['SLEEP', 8.5],
+    ['ACTIVE_CALORIES', 400],
+    ['BMR', 1700],
+  ] as const) {
+    data.days[0].metrics[metric] = {
+      id: metric,
+      value,
+      measurementDate: '2026-01-10',
+      carriedForward: false,
+      observedAt: new Date('2026-01-10T12:00:00Z'),
+      source: 'samsung_health',
+      timestampBasis: 'sdk_query_capture',
+      metadata: { timezone: 'Europe/Amsterdam', sourceObservedAt: '2026-01-10T10:00:00Z' },
+    };
+  }
+  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  expect(screen.getAllByText('12,345 steps')).toHaveLength(2);
+  expect(screen.getAllByText('1,700 kcal/day')).toHaveLength(2);
+  expect(screen.getAllByText('8.5 hours')).toHaveLength(2);
+  expect(screen.getAllByText('400 kcal')).toHaveLength(2);
+  expect(screen.getByText(/imported BMR point/)).toBeInTheDocument();
+  expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
 });

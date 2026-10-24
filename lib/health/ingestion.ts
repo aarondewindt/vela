@@ -6,9 +6,9 @@ import { dateInTimezone, diaryDate, diaryDateSchema, shiftDiaryDate } from '@/li
 
 const measurementSchema = z
   .object({
-    metric: z.enum(['TOTAL_CALORIES', 'ACTIVE_CALORIES']),
-    value: z.number().finite().min(0).max(100000),
-    unit: z.literal('kcal'),
+    metric: z.enum(['TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP', 'BMR']),
+    value: z.number().finite().min(0).max(200000),
+    unit: z.enum(['kcal', 'steps', 'hours', 'kcal/day']),
     date: diaryDateSchema,
     timezone: z
       .string()
@@ -24,10 +24,34 @@ const measurementSchema = z
     observedAt: z.iso.datetime(),
     periodStart: z.iso.datetime(),
     periodEnd: z.iso.datetime(),
-    measurementKind: z.literal('sdk_aggregate_semantics_unverified'),
+    measurementKind: z.enum([
+      'sdk_aggregate_semantics_unverified',
+      'sdk_steps_total',
+      'sdk_sleep_date_total',
+      'sdk_bmr_point',
+    ]),
+    sourceObservedAt: z.iso.datetime().optional(),
+    sourceModifiedAt: z.iso.datetime().optional(),
+    upstreamId: z.string().min(1).max(200).optional(),
   })
   .strict()
   .superRefine((m, ctx) => {
+    const expected = {
+      TOTAL_CALORIES: ['kcal', 'sdk_aggregate_semantics_unverified'],
+      ACTIVE_CALORIES: ['kcal', 'sdk_aggregate_semantics_unverified'],
+      STEPS: ['steps', 'sdk_steps_total'],
+      SLEEP: ['hours', 'sdk_sleep_date_total'],
+      BMR: ['kcal/day', 'sdk_bmr_point'],
+    }[m.metric];
+    if (
+      m.unit !== expected[0] ||
+      m.measurementKind !== expected[1] ||
+      (m.metric === 'STEPS' && (!Number.isInteger(m.value) || m.value > 200000)) ||
+      (m.metric === 'SLEEP' && m.value > 24) ||
+      (m.metric === 'BMR' && (m.value < 100 || m.value > 12000))
+    ) {
+      ctx.addIssue({ code: 'custom', message: 'Invalid unit, kind or range for measurement.' });
+    }
     const start = new Date(m.periodStart);
     const end = new Date(m.periodEnd);
     const observed = new Date(m.observedAt);
@@ -40,6 +64,24 @@ const measurementSchema = z
           second: '2-digit',
           hourCycle: 'h23',
         }).format(time) === '00:00:00' && time.getUTCMilliseconds() === 0;
+      if (m.metric === 'BMR') {
+        if (
+          !m.sourceObservedAt ||
+          !m.upstreamId ||
+          start.getTime() !== end.getTime() ||
+          m.sourceObservedAt !== m.periodStart ||
+          end > observed ||
+          observed.getTime() > Date.now() + 300000 ||
+          dateInTimezone(m.timezone, start) !== m.date ||
+          (m.sourceModifiedAt && new Date(m.sourceModifiedAt) > observed)
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            message: 'BMR requires a nonfuture SDK point timestamp and identity.',
+          });
+        }
+        return;
+      }
       if (
         !(start < end && end <= observed) ||
         observed.getTime() > Date.now() + 300000 ||
@@ -91,6 +133,9 @@ export async function ingestHealth(userId: string, credentialId: string, input: 
         measurementKind: m.measurementKind,
         credentialId,
         unit: m.unit,
+        ...(m.sourceObservedAt ? { sourceObservedAt: m.sourceObservedAt } : {}),
+        ...(m.sourceModifiedAt ? { sourceModifiedAt: m.sourceModifiedAt } : {}),
+        ...(m.upstreamId ? { upstreamId: m.upstreamId } : {}),
       };
       const observedAt = new Date(m.observedAt);
       let status: 'created' | 'updated' | 'unchanged' | 'stale';

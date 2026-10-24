@@ -1,7 +1,8 @@
 # Samsung Health calorie validation (#89)
 
-This phase reads Samsung Health on the phone only. It does not upload data, pair
-with Vela, run background work or write Samsung Health data. **The user accepted #89 for closure on 2026-10-24 after successful permission
+This guide describes the #89 read-only diagnostics. The current app also supports
+pairing, manual uploads and background sync (#90/#91); pause background sync when
+performing diagnostics-only comparisons. Samsung Health writes remain unsupported. **The user accepted #89 for closure on 2026-10-24 after successful permission
 granting and satisfactory readings on the Galaxy S25 FE.**
 
 ## SDK setup (Ubuntu host)
@@ -68,10 +69,9 @@ Only `Permission.of(DataTypes.ACTIVITY_SUMMARY, AccessType.READ)` is requested;
 Samsung handles this consent, not Android Health Connect runtime permissions.
 The current Data SDK guide does not prescribe the old SDK's manifest permission
 metadata; it is not copied here. Package visibility is declared for Samsung Health.
-There is no network permission in Vela’s source manifest, but the supplied
-Samsung 1.1.0 AAR contributes `android.permission.INTERNET` during merging. This
-normal SDK permission is distinct from health consent; Vela adds no network
-client, endpoint, upload or cleartext exception.
+The source manifest explicitly requests `android.permission.INTERNET` for the HTTPS
+Vela client; the Samsung AAR also contributes it. This normal network permission
+is separate from Samsung read consent. No cleartext exception is configured.
 [Consent reference](https://developer.samsung.com/health/data/guide/features/data-permission.html).
 
 Without developer mode, distribution needs Samsung partnership approval with the

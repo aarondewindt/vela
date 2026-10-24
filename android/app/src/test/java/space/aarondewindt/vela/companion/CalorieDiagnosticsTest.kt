@@ -147,6 +147,17 @@ class CalorieDiagnosticsTest {
         } catch (_: CancellationException) { }
     }
 
+    @Test fun unexpectedAggregateRowsFailRatherThanSilentlySkippingMeasurements() = runBlocking {
+        val base = FakeProvider()
+        val provider = object : HealthProvider by base {
+            override suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading {
+                val reading = base.readCalories(window, metric)
+                return reading.copy(rows = reading.rows + reading.rows)
+            }
+        }
+        expectFailure(HealthFailure.Kind.QUERY) { ManualSync(provider, clock).read(yesterday, zone) }
+    }
+
     private suspend fun expectFailure(kind: HealthFailure.Kind, block: suspend () -> Unit) {
         try { block(); fail("Expected $kind") } catch (failure: HealthFailure) { assertEquals(kind, failure.kind) }
     }

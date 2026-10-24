@@ -1,2 +1,5 @@
 .next
 out
+
+# Generated native reports are not application styles.
+android/**/build/**

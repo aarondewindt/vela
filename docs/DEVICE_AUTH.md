@@ -30,8 +30,9 @@ or HTTP development exceptions for credentials.
    choose **Review pairing**, verify the device name/type and `health:write`
    permission, then explicitly approve. Approve only pairings you initiated.
 3. Android: tap **Finish pairing after approval**, then **Check saved connection**.
-   No health measurements are uploaded. A pending result means approval has not
-   happened yet; there is no automatic polling.
+   Background health synchronization is scheduled after pairing if Samsung read
+   access is granted. A pending pairing result means approval has not happened yet;
+   there is no automatic pairing polling.
 4. The Devices screen shows name, client type, scopes, created/last-used times,
    optional expiry and revocation state. Revoke access there and check the Android
    connection again: it must fail. Pair a second device to confirm independence.
@@ -105,10 +106,10 @@ Credentials currently have no automatic expiry; the model/verifier support expir
 and users can revoke at any time. A request already authenticated when revocation
 occurs may finish; subsequent requests fail.
 
-Before #90: test pairing/revocation on the physical phone and public HTTPS origin;
-confirm Samsung calorie observation semantics; define idempotent upload validation,
-source provenance and precedence relative to Home Assistant, including owner-scoped
-storage. Health ingestion and manual/automatic sync are deliberately absent here.
+Health ingestion and manual/background synchronization are implemented in #90/#91.
+See [manual sync](ANDROID_MANUAL_SYNC.md), [background sync](ANDROID_BACKGROUND_SYNC.md)
+and [end-to-end verification](ANDROID_END_TO_END.md). Physical-phone acceptance and
+calorie semantic classification remain separate from implementation checks.
 
 ## Validation
 

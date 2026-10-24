@@ -1,4 +1,4 @@
-# Vela Android Companion — calorie diagnostics
+# Vela Android Companion
 
 This is the standalone Kotlin/Jetpack Compose project for [#88](https://github.com/aarondewindt/vela/issues/88), under the architecture in [#58](https://github.com/aarondewindt/vela/issues/58). Open **this directory** as a project in Android Studio. It is independent of Yarn and Next.js.
 
@@ -7,8 +7,8 @@ Read [SDK setup and physical-device validation](../docs/ANDROID_HEALTH_VALIDATIO
 first: download the licensed Data SDK 1.1.0 AAR to
 `android/app/libs/samsung-health-data-api-1.1.0.aar`, enable Samsung Health developer
 Data Read mode and grant only activity-summary READ. Issue #93 adds HTTPS device pairing and Keystore-encrypted credentials; see
-[device authentication and pairing](../docs/DEVICE_AUTH.md). No health upload or
-automatic synchronization is implemented. The user accepted #89 after successful permission granting and satisfactory
+[device authentication and pairing](../docs/DEVICE_AUTH.md). Manual uploads (#90)
+and configurable background synchronization (#91) are implemented. The user accepted #89 after successful permission granting and satisfactory
 readings on the S25 FE. Detailed calorie semantics remain unclassified in the
 record; see the validation guide before using a specific interpretation.
 
@@ -205,7 +205,7 @@ devcontainer :3000 (yarn dev listening on 0.0.0.0)
 
 `localhost` in the phone normally means the phone, in Ubuntu means Ubuntu, and in the container means the container. `10.0.2.2` is an emulator convention and is not the physical S25 FE's host address. ADB reverse still uses loopback even though Compose also publishes port 3000 for LAN development. No extra port or ADB-in-container workaround is necessary. Do not expose the dev server through a public tunnel. Existing public production port 3001 and database ports are unaffected.
 
-The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela uses an HTTPS backend client with no cleartext allowance. When native development networking is introduced in #90, use HTTPS for credentials/health uploads and scope any local HTTP exception to a debug variant. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
+The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela uses an HTTPS backend client with no cleartext allowance. Native credentials and health uploads require HTTPS; no HTTP exception is configured. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
 
 ## Verification record
 
@@ -222,12 +222,27 @@ The earlier launch confirmation covers #88 only. #89 Samsung Health reads and ca
 
 ## Manual synchronization (#90)
 
-See [Android manual sync](../docs/ANDROID_MANUAL_SYNC.md) for deployment, snapshot semantics, source precedence and the complete physical phone test. Pair first, select a completed historical day and tap **Sync now**. No automatic synchronization is enabled.
+See [Android manual sync](../docs/ANDROID_MANUAL_SYNC.md) for deployment, snapshot semantics, source precedence and the complete physical phone test. Pair first, select a completed historical day and tap **Sync now**. Automatic synchronization is scheduled after pairing when Samsung read access is granted.
 
 ## Automatic synchronization (#91)
 
-Hourly, network-connected, battery-conscious WorkManager synchronization reuses the
+Configurable (15/30/60/120 minutes; default 60), network-connected WorkManager synchronization reuses the
 manual upload coordinator, with a durable pending batch and seven-day correction
 window. The sync card exposes pause/resume, pending work, last success and errors.
 See [background synchronization](../docs/ANDROID_BACKGROUND_SYNC.md) for retry,
 reboot, Samsung battery limitations, historical backfill and phone acceptance.
+
+## Phase 5 review (#92)
+
+See [end-to-end verification](../docs/ANDROID_END_TO_END.md) for the review findings,
+security/privacy boundaries, Galaxy S25 FE acceptance checklist, distribution
+options and proposed integration follow-ups.
+
+## Required measurements (#92 continuation)
+
+The companion now syncs total/active calories, steps, Samsung sleep-date duration
+and optional actual SDK BMR. After installing an update, use **Grant / manage read
+access** for activity summary, steps, sleep and body composition, then resume sync.
+Withings weight/body fat/lean mass remain in Home Assistant. See
+[source matrix and rollout](../docs/ANDROID_SOURCE_MATRIX.md) for backend migration,
+source precedence, BMR availability, historical data and phone acceptance.

@@ -12,6 +12,7 @@ import {
   manualMetricSchema,
   mappingSchema,
   metricKinds,
+  haMetricKinds,
   metricGoalsSchema,
 } from './schema';
 import { ownerClient } from '@/lib/integrations/home-assistant/service';
@@ -34,7 +35,7 @@ export const healthService = {
       const [{ client }, mappings, { timezone }] = await Promise.all([
         ownerClient(userId),
         prisma.healthEntityMapping.findMany({
-          where: { userId },
+          where: { userId, metric: { in: [...haMetricKinds] } },
           select: { metric: true, entityId: true },
         }),
         settingsService.getPreferences(userId),
@@ -85,15 +86,19 @@ export const healthService = {
         WHERE "userId" = ${userId} AND "date" >= ${diaryDate(nutrition.startDate)}
           AND "date" <= ${diaryDate(input.endDate)}
         ORDER BY "date", metric,
-          CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES') THEN
-            CASE source WHEN 'manual' THEN 2 WHEN 'samsung_health' THEN 1 ELSE 0 END
+          CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP', 'BMR') THEN
+            CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
           ELSE 0 END DESC,
           "observedAt" DESC, "receivedAt" DESC, id DESC)
         UNION ALL
         (SELECT DISTINCT ON (metric) * FROM health_metrics
         WHERE "userId" = ${userId} AND "date" < ${diaryDate(nutrition.startDate)}
-          AND metric IN ('WEIGHT', 'BODY_FAT', 'LEAN_MASS')
-        ORDER BY metric, "date" DESC, "observedAt" DESC, "receivedAt" DESC, id DESC)
+          AND metric IN ('WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'BMR')
+        ORDER BY metric, "date" DESC,
+          CASE WHEN metric = 'BMR' THEN
+            CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
+          ELSE 0 END DESC,
+          "observedAt" DESC, "receivedAt" DESC, id DESC)
       `),
       prisma.healthGoal.findUnique({ where: { userId } }),
     ]);
@@ -112,7 +117,7 @@ export const healthService = {
             const measured = entries.find((x) => x.metric === metric);
             const record =
               measured ??
-              (['WEIGHT', 'BODY_FAT', 'LEAN_MASS'].includes(metric)
+              (['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'BMR'].includes(metric)
                 ? records
                     .filter(
                       (x) => x.metric === metric && x.date.toISOString().slice(0, 10) < day.date
@@ -131,6 +136,7 @@ export const healthService = {
                     source: record.source,
                     entityId: record.entityId,
                     timestampBasis: record.timestampBasis,
+                    metadata: record.metadata,
                   }
                 : null,
             ];
@@ -146,6 +152,7 @@ export const healthService = {
             source: string;
             entityId: string | null;
             timestampBasis: string;
+            metadata?: unknown;
           } | null
         >;
         const intake = day.nutrients ? Number(day.nutrients.calories) : null;
@@ -210,7 +217,7 @@ export const healthService = {
   },
   mappings(userId: string) {
     return prisma.healthEntityMapping.findMany({
-      where: { userId },
+      where: { userId, metric: { in: [...haMetricKinds] } },
       select: { metric: true, entityId: true },
     });
   },

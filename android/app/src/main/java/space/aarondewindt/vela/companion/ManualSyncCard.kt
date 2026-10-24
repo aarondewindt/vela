@@ -29,7 +29,7 @@ fun ManualSyncCard(provider: HealthProvider, historicalDate: String, enabled: Bo
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("Sync today to now and the selected completed historical day. Missing values are skipped. Total includes active; SDK elapsed/projected semantics remain unverified.") }
+    var message by remember { mutableStateOf("Sync calories, steps, sleep and BMR for today and the selected historical day. Missing values are skipped. Total includes active; SDK elapsed/projected semantics remain unverified.") }
     val preferences = remember { context.getSharedPreferences("health_sync", 0) }
 
     var interval by remember { mutableStateOf(BackgroundSync.intervalMinutes(context)) }

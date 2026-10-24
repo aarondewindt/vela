@@ -96,3 +96,23 @@ it('stops after losing the connection revision and fences late status writes', a
     })
   );
 });
+
+it('does not subscribe to retained legacy Samsung sensor mappings', async () => {
+  (prisma.homeAssistantConnection.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+    userId: 'alice',
+    baseUrl: 'https://ha.example.com',
+    encryptedToken: 'encrypted',
+    enabled: true,
+    revision: 4,
+    lastSyncedAt,
+    user: { timezone: 'UTC' },
+    mappings: [
+      { metric: 'TOTAL_CALORIES', entityId: 'sensor.burn' },
+      { metric: 'SLEEP', entityId: 'sensor.sleep' },
+    ],
+  });
+  expect((await syncHomeAssistant('alice', new AbortController().signal)).succeeded).toBe(true);
+  expect(HomeAssistantClient).not.toHaveBeenCalled();
+  expect(listen).not.toHaveBeenCalled();
+  expect(importHealthStates).not.toHaveBeenCalled();
+});

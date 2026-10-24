@@ -796,3 +796,51 @@ revision and battery checks. No device execution or deployment performed here.
 (zero errors, 21 advisories) and `assembleDebugAndroidTest` passed offline with
 locks enforced. Seventeen focused ingestion/route Jest tests passed. Recovery
 instrumentation test compiled but was not run. Host local.properties restored.
+
+## Issue #92 review — 2026-10-24
+
+Completed scoped code review and available automated verification. See
+`docs/ANDROID_END_TO_END.md` for findings, source/security review, setup/recovery,
+manual S25 FE acceptance and proposed follow-up issue scopes. Fixed clearing the
+outbox without a complete server acknowledgement, silent skipping of unexpected
+SDK aggregate cardinality, misleading post-pairing messaging and Stylelint scanning
+native generated reports. No new health permissions/integrations or #94 work.
+
+Checks: Android build/25 JVM tests/lint (zero errors)/device-test compilation pass;
+full Jest 1,131 pass and opt-in isolated PostgreSQL four pass; TypeScript/production
+build pass. Stylelint passes after generated-report exclusion. Broad Oxlint and
+format retain unrelated baseline failures. Connected tests, exact calorie semantics,
+unattended cadence/reboot/offline phone flows and battery remain unverified; no
+issue closure, deployment, application migration or Samsung registration performed.
+Stop after #92 and await user review before expanding integrations.
+
+## #92 required source-matrix continuation — 2026-10-24
+
+Implemented steps and Samsung sleep-date duration plus actual optional SDK BMR in
+the existing Android HealthSync/outbox/API. SDK BMR is BodyCompositionType's
+BASAL_METABOLIC_RATE (100–12000 kcal/day), not a derived burn value. It retains
+point ID/time and optional modification time; bounded raw-record pagination and
+latest-point bootstrap allow older BMR to carry forward with original date.
+Sleep filter explicitly uses [date,next date), verified against the pinned SDK.
+Four READ types now required: activity summary, steps, sleep, body composition.
+
+HA settings/diagnostics/worker and normalization permit only Withings weight,
+body fat and lean mass. Old mappings are inert until replaced; historical rows
+remain. Samsung beats manual/legacy HA for its five metrics. General HA client,
+connections, discovery and Withings worker behavior are retained. Health adds
+steps/BMR and total/active charts/history, sleep date labels, source-zone/point
+provenance; balance continues to use only intake minus total burned.
+
+Migration `20261024120000_companion_source_matrix` adds STEPS/BMR enum values,
+bumps HA revisions and resets recovery cursor without deleting data/mappings.
+Not applied to app DB. Deploy backend/migration and restart HA worker before
+updating phone and regranting consent. See `docs/ANDROID_SOURCE_MATRIX.md`.
+
+Final checks: 29 Android JVM tests; debug build/lint (zero errors)/device test APK
+compile; full Jest 1,141 pass; isolated PostgreSQL five pass; Prisma generation/
+validation, typecheck, production build and changed-file lint/format pass. Broad
+lint/format unrelated baseline failures persist. No phone/production deployment,
+connected test execution, live Withings/Samsung validation or issue closure.
+Stop after this continuation for user review; #12/#94/heart-rate/Health Connect
+were excluded. Remaining live-device, cadence, BMR availability and calorie
+semantics checks are in the source-matrix guide.

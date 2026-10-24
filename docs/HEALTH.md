@@ -1,8 +1,8 @@
 # Health and Home Assistant
 
 The **Health** app (`/health`) tracks weight (kg), body fat (%), lean mass (kg), sleep
-(hours) and total daily calories burned (kcal). It shows the latest reading for each
-metric on each calendar date, with 7/30-day history. Weight, body fat and lean mass
+(hours), steps, BMR (kcal/day), total and active calories burned (kcal). It shows the latest reading for each
+metric on each calendar date, with 7/30-day history. Weight, body fat, lean mass and BMR
 cards/table carry the latest known reading forward, even from before the selected
 period, and label its original date. Source, timestamp basis and record identity
 remain unchanged; no measurements are inserted. Charts show actual readings with
@@ -52,8 +52,8 @@ goals or food records.
    to the browser. Empty token input retains it; an origin change requires a new
    token and clears mappings. Each Vela user has a separate connection.
 4. Select **Test connection / load sensors**, then map your own weight, body fat,
-   lean mass, latest sleep duration, and **total daily calories burned including
-   basal metabolism** sensors. Unmapped metrics stay missing. Confirm the displayed
+   and lean mass Withings sensors only. Samsung Health calories, steps, sleep and
+   BMR synchronize through the Android companion. Unmapped metrics stay missing. Confirm the displayed
    units and source sensors. The application cannot determine which person an
    arbitrary Home Assistant sensor belongs to.
    The **Sensor diagnostics** panel checks each saved mapping against live Home
@@ -78,10 +78,11 @@ goals or food records.
    imports/database access, without opening a Home Assistant connection. SIGINT and
    SIGTERM stop subscriptions and release leases. Desktop sleep interrupts sync.
 
-The upstream path is Samsung Health/Withings → Health Connect → Android Home
-Assistant Companion sensors → Home Assistant. Configure upstream permissions and
-sensor enablement on your phone. Confirm actual entities before relying on a metric.
-See [Companion health sensors](https://companion.home-assistant.io/docs/core/sensors/#health-connect-sensors).
+The Home Assistant health path is **Withings → Home Assistant → Vela** for weight,
+body fat and lean mass. Old Samsung/Health Connect mappings are ignored; existing
+historical readings remain stored. General Home Assistant REST/WebSocket clients,
+connection management and discovery remain available to other Vela modules.
+See [the required source matrix](ANDROID_SOURCE_MATRIX.md) for the Android path.
 
 ## Implementation and privacy
 
@@ -97,9 +98,8 @@ See [Companion health sensors](https://companion.home-assistant.io/docs/core/sen
   token permissions determine which HA entities the supplied account can read.
 - `lib/health/` owns mapping validation, normalization, import and domain services.
   Imported identities include the owner, instance-origin namespace, entity, metric
-  and sensor timestamp (or calendar date for cumulative totals). Replays upsert;
-  late history cannot overwrite newer daily totals. Lower corrected totals replace
-  earlier values. Manual request IDs are owner-scoped and reject changed payloads.
+  and sensor timestamp. Replays upsert;
+  late history cannot overwrite newer observations. Manual request IDs are owner-scoped and reject changed payloads.
 - The worker subscribes through `subscribe_entities`, reconstructs compact changes,
   pings the connection, queues ordered writes and retries failures with capped
   exponential backoff. Each user connection has a renewable database lease; revision,
@@ -116,20 +116,18 @@ See [Companion health sensors](https://companion.home-assistant.io/docs/core/sen
 
 ## Limits
 
-Health Connect sensors expose latest readings or aggregates, rather than a guaranteed
-complete export of original Health Connect records. Vela can only recover history
-that Home Assistant actually recorded and retained. Outages longer than seven days
-can leave gaps. Exact device measurement times and stable original record IDs are
-not assumed: imported timestamps are labeled **sensor state time**. Body/sleep data
-uses HA `last_changed`; daily burn uses `last_updated`. Equal-valued measurements
-without a new state timestamp cannot be distinguished. Sleep is grouped by its
-sensor update date; this first version does not import sleep stages/session boundaries.
+Withings imports can only recover history Home Assistant recorded and retained.
+Outages longer than seven days can leave gaps. Exact device measurement times and
+stable original record IDs are not assumed: timestamps are labeled **sensor state
+time**, using HA `last_changed`. Equal-valued measurements without a new state
+timestamp cannot be distinguished. Samsung sleep uses SDK date aggregates instead
+of HA update-date grouping; full sleep-stage/session export is not implemented.
 
 A user timezone should match the timezone used for daily totals on the source phone.
 Changing Vela's timezone affects future imports after the worker reloads; existing
 dates are retained. No missing day is reconstructed from a later cumulative total.
-The view shows daily latest measurements, not every intraday sample. A later manual
-reading takes precedence until deleted or superseded by a later sensor timestamp.
+The view shows daily latest measurements, not every intraday sample. For Android-designated metrics, Samsung has priority over manual and legacy HA
+readings. Body measurements retain their existing latest-reading selection.
 
 The connector currently reads data only. Home Assistant commands into Vela and Vela
 service calls that control Home Assistant remain future work over explicit service
@@ -174,4 +172,9 @@ clients are retained.
 
 ## Android companion ingestion (#90)
 
-Samsung Health manual snapshots now share the existing measurement store. Total and active calories remain separate; calorie balance selects one total per day with manual override → Samsung Health → Home Assistant priority. Active calories are visible but never added to total or used as total burn. Samsung query/capture timestamps and unverified calorie semantics are labeled explicitly. See [manual sync deployment and phone testing](ANDROID_MANUAL_SYNC.md).
+Samsung Health manual snapshots now share the existing measurement store. Total and active calories remain separate; calorie balance selects one total per day with Samsung Health → manual → legacy Home Assistant priority. Active calories are visible but never added to total or used as total burn. Samsung query/capture timestamps and unverified calorie semantics are labeled explicitly. See [manual sync deployment and phone testing](ANDROID_MANUAL_SYNC.md).
+
+## Required source matrix (#92 continuation)
+
+See [Android source matrix](ANDROID_SOURCE_MATRIX.md) for steps, sleep and direct
+SDK BMR ingestion, schema migration, new read permissions and phone acceptance.

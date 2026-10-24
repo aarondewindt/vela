@@ -1011,6 +1011,8 @@ enum HealthMetricKind {
   SLEEP
   TOTAL_CALORIES
   ACTIVE_CALORIES
+  STEPS
+  BMR
 }
 
 model HealthMetric {

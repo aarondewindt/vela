@@ -1,8 +1,14 @@
 import type { HomeAssistantState } from '@/lib/integrations/home-assistant/client';
 import { dateInTimezone } from '@/lib/nutrition/dates';
-import { validMetricValue, type MetricKind } from './schema';
+import { validMetricValue, isHaMetric, type MetricKind } from './schema';
 
 export function inspectMetric(metric: MetricKind, state: HomeAssistantState, timezone: string) {
+  if (!isHaMetric(metric)) {
+    return {
+      normalized: null,
+      issue: 'This measurement is synchronized by the Android companion.',
+    };
+  }
   if (!state.state.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(state.state.trim())) {
     return {
       normalized: null,
@@ -17,7 +23,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
     .trim();
   const unsupportedUnit = {
     normalized: null,
-    issue: `Unsupported unit ${unit ? JSON.stringify(unit) : '(missing)'}. Expected ${{ WEIGHT: 'g, kg, lb or lbs', LEAN_MASS: 'g, kg, lb or lbs', BODY_FAT: '%', SLEEP: 'min, minutes, s, seconds, h, hr or hours', TOTAL_CALORIES: 'kcal or kJ', ACTIVE_CALORIES: 'kcal or kJ' }[metric]}.`,
+    issue: `Unsupported unit ${unit ? JSON.stringify(unit) : '(missing)'}. Expected ${{ WEIGHT: 'g, kg, lb or lbs', LEAN_MASS: 'g, kg, lb or lbs', BODY_FAT: '%' }[metric as 'WEIGHT' | 'LEAN_MASS' | 'BODY_FAT']}.`,
   };
   if (metric === 'WEIGHT' || metric === 'LEAN_MASS') {
     if (unit === 'g') {
@@ -31,20 +37,6 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
     if (unit !== '%') {
       return unsupportedUnit;
     }
-  } else if (metric === 'SLEEP') {
-    if (['min', 'minutes'].includes(unit)) {
-      value /= 60;
-    } else if (['s', 'seconds'].includes(unit)) {
-      value /= 3600;
-    } else if (!['h', 'hr', 'hours'].includes(unit)) {
-      return unsupportedUnit;
-    }
-  } else {
-    if (unit === 'kj') {
-      value /= 4.184;
-    } else if (unit !== 'kcal') {
-      return unsupportedUnit;
-    }
   }
   if (!validMetricValue(metric, value)) {
     return {
@@ -54,9 +46,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
     };
   }
   // HA timestamps describe sensor state, not necessarily the underlying measurement.
-  const observedAt = new Date(
-    ['TOTAL_CALORIES', 'ACTIVE_CALORIES'].includes(metric) ? state.last_updated : state.last_changed
-  );
+  const observedAt = new Date(state.last_changed);
   if (!Number.isFinite(observedAt.getTime()) || observedAt.getTime() > Date.now() + 300000) {
     return {
       normalized: null,
@@ -75,7 +65,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
       entityId: state.entity_id,
       source: 'home_assistant',
       timestampBasis: 'sensor_state',
-      sourceKey: `ha:${state.entity_id}:${metric}:${['TOTAL_CALORIES', 'ACTIVE_CALORIES'].includes(metric) ? date : observedAt.toISOString()}`,
+      sourceKey: `ha:${state.entity_id}:${metric}:${observedAt.toISOString()}`,
     },
   };
 }

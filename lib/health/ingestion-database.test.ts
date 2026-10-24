@@ -43,6 +43,17 @@ suite('health uploads on PostgreSQL', () => {
       .filter((s) => s.trim())) {
       await prisma.$executeRawUnsafe(sql);
     }
+    await prisma.$executeRawUnsafe(
+      `CREATE TABLE home_assistant_connections (revision INTEGER DEFAULT 1, status TEXT, "lastSyncedAt" TIMESTAMP)`
+    );
+    for (const sql of readFileSync(
+      'prisma/migrations/20261024120000_companion_source_matrix/migration.sql',
+      'utf8'
+    )
+      .split(';')
+      .filter((s) => s.trim())) {
+      await prisma.$executeRawUnsafe(sql);
+    }
     await prisma.$executeRawUnsafe(`CREATE TABLE health_goals ("userId" TEXT PRIMARY KEY, "calorieBalance" INTEGER, version INTEGER DEFAULT 1,
       semantics JSONB DEFAULT '{}', "metricGoals" JSONB DEFAULT '{}', "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`);
     await prisma.$executeRawUnsafe(`INSERT INTO "user" VALUES ('alice'), ('bob')`);
@@ -122,6 +133,121 @@ suite('health uploads on PostgreSQL', () => {
     });
     expect(
       (await healthService.history('alice', { endDate: '2026-03-29', days: 7 })).days[0].burned
-    ).toBe(2200);
+    ).toBe(2300);
+  });
+  it('stores the expanded matrix idempotently and retains BMR across missing days without adding it to burn', async () => {
+    const base = {
+      date: '2025-10-26',
+      timezone: 'Europe/Amsterdam',
+      observedAt: '2025-10-27T10:00:00Z',
+      periodStart: '2025-10-25T22:00:00Z',
+      periodEnd: '2025-10-26T23:00:00Z',
+    };
+    const measurements = [
+      {
+        ...base,
+        metric: 'TOTAL_CALORIES',
+        value: 2400,
+        unit: 'kcal',
+        measurementKind: 'sdk_aggregate_semantics_unverified',
+      },
+      {
+        ...base,
+        metric: 'ACTIVE_CALORIES',
+        value: 400,
+        unit: 'kcal',
+        measurementKind: 'sdk_aggregate_semantics_unverified',
+      },
+      { ...base, metric: 'STEPS', value: 12345, unit: 'steps', measurementKind: 'sdk_steps_total' },
+      {
+        ...base,
+        metric: 'SLEEP',
+        value: 8.5,
+        unit: 'hours',
+        measurementKind: 'sdk_sleep_date_total',
+      },
+      {
+        ...base,
+        metric: 'BMR',
+        value: 1700,
+        unit: 'kcal/day',
+        measurementKind: 'sdk_bmr_point',
+        periodStart: '2025-10-26T09:00:00Z',
+        periodEnd: '2025-10-26T09:00:00Z',
+        sourceObservedAt: '2025-10-26T09:00:00Z',
+        sourceModifiedAt: '2025-10-26T09:01:00Z',
+        upstreamId: 'bmr-point',
+      },
+    ];
+    const payload = { version: 1, source: 'samsung_health', measurements };
+    await Promise.all([
+      ingestHealth('alice', 'phone', payload),
+      ingestHealth('alice', 'phone', payload),
+    ]);
+    expect(
+      await prisma.healthMetric.count({ where: { userId: 'alice', date: new Date('2025-10-26') } })
+    ).toBe(5);
+    const sleep = await prisma.healthMetric.findFirstOrThrow({
+      where: { userId: 'alice', metric: 'SLEEP', date: new Date('2025-10-26') },
+    });
+    await prisma.healthMetric.create({
+      data: {
+        ...sleep,
+        metadata: {},
+        id: '00000000-0000-4000-8000-000000000099',
+        sourceKey: 'legacy-ha-sleep',
+        source: 'home_assistant',
+        value: 9,
+        observedAt: new Date('2025-10-28T12:00:00Z'),
+      },
+    });
+    await ingestHealth('alice', 'phone', {
+      ...payload,
+      measurements: [
+        { ...measurements[2], value: 12000, observedAt: '2025-10-28T12:00:00Z' },
+        { ...measurements[3], value: 8, observedAt: '2025-10-28T12:00:00Z' },
+      ],
+    });
+    (nutritionHistory.get as jest.Mock).mockResolvedValue({
+      startDate: '2025-10-26',
+      days: [
+        { date: '2025-10-26', nutrients: { calories: '2000' } },
+        { date: '2025-10-27', nutrients: null },
+      ],
+    });
+    const days = (await healthService.history('alice', { endDate: '2025-10-27', days: 7 })).days;
+    expect(days[0].metrics.STEPS?.value).toBe(12000);
+    expect(days[0].metrics.SLEEP).toMatchObject({ value: 8, source: 'samsung_health' });
+    expect(days[0].burned).toBe(2400);
+    expect(days[0].balance).toBe(-400);
+    expect(days[1].metrics.BMR).toMatchObject({
+      value: 1700,
+      carriedForward: true,
+      measurementDate: '2025-10-26',
+    });
+    expect(days[1].metrics.SLEEP).toBeNull();
+    expect(days[1].metrics.STEPS).toBeNull();
+    expect(await prisma.healthMetric.count({ where: { sourceKey: 'legacy-ha-sleep' } })).toBe(1);
+    const bmr = await prisma.healthMetric.findFirstOrThrow({
+      where: { userId: 'alice', metric: 'BMR' },
+    });
+    await prisma.healthMetric.create({
+      data: {
+        ...bmr,
+        metadata: {},
+        id: '00000000-0000-4000-8000-000000000098',
+        source: 'manual',
+        sourceKey: 'manual-bmr-fallback',
+        value: 1800,
+        observedAt: new Date('2025-10-29T10:00:00Z'),
+      },
+    });
+    (nutritionHistory.get as jest.Mock).mockResolvedValue({
+      startDate: '2025-11-01',
+      days: [{ date: '2025-11-01', nutrients: null }],
+    });
+    const carried = (await healthService.history('alice', { endDate: '2025-11-07', days: 7 }))
+      .days[0].metrics.BMR;
+    expect(carried).toMatchObject({ value: 1700, carriedForward: true, source: 'samsung_health' });
   });
 });

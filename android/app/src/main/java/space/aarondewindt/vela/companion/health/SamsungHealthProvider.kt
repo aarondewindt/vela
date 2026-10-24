@@ -16,6 +16,10 @@ import com.samsung.android.sdk.health.data.request.DataType
 import com.samsung.android.sdk.health.data.request.DataTypes
 import com.samsung.android.sdk.health.data.request.LocalTimeFilter
 import java.time.Instant
+import com.samsung.android.sdk.health.data.request.LocalDateFilter
+import com.samsung.android.sdk.health.data.request.InstantTimeFilter
+import com.samsung.android.sdk.health.data.request.Ordering
+import com.samsung.android.sdk.health.data.request.ReadSourceFilter
 import kotlinx.coroutines.CancellationException
 
 /** Only this adapter imports Samsung SDK types. Workers use application context without dialogs. */
@@ -28,7 +32,8 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
         } catch (_: PackageManager.NameNotFoundException) { "not installed" }
         return "Samsung Health $version; Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}); ${Build.MANUFACTURER} ${Build.MODEL}"
     }
-    private val permissions = setOf(Permission.of(DataTypes.ACTIVITY_SUMMARY, AccessType.READ))
+    private val permissions = setOf(DataTypes.ACTIVITY_SUMMARY, DataTypes.STEPS, DataTypes.SLEEP, DataTypes.BODY_COMPOSITION)
+        .map { Permission.of(it, AccessType.READ) }.toSet()
     private var resolution: ResolvablePlatformException? = null
     // getStore can throw; defer until an explicit permission/read action, not composition.
     private fun store() = HealthDataService.getStore(context.applicationContext)
@@ -45,7 +50,7 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
     }
 
     override suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading = sdkCall {
-        if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION, "Activity summary read permission is not granted. Use Grant / manage read access.")
+        if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION, "Required Samsung read access is not granted. Use Grant / manage read access.")
         val operation = when (metric) {
             CalorieMetric.TOTAL_CALORIES_BURNED -> DataType.ActivitySummaryType.TOTAL_CALORIES_BURNED
             CalorieMetric.TOTAL_ACTIVE_CALORIES_BURNED -> DataType.ActivitySummaryType.TOTAL_ACTIVE_CALORIES_BURNED
@@ -62,6 +67,56 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
             check(value == null || (value.isFinite() && value >= 0)) { "Invalid calorie aggregate." }
             AggregateRow(value, it.startTime, it.endTime)
         })
+    }
+
+    override suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> = sdkCall {
+        if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION,
+            "Grant activity summary, steps, sleep and body composition READ access in Samsung Health.")
+        val uploads = mutableListOf<CalorieUpload>()
+        for (window in windows) {
+            val steps = store().aggregateData(DataType.StepsType.TOTAL.requestBuilder
+                .setLocalTimeFilter(LocalTimeFilter.of(window.start, window.endExclusive))
+                .setSourceFilter(AggregateSourceFilter.fromPlatform()).build())
+            check(steps.pageToken == null && steps.dataList.size <= 1) { "Unexpected steps aggregate." }
+            steps.dataList.singleOrNull()?.value?.let { count ->
+                uploads += dailyMetricUpload(window, "STEPS", count.toDouble(), "steps", "sdk_steps_total")
+            }
+            // Samsung's date-based sleep aggregate includes overnight sessions in its sleep date.
+            val sleep = store().aggregateData(DataType.SleepType.TOTAL_DURATION.requestBuilder
+                .setLocalDateFilter(samsungSleepDateFilter(window.date))
+                .setSourceFilter(AggregateSourceFilter.fromPlatform()).build())
+            check(sleep.pageToken == null && sleep.dataList.size <= 1) { "Unexpected sleep aggregate." }
+            sleep.dataList.singleOrNull()?.value?.let { duration ->
+                uploads += dailyMetricUpload(window, "SLEEP", duration.toMillis() / 3600000.0, "hours", "sdk_sleep_date_total")
+            }
+            readBmr(window.endExclusive.atZone(window.zone).toInstant(), window.zone,
+                window.start.atZone(window.zone).toInstant())?.let { uploads += it }
+        }
+        // BMR can be measured infrequently. Preserve its actual date and carry forward in Vela.
+        val zone = windows.firstOrNull()?.zone
+        if (zone != null) readBmr(Instant.now(), zone)?.let { latest ->
+            if (uploads.none { it.metric == "BMR" && it.date == latest.date }) uploads += latest
+        }
+        if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION, "Samsung read permission changed during sync.")
+        uploads
+    }
+
+    private suspend fun readBmr(end: Instant, zone: java.time.ZoneId, start: Instant? = null): CalorieUpload? {
+        var page: String? = null
+        repeat(10) {
+            val builder = DataTypes.BODY_COMPOSITION.readDataRequestBuilder
+                .setInstantTimeFilter(if (start == null) InstantTimeFilter.to(end) else InstantTimeFilter.of(start, end))
+                .setSourceFilter(ReadSourceFilter.fromPlatform()).setOrdering(Ordering.DESC).setPageSize(100)
+            page?.let { builder.setPageToken(it) }
+            val response = store().readData(builder.build())
+            for (point in response.dataList) {
+                val bmr = point.getValue(DataType.BodyCompositionType.BASAL_METABOLIC_RATE) ?: continue
+                if (point.startTime >= end || (start != null && point.startTime < start)) continue
+                return bmrUpload(bmr, point.startTime, point.updateTime, point.uid, zone, Instant.now())
+            }
+            page = response.pageToken ?: return null
+        }
+        throw HealthFailure(HealthFailure.Kind.QUERY, "BMR scan exceeded 1000 records; no incomplete BMR result was uploaded.")
     }
 
     override fun resolveAvailability() {
@@ -85,7 +140,7 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
             else -> HealthFailure.Kind.QUERY
         }
         val action = when (kind) {
-            HealthFailure.Kind.PERMISSION -> "Grant activity summary READ in Samsung Health > Settings > Apps, then refresh."
+            HealthFailure.Kind.PERMISSION -> "Grant activity summary, steps, sleep and body composition READ in Samsung Health > Settings > Apps, then resume sync."
             HealthFailure.Kind.AUTHORIZATION -> "For this debug build, check Samsung Health Data SDK developer mode > Data Read. Distribution needs registered package/signing identity. Check account restrictions and use the official Samsung Health app."
             HealthFailure.Kind.AVAILABILITY -> "Install/update Samsung Health (6.30.2+), enable it and finish its initial setup."
             HealthFailure.Kind.QUERY -> "Open Samsung Health, let wearable data arrive, then retry. If it persists, retain the code and query range for investigation."
@@ -94,3 +149,7 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
         throw HealthFailure(kind, "${error.javaClass.simpleName}; SDK code ${error.errorCode}. $action", resolution != null, error)
     }
 }
+
+/** SDK date filters default to an exclusive end; equal endpoints would query an empty day. */
+internal fun samsungSleepDateFilter(date: java.time.LocalDate): LocalDateFilter =
+    LocalDateFilter.of(date, date.plusDays(1), true, false)

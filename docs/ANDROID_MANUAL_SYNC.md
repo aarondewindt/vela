@@ -11,7 +11,8 @@ Apply `20261024100000_android_health_ingestion` with `yarn prisma migrate deploy
 then `yarn prisma generate` and rebuild/restart the web app. The additive migration
 adds `ACTIVE_CALORIES` to the existing metric enum and a default-empty `metadata`
 JSONB column to `health_metrics`. No separate measurement store is created. Existing
-readings and HA mappings remain valid. No new environment variables are needed;
+readings remain preserved. The #92 continuation disables obsolete HA mappings; see
+[the current source matrix](ANDROID_SOURCE_MATRIX.md). No new environment variables are needed;
 #93's canonical HTTPS `BETTER_AUTH_URL` and paired credential are required.
 
 Rebuild/install from the Ubuntu host with the same signing key as #89/#93:
@@ -89,7 +90,8 @@ Health storage; callers cannot invent unchecked metrics or source labels.
 ## Calorie interpretation and precedence
 
 Sync reads **today from local midnight to sync start** and the selected completed
-historical day, for total and active calories separately. It excludes the diagnostic
+historical day, for total and active calories, steps and Samsung sleep-date duration.
+BMR imports actual optional body-composition points, retaining their measurement date. It excludes the diagnostic
 full-day-today query. It never calculates BMR/resting calories, adds active calories
 to total, estimates missing data or substitutes HA values. Missing readings are
 skipped, including zero-length elapsed ranges at exact midnight; explicit SDK zero
@@ -102,11 +104,10 @@ energy. The app and Vela source labels preserve this limitation. Do the comparis
 procedure in [the validation guide](ANDROID_HEALTH_VALIDATION.md) before treating
 these as final observed expenditure.
 
-For total and active calories, Health selects one series per day: **manual override,
-then Samsung Health, then HA**. Within a priority, latest capture/state time wins,
-then receipt time/ID. Other metrics retain existing latest-reading behavior.
-Samsung totals therefore stay authoritative even if HA updates later. A manual
-override remains until deleted. Multiple phones retain distinct provenance but
+For Android-designated metrics, Health selects **Samsung Health, then manual
+readings, then legacy HA**. Within a priority, latest capture/state time wins,
+then receipt time/ID. Body metrics retain existing latest-reading behavior.
+Samsung stays authoritative even if HA or a manual reading arrives later. Multiple phones retain distinct provenance but
 only one selected snapshot contributes. Active calories are visible separately and
 never used in calorie balance. No daily calories carry forward to missing days.
 Phone timezone determines uploaded dates; configure Vela's timezone to match for
@@ -136,10 +137,10 @@ new rows. Credential revocation prevents future requests, not deletion of histor
    or a source correction; a newer lower value must replace the previous value.
    For exact-body replay/stale/concurrent tests use the synthetic automated DB
    test below; do not put personal upload bodies or tokens in shell history/logs.
-5. With HA mapping enabled, let HA update after the phone upload. Samsung stays
-   selected; calorie balance must not add both sources or active calories. Add a
-   manual total and verify override, then delete it to restore Samsung selection.
-   In another Vela account verify none of the first account's readings appear.
+5. Check old HA history remains available and that Samsung has priority for its
+   metrics. New HA calorie/sleep mappings must be rejected. Manual burn readings
+   fill gaps but no longer override an available Samsung total.
+
 6. Disconnect networking and tap Sync. Expect an error and unchanged last-success
    time. Reconnect and tap again; a response lost after server commit is safe to
    retry. There is no automatic retry or durable pending batch. Restart the app
@@ -169,7 +170,7 @@ VELA_HEALTH_DB_TESTS=1 yarn jest --runInBand lib/health/ingestion-database.test.
 
 It verifies the migration, simultaneous identical uploads, precision-safe retries,
 late stale uploads, downward corrections, owner separation, source priority,
-manual override and exclusion of active calories from balance. Android JVM tests
+source precedence and exclusion of active calories from balance. Android JVM tests
 cover provider reads/conversion, missing/zero values, ranges and permission loss.
 
 Issue #91 now reuses this endpoint and provider boundary through `HealthSync`.

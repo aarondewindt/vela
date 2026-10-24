@@ -82,7 +82,7 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
 
     // Recheck on return from Samsung Health/settings. Never auto-request consent or read calories.
     LaunchedEffect(resumeCount) {
-        action { permission = if (provider.hasReadPermission()) "Granted: ACTIVITY_SUMMARY READ" else "Not granted" }
+        action { permission = if (provider.hasReadPermission()) "Granted: activity summary, steps, sleep and body composition READ" else "Not granted" }
     }
     val parsedDate = runCatching { LocalDate.parse(historicalDate) }.getOrNull()
     val validDate = parsedDate != null && parsedDate < LocalDate.now()
@@ -102,7 +102,7 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
                 DiagnosticCard("Permission", permission)
                 Button(enabled = !busy, onClick = {
                     action {
-                        permission = if (provider.requestReadPermission()) "Granted: ACTIVITY_SUMMARY READ" else "Not granted — request denied or cancelled"
+                        permission = if (provider.requestReadPermission()) "Granted: activity summary, steps, sleep and body composition READ" else "Not granted — request denied or cancelled"
                     }
                 }) { Text("Grant / manage read access") }
                 Text("You can also revoke access in Samsung Health > Settings > Apps > Vela Companion. Return here to recheck permission.")
@@ -120,7 +120,7 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
                     action {
                         val date = LocalDate.parse(historicalDate)
                         readings = ReadCalorieDiagnostics(provider).read(date, ZoneId.systemDefault())
-                        permission = "Granted: ACTIVITY_SUMMARY READ"
+                        permission = "Granted: activity summary, steps, sleep and body composition READ"
                     }
                 }) { Text(if (busy) "Working…" else "Refresh readings") }
                 error?.let { DiagnosticCard("Read failed", it) }
@@ -149,7 +149,7 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
                         clipboard.setPrimaryClip(clip)
                         copied = true
                     }) { Text(if (copied) "Copied private readings" else "Copy diagnostic report") }
-                    Text("Copy includes private calorie readings. Nothing is uploaded. Results are held in memory and cleared on return, rotation, date edits or a new action.")
+                    Text("Copy includes private calorie readings. Copying does not upload; scheduled synchronization may run separately. Results are held in memory and cleared on return, rotation, date edits or a new action.")
                     SelectionContainer { DiagnosticCard("Raw query details", report) }
                 }
                 ManualSyncCard(provider, historicalDate, !busy && validDate)

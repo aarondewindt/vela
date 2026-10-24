@@ -2,6 +2,7 @@ import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '../../../generated/prisma/client';
+import { isHaMetric } from '@/lib/health/schema';
 import { importHealthStates } from '@/lib/health/import';
 import { HomeAssistantClient, HomeAssistantError } from './client';
 import { decryptToken } from './security';
@@ -62,6 +63,7 @@ export async function syncHomeAssistant(userId: string, signal: AbortSignal) {
       where: { userId },
       include: { mappings: true, user: { select: { timezone: true } } },
     });
+    connection.mappings = connection.mappings.filter((mapping) => isHaMetric(mapping.metric));
     revision = connection.revision;
     if (!connection.enabled) {
       return { claimed: true, succeeded: true };

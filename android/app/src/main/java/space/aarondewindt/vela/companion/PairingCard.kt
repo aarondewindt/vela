@@ -72,7 +72,7 @@ fun PairingCard() {
                     BackgroundSync.schedule(context)
                     sessionSecret = null
                     code = null
-                    message = "Paired. Credential saved securely. No health data has been sent."
+                    message = "Paired. Credential saved securely. Automatic health sync is enabled when Samsung read access is granted."
                 }
             } }) { Text("Finish pairing after approval") }
             Button(enabled = !busy, onClick = { action {

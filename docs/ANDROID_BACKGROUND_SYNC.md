@@ -31,7 +31,7 @@ date in diagnostics and use **Sync now** (one-day bounded backfill plus today).
 Before HTTP upload, an app-private, backup-disabled preference stores the complete
 bounded batch, including original capture times. Credentials stay separately
 Keystore encrypted and never enter WorkManager input/output. The batch is removed
-only after a successful response. On process termination or response loss, the
+only after a versioned successful response acknowledges every uploaded metric/date. On process termination or response loss, the
 next pass checks credentials and Samsung consent, then replays that exact batch
 before reading fresh values. The backend's owner/device/metric/date identities,
 capture ordering and transactional ingestion make this replay idempotent. This
@@ -91,3 +91,10 @@ errors; 21 advisory warnings), and instrumentation APK compilation passed using
 the existing temporary JDK 17/SDK. The final run was offline with dependency locks
 enforced. All 17 focused ingestion/service-route Jest tests passed. Connected tests
 were not executed. The host `local.properties` was restored after each build.
+
+## Expanded source matrix (#92 continuation)
+
+The same batch now includes steps, Samsung sleep-date duration and actual optional
+BMR body-composition points. Grant the four required READ types after upgrading.
+See [source matrix and rollout](ANDROID_SOURCE_MATRIX.md). BMR scans are bounded;
+its actual measurement date is retained, with labeled carry-forward in Health.
