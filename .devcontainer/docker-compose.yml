@@ -7,8 +7,22 @@ services:
       - ../vela.env
     volumes:
       - ..:/workspaces/vela:cached
+      - vela-android-gradle:/home/node/.gradle
+      - vela-android-user:/home/node/.android
+      # Host initializeCommand creates this private directory before Compose.
+      # Mount the directory so relay restarts replace the visible socket safely.
+      - type: bind
+        source: ${HOME}/.local/share/vela-adb
+        target: /run/vela-adb
+        read_only: true
+        bind:
+          create_host_path: false
     command: sleep infinity
     ports:
       - "3000:3000"
       - "3001:3001"
       - "127.0.0.1:5050:5050"
+
+volumes:
+  vela-android-gradle:
+  vela-android-user:

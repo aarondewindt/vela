@@ -5,6 +5,27 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Android devcontainer #104 — 2026-10-24
+
+- Implemented headless JDK 17/SDK 36/Build Tools 35.0.0/ADB 37.0.1 in the existing
+  image; SDK is cached in image layers, Gradle/signing data in named volumes with
+  UID repair. Wrapper and licensed Samsung AAR remain unchanged. No #103 work.
+- Option B uses container loopback TCP → private bind-mounted host Unix socket →
+  Ubuntu loopback ADB server. Host script creates a 0600 socket in a 0700 folder,
+  rejects wildcard/LAN ADB listeners; no USB passthrough or ADB published ports.
+  TCP adapter supports Gradle/ddmlib as well as CLI. Ubuntu runs the relay manually;
+  VS Code initializes the mount directory and starts the container relay.
+- Actual image built and repeat build reused SDK/install layers. In-image non-root
+  `verify.sh --offline --rerun-tasks`: all 81 tasks executed, 29 JVM tests, lint,
+  debug APK and instrumentation APK compilation passed with no host/phone mount.
+  Node/project Yarn 4/PostgreSQL CLI smoke, both Compose configs, volume persistence/
+  UID repair, repeated relay startup, 15 Jest and seven Python relay tests passed.
+  Real ADB through both relays used a protocol fixture, not a phone.
+- Still needs user workstation rebuild/open with DinD/inner services and actual
+  Ubuntu/Galaxy authorization, matching host/container device lists, install,
+  logcat/instrumentation and host Studio breakpoint checks. Keep #104 open.
+  Exact setup, commands, limitations and verification: ANDROID_DEVCONTAINER.md.
+
 ## Integrated task/theme conversation #38 — 2026-10-24
 
 - Existing Today chat now has owner-bound inventory find/propose/revise tools,

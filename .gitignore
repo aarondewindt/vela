@@ -136,6 +136,9 @@ dist/
 *.env
 /generated/prisma
 
+# Python host/container relay bytecode
+__pycache__/
+
 # Daily-use runtime artifacts and private backups
 .next-public/
 .local/

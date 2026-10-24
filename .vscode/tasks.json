@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Android: verify (no phone required)",
+      "type": "process",
+      "command": "${workspaceFolder}/android/scripts/verify.sh",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: devices (Ubuntu ADB)",
+      "type": "process",
+      "command": "${workspaceFolder}/android/scripts/devices.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: deploy to phone",
+      "type": "process",
+      "command": "${workspaceFolder}/android/scripts/deploy.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: connected instrumentation tests",
+      "type": "process",
+      "command": "${workspaceFolder}/android/gradlew",
+      "args": ["--no-daemon", ":app:connectedDebugAndroidTest"],
+      "options": { "cwd": "${workspaceFolder}/android" },
+      "problemMatcher": []
+    }
+  ]
+}

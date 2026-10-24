@@ -16,13 +16,18 @@ record; see the validation guide before using a specific interpretation.
 
 | Location | Responsibilities |
 | --- | --- |
-| VS Code devcontainer | Codex, Kotlin source edits, existing `yarn dev` and web/database tools |
-| Ubuntu host | Android Studio, JDK/Android SDK, Gradle builds, ADB and USB phone debugging |
+| VS Code devcontainer | Codex, JDK/SDK Gradle builds, tests/lint, host-relayed ADB, existing web/database tools |
+| Ubuntu host | Android Studio and optional host builds, one loopback ADB server, USB phone debugging |
 | Galaxy S25 FE | Install/run the debug APK and perform the physical-device checks below |
 
 The existing Compose mount `..:/workspaces/vela:cached` exposes the same checkout in both environments. If Ubuntu has the repository at `~/projects/vela`, open `~/projects/vela/android` in **host Android Studio**, while VS Code sees `/workspaces/vela/android`. Do not copy the project, open the container-only path on the host, or open the web root as an Android project. Source edits appear in both editors.
 
-**Build choice:** host-side Gradle is the default fallback for Codex work. The existing Node/Docker devcontainer has no Java or Android SDK; its image, lifecycle commands and ports remain unchanged. Run the commands below in an Ubuntu terminal (outside the VS Code container terminal), or use Android Studio's terminal. Codex can edit and review from the container; it cannot invoke host tools simply by using a host path. Android CI also runs the same build independently of web CI.
+**Container builds:** the devcontainer now includes JDK 17 and the headless Android
+SDK. See [devcontainer setup and secure Ubuntu ADB](../docs/ANDROID_DEVCONTAINER.md)
+for rebuilding, persistent caches, one-command verification, VS Code tasks and
+Codex-to-Galaxy checks. Host Gradle builds remain an alternative; avoid concurrent
+host/container builds in the shared checkout. The existing scripts below also work
+inside the container using its environment and host-relayed ADB.
 
 ## Host shortcuts
 
@@ -118,11 +123,13 @@ Java 25 can remain your system default. This project's Gradle 8.13 cannot run on
 
 Versions and SDK package levels are pinned and `app/gradle.lockfile` records resolved dependency versions for repeatable compilation; this does not promise byte-identical debug APKs across machines (local debug certificates differ). Always use the wrapper. For an intentional dependency update, change the pinned versions and run the build/check command above with `--write-locks`, then review and commit the lockfile changes. Generated build/IDE files, SDK paths, signing keys, credentials and APKs stay ignored.
 
-### Optional container builds
+### Container builds and ADB
 
-There is deliberately no automatic SDK installer or host SDK mount. If local Codex build feedback becomes useful, opt into a **separate container-local** JDK 17 and Linux Android SDK with the same packages above, set `JAVA_HOME`/`ANDROID_HOME`, accept licenses, and run the same wrapper commands from `/workspaces/vela/android`. These tools can live outside the repository and be discarded when rebuilding the container. This is optional; the host workflow above is sufficient.
-
-Host `android/local.properties` contains a host-only path: it takes precedence over `ANDROID_HOME`. Before switching build environments, close Android Studio and move that ignored file aside (restore it before returning to Studio), or use a separate checkout for container builds. Do not share Gradle user caches or run host and container Gradle simultaneously against the same build outputs. A container Gradle build produces the same APK location visible to host ADB; it does not grant USB access. No privileged container, USB passthrough, host ADB server exposure or change to Docker-in-Docker is needed.
+Use [the Android devcontainer guide](../docs/ANDROID_DEVCONTAINER.md). SDK tools
+are installed in the image; Gradle and debug-signing data persist in named
+volumes. No host SDK mount or USB passthrough is needed. Host commands in this
+README remain valid when using the host workflow; container ADB reaches the same
+Ubuntu server through a private Unix socket and container loopback relay.
 
 ## Install and launch on the Galaxy S25 FE
 
@@ -203,7 +210,7 @@ devcontainer :3000 (yarn dev listening on 0.0.0.0)
    adb -s "$ANDROID_SERIAL" reverse --remove tcp:3000
    ```
 
-`localhost` in the phone normally means the phone, in Ubuntu means Ubuntu, and in the container means the container. `10.0.2.2` is an emulator convention and is not the physical S25 FE's host address. ADB reverse still uses loopback even though Compose also publishes port 3000 for LAN development. No extra port or ADB-in-container workaround is necessary. Do not expose the dev server through a public tunnel. Existing public production port 3001 and database ports are unaffected.
+`localhost` in the phone normally means the phone, in Ubuntu means Ubuntu, and in the container means the container. `10.0.2.2` is an emulator convention and is not the physical S25 FE's host address. ADB reverse still uses loopback even though Compose also publishes port 3000 for LAN development. The [container ADB relay](../docs/ANDROID_DEVCONTAINER.md) can issue the same reverse commands; the destination remains Ubuntu loopback. Do not expose the dev server through a public tunnel. Existing public production port 3001 and database ports are unaffected.
 
 The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela uses an HTTPS backend client with no cleartext allowance. Native credentials and health uploads require HTTPS; no HTTP exception is configured. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
 

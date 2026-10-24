@@ -76,9 +76,12 @@ checks, revocation and database-backed rate limits; `/api/devices/` exposes the
 external protocol. Browser authentication remains Better Auth. See
 [device authentication](DEVICE_AUTH.md) for migrations, HTTPS, pairing and tests.
 
-VS Code/Codex edits the shared checkout in the existing Node devcontainer;
-Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
-tooling remains opt-in and Android CI is separate from web checks. See
+VS Code/Codex edits and builds the shared checkout in the Node devcontainer with
+a headless JDK 17/Android SDK. Gradle/signing volumes persist; SDK packages remain
+in image layers. Android Studio and USB ADB stay on Ubuntu; a private Unix socket
+and container-loopback TCP relay share its loopback ADB server. See
+[Android devcontainer setup](ANDROID_DEVCONTAINER.md). Android CI remains separate
+from web checks. See
 [Android setup](../android/README.md) and [calorie validation](ANDROID_HEALTH_VALIDATION.md)
 for the licensed SDK setup, signing/developer-mode limits, deployment and tests.
 

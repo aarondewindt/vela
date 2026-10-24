@@ -32,7 +32,7 @@ describe('Android host scripts', () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vela-host-scripts-'));
     project = path.join(directory, 'checkout with spaces', 'android');
     fs.mkdirSync(path.join(project, 'scripts'), { recursive: true });
-    for (const file of ['host-common.sh', 'build.sh', 'deploy.sh', 'devices.sh']) {
+    for (const file of ['host-common.sh', 'build.sh', 'deploy.sh', 'devices.sh', 'verify.sh']) {
       fs.copyFileSync(path.join(__dirname, file), path.join(project, 'scripts', file));
     }
     const jdk = path.join(directory, 'jdk 17');
@@ -92,6 +92,29 @@ esac`);
       `adb:-d install -r ${project}/app/build/outputs/apk/debug/app-debug.apk`,
       'adb:-d shell am start -W -n space.aarondewindt.vela.companion/.MainActivity',
     ]);
+  });
+
+  test('verification runs every device-independent check and forwards options', () => {
+    const result = run('verify.sh', ['--offline']);
+    expect(result.status).toBe(0);
+    expect(calls().split('\n').filter(Boolean)).toEqual([
+      'gradle:--no-daemon',
+      'gradle::app:assembleDebug',
+      'gradle::app:testDebugUnitTest',
+      'gradle::app:lintDebug',
+      'gradle::app:assembleDebugAndroidTest',
+      'gradle:--offline',
+    ]);
+  });
+
+  test('device commands preserve the configured host server socket', () => {
+    executable(path.join(environment.ANDROID_HOME, 'platform-tools', 'adb'),
+      'printf "%s\\n" "$ADB_SERVER_SOCKET" >> "$CALL_LOG"');
+    const result = run('devices.sh', [], {
+      ADB_SERVER_SOCKET: 'localfilesystem:/run/vela-adb/adb.sock',
+    });
+    expect(result.status).toBe(0);
+    expect(calls()).toBe('localfilesystem:/run/vela-adb/adb.sock\n');
   });
 
   test('deployment reports installation and launch progress', () => {

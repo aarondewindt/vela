@@ -6,8 +6,10 @@
 	"service": "dev",
 	"workspaceFolder": "/workspaces/vela",
 	"shutdownAction": "stopCompose",
-	"postCreateCommand": "yarn install",
-	"postStartCommand": "docker compose -f .devcontainer/docker-compose.inner.yml up -d --build",
+	"remoteUser": "node",
+	"initializeCommand": ["bash", ".devcontainer/scripts/prepare-adb-directory.sh"],
+	"postCreateCommand": "bash .devcontainer/scripts/android-cache-permissions.sh && yarn install",
+	"postStartCommand": "python3 .devcontainer/scripts/container-adb-relay.py --start && docker compose -f .devcontainer/docker-compose.inner.yml up -d --build",
 	"forwardPorts": [3000, 5050],
 	"customizations": {
 		"vscode": {
