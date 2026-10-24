@@ -2,20 +2,35 @@
 
 import { useState } from 'react';
 import { Alert, Badge, Button, Group, Paper, Select, Stack, Text, Textarea } from '@mantine/core';
+import type { z } from 'zod';
+import type { reviewResultSchema } from '@/lib/planner/review/schema';
+import { usePlannerStore } from '@/lib/planner/store';
+import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { trpc } from '@/lib/trpc/client';
 
 export function PlanReview({
   date,
   proposalId,
   onCreated,
+  initialResult,
 }: {
   date: string;
   proposalId?: string;
   onCreated: (id: string) => void;
+  initialResult?: z.infer<typeof reviewResultSchema>;
 }) {
   const [guidance, setGuidance] = useState('');
   const [mode, setMode] = useState<'deterministic' | 'ai'>('deterministic');
-  const [target, setTarget] = useState('current');
+  const [target, setTarget] = useState(initialResult?.proposalId ?? 'current');
+  const [showInitial, setShowInitial] = useState(true);
+  const focus = usePlanningWorkspaceStore((state) => state.focus);
+  const highlight = (blockId: string | null, taskId?: string) => {
+    usePlannerStore.getState().setSelectedDate(date);
+    if (result?.proposalId) {
+      usePlanningWorkspaceStore.getState().showPreview({ id: result.proposalId, date });
+    }
+    focus(blockId, taskId);
+  };
   const [request, setRequest] = useState<{ index: number; id: string } | null>(null);
   const utils = trpc.useUtils();
   const review = trpc.planningProposals.review.useMutation();
@@ -25,9 +40,10 @@ export function PlanReview({
       onCreated(id);
     },
   });
-  const result = review.data;
+  const result = review.data ?? (showInitial ? initialResult : undefined);
   const busy = review.isPending || create.isPending;
   const reset = () => {
+    setShowInitial(false);
     review.reset();
     create.reset();
     setRequest(null);
@@ -80,6 +96,7 @@ export function PlanReview({
         loading={review.isPending}
         disabled={busy || (target !== 'current' && target !== proposalId)}
         onClick={() => {
+          setShowInitial(false);
           setRequest(null);
           create.reset();
           review.mutate({
@@ -111,7 +128,13 @@ export function PlanReview({
           {result.conflicts.map((concern, i) => (
             <Paper key={i} withBorder p="sm">
               <Badge>Verified · {concern.code}</Badge>
-              <Text fw={500}>{titles(concern.blockIds)}</Text>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() => highlight(concern.blockIds[0] ?? null, concern.taskIds[0])}
+              >
+                {titles(concern.blockIds) || 'Highlight affected block'}
+              </Button>
               <Text size="sm">{concern.explanation}</Text>
             </Paper>
           ))}
@@ -130,7 +153,13 @@ export function PlanReview({
           {result.concerns.map((concern, i) => (
             <Paper key={i} withBorder p="sm">
               <Badge variant="outline">AI concern</Badge>
-              <Text fw={500}>{titles(concern.blockIds)}</Text>
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={() => highlight(concern.blockIds[0] ?? null, concern.taskIds[0])}
+              >
+                {titles(concern.blockIds) || 'Highlight affected block'}
+              </Button>
               <Text size="sm">{concern.explanation}</Text>
             </Paper>
           ))}

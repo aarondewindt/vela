@@ -22,6 +22,7 @@ const date = '2026-10-20';
 const block = {
   id: id(1),
   title: 'Write report',
+  taskId: id(7),
   startsAt: '2026-10-20T08:00:00.000Z',
   endsAt: '2026-10-20T09:00:00.000Z',
   status: 'PLANNED',
@@ -96,7 +97,7 @@ it('reserves a specified local interval and releases overlapping flexible alloca
     expect.objectContaining({
       document: expect.objectContaining({
         operations: [{ type: 'remove', blockId: id(1), explanation: 'Keep free' }],
-        reservations: [
+        freeIntervals: [
           expect.objectContaining({
             startsAt: '2026-10-20T08:00:00.000Z',
             endsAt: '2026-10-20T10:00:00.000Z',
@@ -175,6 +176,29 @@ it('refines a pending generated addition in place and preserves unrelated change
     baseHash: 'a'.repeat(64),
     document: {
       schemaVersion: 1,
+      taskLimits: [
+        { taskId: id(7), title: 'New task', startsAt: `${date}T00:00:00.000Z`, maxMinutes: 30 },
+      ],
+      generation: {
+        requestHash: 'hash',
+        mode: 'ai',
+        model: null,
+        guidance: 'Prioritize research',
+        summary: 'Original allocation',
+        selectionSummary: 'Chosen for deadline',
+        warnings: [],
+        outcomes: [
+          {
+            key: 'task',
+            title: 'New task',
+            remainingMinutes: 30,
+            scheduledMinutes: 30,
+            reason: 'Placed in open time',
+            selectionReason: 'Thesis deadline',
+            deadlineRisk: false,
+          },
+        ],
+      },
       operations: [
         addition,
         {
@@ -236,6 +260,29 @@ it('refines a pending generated addition in place and preserves unrelated change
   });
   expect(document.operations[1]).toMatchObject({ block: { taskId: id(6) } });
   expect(document.generation).toBeUndefined();
+  expect(document.taskLimits?.[0].maxMinutes).toBe(30);
+  expect(document.selectionExplanation).toEqual({
+    summary: 'Chosen for deadline',
+    reasons: [{ title: 'New task', reason: 'Thesis deadline' }],
+  });
+  await planInstruction(
+    'owner',
+    id(10),
+    {
+      type: 'reserve',
+      date,
+      startTime: '14:00',
+      endTime: '14:30',
+      explanation: 'Keep this slot free',
+    },
+    { date, proposalId: id(8) }
+  );
+  const reserved = jest.mocked(proposalService.create).mock.calls[1][1].document;
+  expect(reserved.operations).toHaveLength(1);
+  expect(reserved.operations[0]).toMatchObject({ block: { taskId: id(6) } });
+  expect(reserved.freeIntervals).toHaveLength(1);
+  expect(reserved.taskLimits?.[0].maxMinutes).toBe(30);
+  expect(reserved.selectionExplanation?.summary).toBe('Chosen for deadline');
 });
 it('asks for missing edit times instead of guessing', async () => {
   await expect(
@@ -257,4 +304,206 @@ it('requires explicit review when the saved plan timezone differs from the user 
     planInstruction('owner', id(9), replan(), undefined, 'America/New_York')
   ).rejects.toThrow('saved plan uses Europe/Amsterdam');
   expect(proposalService.replan).not.toHaveBeenCalled();
+});
+
+it('swaps later Vela additions for SoLocos atomically while preserving earlier work, breaks and constraints', async () => {
+  const operations = [
+    ['TASK', id(7), '16:56', '18:26'],
+    ['REST', null, '18:26', '18:41'],
+    ['TASK', id(7), '18:41', '19:13'],
+    ['TASK', id(7), '19:43', '20:36'],
+    ['TASK', id(7), '21:06', '22:00'],
+  ].map(([kind, taskId, start, end]) => ({
+    type: 'add',
+    explanation: 'Original',
+    block: {
+      kind,
+      ...(taskId ? { taskId, occurrenceId: null } : {}),
+      startsAt: `${date}T${start}:00.000Z`,
+      endsAt: `${date}T${end}:00.000Z`,
+    },
+  }));
+  const constraints = {
+    freeIntervals: [
+      { startsAt: `${date}T19:13:00.000Z`, endsAt: `${date}T19:43:00.000Z`, explanation: 'Guitar' },
+    ],
+    taskLimits: [
+      { taskId: id(7), title: 'Vela', startsAt: `${date}T00:00:00.000Z`, maxMinutes: 240 },
+    ],
+  };
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue({
+    id: id(8),
+    baseHash: 'a'.repeat(64),
+    document: { schemaVersion: 1, operations, ...constraints },
+    preview: {
+      changes: operations.map((op, index) => ({
+        type: 'add',
+        explanation: 'Original',
+        before: null,
+        after: {
+          ...block,
+          id: `new:${index}`,
+          title: op.block.kind === 'TASK' ? 'Work on Vela' : 'Short break',
+          taskId: op.block.taskId ?? null,
+          startsAt: op.block.startsAt,
+          endsAt: op.block.endsAt,
+        },
+      })),
+      warnings: [],
+      remaining: [],
+    },
+  } as any);
+  jest.mocked(proposalService.context).mockResolvedValue({
+    timezone: 'Europe/Amsterdam',
+    baseHash: 'a'.repeat(64),
+    blocks: [],
+    candidates: [
+      { id: 'video', taskId: id(6), occurrenceId: id(5), title: 'SoLocos blooper video' },
+    ],
+  } as any);
+  await planInstruction(
+    'owner',
+    id(9),
+    {
+      type: 'replaceBlocks',
+      date,
+      blockQueries: ['new:2', 'new:3', 'new:4'],
+      candidateQuery: 'video',
+      explanation: 'Video after 20:30',
+    },
+    { date, proposalId: id(8) }
+  );
+  expect(proposalService.create).toHaveBeenCalledTimes(1);
+  const document = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(document.operations.slice(0, 2)).toEqual(operations.slice(0, 2));
+  document.operations.slice(2).forEach((operation, index) => {
+    expect(operation).toMatchObject({
+      block: { ...operations[index + 2].block, taskId: id(6), occurrenceId: id(5) },
+    });
+  });
+  expect(document).toMatchObject(constraints);
+  expect(document.generation).toBeUndefined();
+});
+
+it.each(['ambiguous', 'protected', 'duplicate', 'missing'])(
+  'keeps the entire preview intact when a bulk selection is %s',
+  async (scenario) => {
+    jest.mocked(proposalService.context).mockResolvedValue({
+      timezone: 'Europe/Amsterdam',
+      baseHash: 'a'.repeat(64),
+      blocks: [block, { ...block, id: id(3), editable: scenario !== 'protected' }],
+      candidates: [{ id: 'video', taskId: id(6), occurrenceId: null, title: 'Video' }],
+    } as any);
+    const blockQueries =
+      scenario === 'ambiguous'
+        ? ['Write report']
+        : scenario === 'duplicate'
+          ? [id(1), id(1)]
+          : [id(1), scenario === 'missing' ? id(4) : id(3)];
+    await expect(
+      planInstruction('owner', id(9), {
+        type: 'replaceBlocks',
+        date,
+        blockQueries,
+        candidateQuery: 'video',
+        explanation: 'Replace',
+      })
+    ).rejects.toThrow();
+    expect(proposalService.create).not.toHaveBeenCalled();
+  }
+);
+
+it('replaces accepted blocks with their recorded times through the shared proposal validator', async () => {
+  jest.mocked(proposalService.context).mockResolvedValue({
+    timezone: 'Europe/Amsterdam',
+    baseHash: 'a'.repeat(64),
+    blocks: [block],
+    candidates: [{ id: 'video', taskId: id(6), occurrenceId: null, title: 'Video' }],
+  } as any);
+  await planInstruction('owner', id(9), {
+    type: 'replaceBlocks',
+    date,
+    blockQueries: [block.id],
+    candidateQuery: 'video',
+    explanation: 'Replace',
+  });
+  expect(proposalService.create).toHaveBeenCalledWith(
+    'owner',
+    expect.objectContaining({
+      document: expect.objectContaining({
+        operations: [
+          {
+            type: 'replace',
+            blockId: block.id,
+            explanation: 'Replace',
+            block: {
+              kind: 'TASK',
+              taskId: id(6),
+              occurrenceId: null,
+              startsAt: block.startsAt,
+              endsAt: block.endsAt,
+            },
+          },
+        ],
+      }),
+    })
+  );
+});
+
+it('accepts a unique task ID copied by chat as an eligible candidate reference', async () => {
+  jest.mocked(proposalService.context).mockResolvedValue({
+    timezone: 'Europe/Amsterdam',
+    baseHash: 'a'.repeat(64),
+    blocks: [block],
+    candidates: [
+      {
+        id: `${id(6)}:${id(5)}`,
+        taskId: id(6),
+        occurrenceId: id(5),
+        title: 'SoLocos blooper video',
+      },
+    ],
+  } as any);
+  await planInstruction('owner', id(9), {
+    type: 'replaceBlocks',
+    date,
+    blockQueries: [block.id],
+    candidateQuery: id(6),
+    explanation: 'Continue video',
+  });
+  expect(proposalService.create).toHaveBeenCalledWith(
+    'owner',
+    expect.objectContaining({
+      document: expect.objectContaining({
+        operations: [
+          expect.objectContaining({
+            block: expect.objectContaining({ taskId: id(6), occurrenceId: id(5) }),
+          }),
+        ],
+      }),
+    })
+  );
+});
+it('requires a specific occurrence when chat supplies a task ID with several eligible occurrences', async () => {
+  jest.mocked(proposalService.context).mockResolvedValue({
+    timezone: 'Europe/Amsterdam',
+    baseHash: 'a'.repeat(64),
+    blocks: [block],
+    candidates: [5, 8].map((n) => ({
+      id: `${id(6)}:${id(n)}`,
+      taskId: id(6),
+      occurrenceId: id(n),
+      title: 'Recurring work',
+    })),
+  } as any);
+  await expect(
+    planInstruction('owner', id(9), {
+      type: 'replaceBlocks',
+      date,
+      blockQueries: [block.id],
+      candidateQuery: id(6),
+      explanation: 'Continue',
+    })
+  ).rejects.toThrow('Several eligible task occurrences');
+  expect(proposalService.create).not.toHaveBeenCalled();
 });

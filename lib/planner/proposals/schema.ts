@@ -129,6 +129,7 @@ export const generationReportSchema = z.object({
       title: z.string(),
       remainingMinutes: z.number(),
       scheduledMinutes: z.number(),
+      plannedMinutes: z.number().int().positive().max(1440).optional(),
       reason: z.string(),
       selectionReason: z.string().optional(),
       deadlineRisk: z.boolean(),
@@ -136,9 +137,29 @@ export const generationReportSchema = z.object({
   ),
 });
 export type GenerationReport = z.infer<typeof generationReportSchema>;
+export const freeIntervalSchema = z
+  .object({ ...interval, explanation: z.string().trim().min(1).max(2000) })
+  .strict();
+const selectionExplanationSchema = z.object({
+  summary: z.string().max(1500),
+  reasons: z
+    .array(z.object({ title: z.string().max(240), reason: z.string().max(1000) }))
+    .max(1000),
+});
+export const taskLimitSchema = z
+  .object({
+    taskId: z.uuid(),
+    title: z.string().max(240),
+    startsAt: instant,
+    maxMinutes: z.number().int().min(0).max(1440),
+  })
+  .strict();
 export const documentSchema = z
   .object({
     schemaVersion: z.literal(1),
+    taskLimits: z.array(taskLimitSchema).max(40).optional(),
+    selectionExplanation: selectionExplanationSchema.optional(),
+    freeIntervals: z.array(freeIntervalSchema).max(16).optional(),
     operations: z.array(operationSchema).max(100),
     reservations: z.array(reservationSchema).max(16).optional(),
     generation: generationReportSchema.optional(),
@@ -153,7 +174,11 @@ export const documentSchema = z
   })
   .strict()
   .refine(
-    (d) => d.operations.length > 0 || Boolean(d.reservations?.length),
+    (d) =>
+      d.operations.length > 0 ||
+      Boolean(d.reservations?.length) ||
+      Boolean(d.freeIntervals?.length) ||
+      Boolean(d.taskLimits?.length),
     'A proposal needs a change.'
   );
 export const createProposalSchema = z
@@ -191,6 +216,7 @@ export type ProposalOperation = z.infer<typeof operationSchema>;
 export type Addition = z.infer<typeof addition>;
 
 const previewBlock = z.object({
+  taskId: z.string().nullable().optional(),
   id: z.string(),
   title: z.string(),
   startsAt: z.string(),
@@ -199,6 +225,9 @@ const previewBlock = z.object({
   status: z.string().optional(),
 });
 export const previewSchema = z.object({
+  taskLimits: z.array(taskLimitSchema).max(40).optional(),
+  selectionExplanation: selectionExplanationSchema.optional(),
+  freeIntervals: z.array(freeIntervalSchema).max(16).optional(),
   replan: z.object({ warnings: z.array(z.string()), reviewBy: instant.optional() }).optional(),
   taskChanges: z
     .array(

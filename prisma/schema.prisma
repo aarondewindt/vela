@@ -119,6 +119,7 @@ enum AiMessageStatus {
 }
 
 model AiConversation {
+  scope                String      @default("ai-dev") @db.VarChar(32)
   id                   String      @id @default(uuid()) @db.Uuid
   userId               String
   user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -131,6 +132,7 @@ model AiConversation {
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   messages             AiMessage[]
+  recordProposals      PlannerRecordProposal[]
 
   @@index([userId, updatedAt])
   @@map("ai_conversations")
@@ -1176,4 +1178,19 @@ model DeviceRateLimit {
   count  Int
 
   @@map("device_rate_limits")
+}
+
+// Durable reviewed inventory changes in the integrated Planner workspace.
+model PlannerRecordProposal {
+  id             String @id @db.Uuid
+  conversationId String @db.Uuid
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  inputHash      String @db.VarChar(64)
+  preview        Json @db.JsonB
+  status         String @default("PENDING") @db.VarChar(20)
+  receipt        Json? @db.JsonB
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("planner_record_proposals")
 }

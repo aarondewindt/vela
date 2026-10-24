@@ -30,6 +30,7 @@ const blockPreview = (b: ProposalBlock | null) =>
   b
     ? {
         id: b.id,
+        taskId: b.taskId,
         title: b.title,
         startsAt: b.startsAt.toISOString(),
         endsAt: b.endsAt.toISOString(),
@@ -45,6 +46,8 @@ function previewOf(result: ReturnType<typeof validateProposal>) {
       before: blockPreview(c.before),
       after: blockPreview(c.after),
     })),
+    taskLimits: result.taskLimits,
+    freeIntervals: result.freeIntervals,
     warnings: result.warnings,
     taskChanges: result.taskChanges,
     remaining: result.remaining,
@@ -111,6 +114,13 @@ function validate(s: Snapshot, document: z.infer<typeof documentSchema>) {
 }
 
 export const proposalService = {
+  async byRequest(userId: string, requestId: string) {
+    const row = await prisma.planningProposal.findUnique({
+      where: { userId_requestId: { userId, requestId } },
+      select: { id: true },
+    });
+    return row ? this.get(userId, row.id) : null;
+  },
   async context(userId: string, date: string) {
     return database(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
@@ -119,7 +129,7 @@ export const proposalService = {
           (o) =>
             o.taskId === task.id &&
             ['PENDING', 'SCHEDULED'].includes(o.status) &&
-            o.occurrenceDate <= day(date)
+            (!task.isRecurring || o.occurrenceDate <= day(date))
         );
         const choices = occurrences.length ? occurrences.map((o) => o.id) : [null];
         return choices.flatMap((occurrenceId) => {
@@ -246,6 +256,7 @@ export const proposalService = {
           document: json(input.document),
           preview: json({
             ...previewOf(result),
+            selectionExplanation: input.document.selectionExplanation,
             generation: input.document.generation,
             replan: input.document.replan,
           }),

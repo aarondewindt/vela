@@ -1,3 +1,5 @@
+import { countsTowardDayEffort, unfinishedEffortBudget } from './effort';
+import { limitedTaskMinutes } from './task-limits';
 import { mealKindSchema, mealTitles, readMealPreferences, type MealKind } from '../meals';
 import type { Snapshot } from './snapshot';
 import type { Addition, ProposalDocument } from './schema';
@@ -78,7 +80,7 @@ export function eligible(s: Snapshot, taskId: string, occurrenceId: string | nul
     if (
       !occurrence ||
       !['PENDING', 'SCHEDULED'].includes(occurrence.status) ||
-      occurrence.occurrenceDate > new Date(`${s.date}T00:00:00Z`)
+      (task.isRecurring && occurrence.occurrenceDate > new Date(`${s.date}T00:00:00Z`))
     ) {
       fail('Occurrence not found, closed, or not yet eligible.');
     }
@@ -131,7 +133,23 @@ export function availability(s: Snapshot) {
       merged.push({ ...interval });
     }
   }
-  return merged;
+  let available = merged;
+  for (const excluded of s.planningExclusions ?? []) {
+    available = available.flatMap((window) => {
+      if (!overlap(window, excluded)) {
+        return [window];
+      }
+      return [
+        ...(window.startsAt < excluded.startsAt
+          ? [{ startsAt: window.startsAt, endsAt: excluded.startsAt }]
+          : []),
+        ...(window.endsAt > excluded.endsAt
+          ? [{ startsAt: excluded.endsAt, endsAt: window.endsAt }]
+          : []),
+      ];
+    });
+  }
+  return available;
 }
 
 export function validateProposal(s: Snapshot, document: ProposalDocument, now = new Date()) {
@@ -325,6 +343,38 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   const isOccupied = (b: ProposalBlock) =>
     occupied(b) &&
     (!b.calendarEventId || s.events.find((e) => e.id === b.calendarEventId)?.isBusy !== false);
+  const limited = new Set<string>();
+  for (const limit of document.taskLimits ?? []) {
+    const start = new Date(limit.startsAt);
+    if (
+      !s.tasks.some((task) => task.id === limit.taskId) ||
+      limited.has(limit.taskId) ||
+      start < dayStart ||
+      start >= dayEnd
+    ) {
+      fail('Task time limits require unique owned tasks and a boundary within the selected day.');
+    }
+    limited.add(limit.taskId);
+    if (limitedTaskMinutes(final, limit) > limit.maxMinutes) {
+      fail(
+        `${limit.title}: proposed remaining-day task time exceeds the requested maximum of ${limit.maxMinutes} minutes. Adjust existing commitments or revise this limit explicitly.`
+      );
+    }
+  }
+  for (const interval of document.freeIntervals ?? []) {
+    const free = { startsAt: new Date(interval.startsAt), endsAt: new Date(interval.endsAt) };
+    if (
+      free.startsAt < cutoff ||
+      free.endsAt <= free.startsAt ||
+      free.endsAt > dayEnd ||
+      final.some((block) => isOccupied(block) && overlap(free, block)) ||
+      busy.some((event) => overlap(free, event))
+    ) {
+      fail(
+        'The requested free interval contains occupied time, crosses the selected day, or has already started. Adjust protected commitments explicitly.'
+      );
+    }
+  }
   for (const [index, slot] of reservations.entries()) {
     if (slot.startsAt < cutoff) {
       fail(
@@ -431,12 +481,25 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
   for (const block of allocations) {
     totals.set(taskKey(block), (totals.get(taskKey(block)) ?? 0) + block.durationMinutes);
   }
+  const dayTotals = new Map<string, number>();
+  const completedTotals = new Map<string, number>();
+  for (const block of allocations) {
+    const key = taskKey(block);
+    if (countsTowardDayEffort(block, dayStart, dayEnd)) {
+      dayTotals.set(key, (dayTotals.get(key) ?? 0) + block.durationMinutes);
+    }
+    if (block.status === 'DONE') {
+      completedTotals.set(key, (completedTotals.get(key) ?? 0) + block.durationMinutes);
+    }
+  }
+  const dayBudget = (block: ProposalBlock) =>
+    unfinishedEffortBudget(estimateOf(block.taskId), completedTotals.get(taskKey(block)) ?? 0);
   for (const block of final.filter((b) => changed.has(b.id) && b.taskId)) {
-    const estimate = estimateOf(block.taskId);
+    const estimate = dayBudget(block);
     if (
       occupied(block) &&
       block.status !== 'DONE' &&
-      (totals.get(taskKey(block)) ?? 0) > estimate
+      (dayTotals.get(taskKey(block)) ?? 0) > estimate
     ) {
       fail(
         'Proposed time exceeds the task’s remaining estimate after completed work and commitments.'
@@ -545,6 +608,31 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     }
   }
   const warnings: string[] = [];
+  const continued = new Map(
+    final
+      .filter((block) => changed.has(block.id) && block.taskId && block.status === 'PLANNED')
+      .map((block) => [taskKey(block), block])
+  );
+  for (const [key, block] of continued) {
+    if (dayBudget(block) > estimateOf(block.taskId)) {
+      warnings.push(
+        `${block.title}: recorded completed work has reached its estimate, but the task is still unfinished. Using a 25-minute continuation allowance; review its estimate.`
+      );
+    }
+    if (
+      otherBlocks.some(
+        (other) =>
+          taskKey(other) === key &&
+          occupied(other) &&
+          other.status !== 'DONE' &&
+          !countsTowardDayEffort(other, dayStart, dayEnd)
+      )
+    ) {
+      warnings.push(
+        `${block.title}: existing scheduled blocks on other dates are retained. This proposal adds work on the selected day; it does not move those blocks.`
+      );
+    }
+  }
   if (changes.some((c) => c.type === 'finish')) {
     warnings.push(
       'Actual work is recorded as entered. Finishing a block only completes its task or occurrence when explicitly selected.'
@@ -588,6 +676,8 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     warnings.push('An existing category reservation extends outside availability. It is retained.');
   }
   return {
+    taskLimits: document.taskLimits,
+    freeIntervals: document.freeIntervals,
     sessionViolations: [...sessionMetrics(final, totals, allocations)]
       .filter(([, metric]) => metric.invalid)
       .map(([id]) => id),
@@ -614,7 +704,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
           changes.some((c) => c.before?.id === op.blockId && c.after && taskKey(c.after) === key)
       )
         ? 0
-        : Math.max(0, estimateOf(block.taskId) - (totals.get(key) ?? 0)),
+        : Math.max(0, dayBudget(block) - (dayTotals.get(key) ?? 0)),
     })),
   };
 }

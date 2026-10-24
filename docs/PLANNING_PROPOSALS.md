@@ -40,7 +40,7 @@ moves keep the duration. Whole-task deletion is never a proposal action. #36 add
 Protected `planningProposals` tRPC procedures delegate to
 `lib/planner/proposals/service.ts`:
 
-- `generate({requestId,date,mode,guidance})`: AI or explicit deterministic day generation;
+- `generate({requestId,date,mode,guidance,freeTimes?,reviseProposalId?})`: AI or explicit deterministic day generation;
   see [AI day planning](AI_DAY_PLANNING.md) for reports, limits and replay semantics.
 - `review({date,proposalId?,mode,guidance})`: transient current/pending-plan conflict and contextual review, with independently validated correction documents; see [Day plan review](PLAN_REVIEWS.md).
 - `replan(...)`: deterministic structured progress action and affected remainder;
@@ -87,9 +87,15 @@ category reservations, leisure placement, remaining estimates and session limits
 Intervals are half-open; touching endpoints are permitted. PTO/NO_WORK and category
 reservations cannot be used to bypass availability.
 
-Committed and completed minutes in other current plans are counted, while edited
-allocations are replaced before evaluating the total. Recurring work is counted per
-occurrence. New occurrences for non-recurring tasks are created only on acceptance;
+Completed minutes in all current plans and commitments on the selected local day
+count toward that day's effort budget; edited allocations replace their originals.
+Uncompleted commitments on other dates are preserved but do not exclude unfinished
+BACKLOG/IN_PROGRESS tasks from continuation. Open non-recurring occurrences can be
+referenced even when originally dated in the future; recurring date gates remain.
+An unfinished task whose completed effort has exhausted its estimate receives a
+labelled 25-minute continuation allowance without changing the saved estimate.
+Recurring work is counted per occurrence. All commitments still participate in
+completion checks and session finish-extension rules. New occurrences for non-recurring tasks are created only on acceptance;
 generation may also reference a virtual selected-day recurring occurrence, created on
 acceptance only after supported-rule/date validation. This workflow never
 backfills missed dates or resurrects a closed occurrence.
@@ -157,3 +163,7 @@ real desktop/390px preview/apply browser checks pass; browser runtime errors are
 empty. A private backup preceded the additive migration, which is applied locally.
 Existing legacy TodayView lint/format failures are outside this change. The public
 build/server were not changed; temporary fixture accounts/data were removed.
+
+## Conversational planning constraints (#37)
+
+Planner chat uses these same services; see [workspace](PLANNER_WORKSPACE.md#phase-2--conversational-planning-37). Generation can subtract explicit local free intervals from shared availability before existing task/meal placement. Proposals retain absolute `freeIntervals`; creation, corrections, revision and acceptance reject occupied time within them. Free intervals do not change saved availability for later independent generation. Selection-only provenance survives edits under `selectionExplanation`; stale allocation counts and timestamps do not. Acceptance and receipts remain unchanged.

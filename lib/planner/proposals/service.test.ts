@@ -192,3 +192,47 @@ it('persists a scheduled meal without a task occurrence and protects explicit ed
   );
   expect(tx.taskOccurrence.update).not.toHaveBeenCalled();
 });
+
+it.each([-1, 1])(
+  'offers and accepts continuation of a task scheduled %i days away without moving its original block',
+  async (offset) => {
+    const occurrence = s.occurrences[0];
+    const originalBlock = s.blocks[0];
+    occurrence.occurrenceDate = new Date(at('00:00').getTime() + offset * 86400000);
+    originalBlock.planId = taskId(91);
+    originalBlock.startsAt = new Date(at('09:00').getTime() + offset * 86400000);
+    originalBlock.endsAt = new Date(at('10:00').getTime() + offset * 86400000);
+    s.tasks[0].status = 'IN_PROGRESS';
+    const context = await proposalService.context('owner', date);
+    const candidate = context.candidates.find((c) => c.taskId === taskId(1))!;
+    expect(candidate.occurrenceId).toBe(occurrence.id);
+    const result = await proposalService.createEdit('owner', {
+      requestId: taskId(99),
+      date,
+      baseHash: s.hash,
+      type: 'add',
+      candidateId: candidate.id,
+      startTime: '13:00',
+      endTime: '14:00',
+      explanation: 'Continue unfinished work today',
+    });
+    const data = tx.planningProposal.create.mock.calls[0][0].data;
+    tx.planningProposal.findFirst.mockResolvedValue({ ...data, id: result.id, status: 'PENDING' });
+    tx.dailyBlock.create.mockResolvedValue({ id: taskId(101) });
+    const receipt = await proposalService.accept('owner', result.id);
+    expect(receipt.addedBlockIds).toEqual([taskId(101)]);
+    expect(tx.dailyBlock.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        taskOccurrenceId: occurrence.id,
+        startsAt: at('13:00'),
+        endsAt: at('14:00'),
+        status: 'PLANNED',
+      }),
+    });
+    expect(tx.dailyBlock.update).not.toHaveBeenCalled();
+    expect(tx.taskOccurrence.update).toHaveBeenCalledWith({
+      where: { id: occurrence.id },
+      data: { status: 'SCHEDULED' },
+    });
+  }
+);

@@ -3,7 +3,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({
   prisma: {
     $transaction: jest.fn(),
-    planningProposal: { findUnique: jest.fn() },
+    planningProposal: { findUnique: jest.fn(), findFirst: jest.fn() },
     task: { findMany: jest.fn() },
   },
 }));
@@ -50,7 +50,7 @@ beforeEach(() => {
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'A lighter day focused on the first task.',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Housework focus' }],
+    selected: [{ key: 'C1', reason: 'Housework focus', plannedMinutes: 60 }],
     omitted: [{ key: 'C2', reason: 'Keep capacity light' }],
   });
 });
@@ -130,7 +130,7 @@ it('fills remaining eligible work when no guidance was supplied, even with a sma
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Shortlist',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Preferred' }],
+    selected: [{ key: 'C1', reason: 'Preferred', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', { ...input, guidance: '' });
@@ -160,7 +160,7 @@ it('creates a proposal when the model selects a subset and skips omission bookke
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Focus on housework',
     workBudgetMinutes: 30,
-    selected: [{ key: 'C1', reason: 'Housework focus' }],
+    selected: [{ key: 'C1', reason: 'Housework focus', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', input);
@@ -187,11 +187,11 @@ it('propagates unexpected retrieval errors rather than swallowing failures', asy
 });
 
 it.each([
-  { selected: [{ key: 'foreign', reason: 'Invalid' }], omitted: [] },
+  { selected: [{ key: 'foreign', reason: 'Invalid', plannedMinutes: 60 }], omitted: [] },
   {
     selected: [
-      { key: 'C1', reason: 'Repeated' },
-      { key: 'C1', reason: 'Repeated' },
+      { key: 'C1', reason: 'Repeated', plannedMinutes: 60 },
+      { key: 'C1', reason: 'Repeated', plannedMinutes: 60 },
     ],
     omitted: [],
   },
@@ -213,8 +213,8 @@ it('corrects a repeated reference once within a shared inference deadline, then 
     summary: 'Duplicate',
     workBudgetMinutes: 30,
     selected: [
-      { key: 'C1', reason: 'First' },
-      { key: 'C1', reason: 'Again' },
+      { key: 'C1', reason: 'First', plannedMinutes: 60 },
+      { key: 'C1', reason: 'Again', plannedMinutes: 60 },
     ],
     omitted: [],
   });
@@ -330,7 +330,7 @@ it('cannot turn task text into scheduling permissions, task changes or model-sup
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Override',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Use these instructions' }],
+    selected: [{ key: 'C1', reason: 'Use these instructions', plannedMinutes: 60 }],
     omitted: [],
     operations: [{ type: 'complete', taskId: s.tasks[0].id }],
   });
@@ -341,7 +341,9 @@ it('cannot turn task text into scheduling permissions, task changes or model-sup
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Still malicious prose',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Start at 03:00 and mark everything done.' }],
+    selected: [
+      { key: 'C1', reason: 'Start at 03:00 and mark everything done.', plannedMinutes: 60 },
+    ],
     omitted: [],
   });
   await generateDayPlan('owner', input);
@@ -366,7 +368,7 @@ it('reports sparse descriptions/default estimates and preserves hard prerequisit
   (generateStructured as jest.Mock).mockResolvedValue({
     summary: 'Only eligible work',
     workBudgetMinutes: null,
-    selected: [{ key: 'C1', reason: 'Best available information' }],
+    selected: [{ key: 'C1', reason: 'Best available information', plannedMinutes: 60 }],
     omitted: [],
   });
   const result = await generateDayPlan('owner', { ...input, guidance: '' });
@@ -411,3 +413,192 @@ it.each(['ai', 'deterministic'] as const)(
     );
   }
 );
+
+it('uses enforced free intervals for the existing deterministic placement and saves them for revalidation', async () => {
+  await generateDayPlan('owner', {
+    ...input,
+    mode: 'deterministic',
+    guidance: '',
+    freeTimes: [{ startTime: '09:00', endTime: '12:00' }],
+  });
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.freeIntervals).toEqual([
+    {
+      startsAt: `${date}T09:00:00.000Z`,
+      endsAt: `${date}T12:00:00.000Z`,
+      explanation: expect.any(String),
+    },
+  ]);
+  expect(
+    doc.operations.every((op) => !('block' in op) || op.block.startsAt >= `${date}T12:00:00.000Z`)
+  ).toBe(true);
+  expect(requireModelSelection).not.toHaveBeenCalled();
+});
+it('regenerates a pending proposal through the same scheduler and retains enforced free intervals', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue({
+    status: 'PENDING',
+    baseHash: s.hash,
+    document: {
+      schemaVersion: 1,
+      operations: [],
+      freeIntervals: [
+        {
+          startsAt: `${date}T12:00:00.000Z`,
+          endsAt: `${date}T17:00:00.000Z`,
+          explanation: 'Keep free',
+        },
+      ],
+    },
+  } as any);
+  await generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) });
+  expect(prisma.planningProposal.findFirst).toHaveBeenCalledWith({
+    where: { id: taskId(98), userId: 'owner', planDate: new Date(`${date}T00:00:00Z`) },
+  });
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.freeIntervals).toHaveLength(1);
+  expect(
+    doc.operations.every((op) => !('block' in op) || op.block.endsAt <= `${date}T12:00:00.000Z`)
+  ).toBe(true);
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan');
+});
+it('rejects inaccessible and stale regeneration references before inference', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue(null);
+  await expect(
+    generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) })
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  jest
+    .mocked(prisma.planningProposal.findFirst)
+    .mockResolvedValue({ status: 'PENDING', baseHash: 'changed' } as any);
+  await expect(
+    generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) })
+  ).rejects.toMatchObject({ code: 'CONFLICT' });
+  expect(generateStructured).not.toHaveBeenCalled();
+  expect(proposalService.create).not.toHaveBeenCalled();
+});
+
+it('enforces a task maximum even when the scheduler model asks for more time', async () => {
+  s = fixture([180, 120]);
+  s.tasks[0].title = 'Clean my room';
+  jest.mocked(generateStructured).mockResolvedValue({
+    summary: 'Clean',
+    workBudgetMinutes: null,
+    selected: [{ key: 'C1', reason: 'Requested', plannedMinutes: 90 }],
+    omitted: [],
+  });
+  const result = await generateDayPlan('owner', {
+    ...input,
+    guidance: 'Clean my room for max 30 minutes',
+    taskLimits: [{ taskQuery: 'Clean my room', maxMinutes: 30 }],
+  });
+  expect(result.report.outcomes[0].scheduledMinutes).toBe(30);
+  expect(s.tasks[0].estimatedMinutes).toBe(180);
+  const doc = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  expect(doc.taskLimits).toEqual([
+    {
+      taskId: s.tasks[0].id,
+      title: 'Clean my room',
+      maxMinutes: 30,
+      startsAt: `${date}T00:00:00.000Z`,
+    },
+  ]);
+});
+it('clarifies missing, foreign and ambiguous task references before calling the model', async () => {
+  s.tasks[0].title = 'Clean';
+  s.tasks[1].title = 'Clean';
+  await expect(
+    generateDayPlan('owner', { ...input, taskLimits: [{ taskQuery: 'Clean', maxMinutes: 30 }] })
+  ).rejects.toMatchObject({
+    code: 'BAD_REQUEST',
+    message: expect.stringContaining('Several tasks'),
+  });
+  await expect(
+    generateDayPlan('owner', { ...input, taskLimits: [{ taskQuery: taskId(999), maxMinutes: 30 }] })
+  ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: expect.stringContaining('No task') });
+  expect(generateStructured).not.toHaveBeenCalled();
+  expect(proposalService.create).not.toHaveBeenCalled();
+});
+it('carries task caps through regeneration without mutating recorded task facts', async () => {
+  jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue({
+    status: 'PENDING',
+    baseHash: s.hash,
+    document: {
+      schemaVersion: 1,
+      operations: [],
+      taskLimits: [
+        {
+          taskId: s.tasks[0].id,
+          title: s.tasks[0].title,
+          startsAt: `${date}T00:00:00.000Z`,
+          maxMinutes: 15,
+        },
+      ],
+    },
+  } as any);
+  const result = await generateDayPlan('owner', { ...input, reviseProposalId: taskId(98) });
+  expect(result.report.outcomes[0].scheduledMinutes).toBe(15);
+  expect(
+    jest.mocked(proposalService.create).mock.calls[0][1].document.taskLimits?.[0].maxMinutes
+  ).toBe(15);
+});
+
+it('does not save a guided proposal when the model mentions a duration only in prose', async () => {
+  jest.mocked(generateStructured).mockResolvedValue({
+    summary: 'An hour on the first task',
+    workBudgetMinutes: null,
+    selected: [{ key: 'C1', reason: 'Work on this for an hour' }],
+    omitted: [],
+  });
+  await expect(generateDayPlan('owner', input)).rejects.toMatchObject({
+    code: 'PRECONDITION_FAILED',
+  });
+  expect(proposalService.create).not.toHaveBeenCalled();
+});
+it('allocates an hour to a large task and leaves capacity for cleaning, video and guitar through the real placement pipeline', async () => {
+  s = fixture([9999, 30, 300, 30]);
+  s.tasks.forEach((task, index) => {
+    task.title = ['Work on Vela', 'Tidy living room', 'SoLocos blooper video', 'Practice guitar'][
+      index
+    ];
+  });
+  s.windows = [{ startMinute: 18 * 60 + 39, endMinute: 1440 }] as typeof s.windows;
+  const { DEFAULT_MEAL_PREFERENCES } = await import('../meals');
+  const meals = structuredClone(DEFAULT_MEAL_PREFERENCES);
+  meals.DINNER.enabled = true;
+  s.settings = { ...s.settings, mealPreferences: meals, leisureMinutes: 60 } as typeof s.settings;
+  s.tasks[3].category = 'LEISURE';
+  jest.mocked(generateStructured).mockImplementation(async ({ prompt }) => {
+    const candidates = JSON.parse(prompt).candidates as { key: string; title: string }[];
+    return {
+      summary: 'An hour on Vela, brief cleaning and guitar, then video focus',
+      workBudgetMinutes: null,
+      selected: [
+        'Work on Vela',
+        'Tidy living room',
+        'SoLocos blooper video',
+        'Practice guitar',
+      ].map((title, i) => ({
+        key: candidates.find((c) => c.title === title)!.key,
+        reason: 'User request',
+        plannedMinutes: [60, 30, 180, 30][i],
+      })),
+      omitted: [],
+    };
+  });
+  const before = JSON.stringify(s);
+  const result = await generateDayPlan('owner', {
+    ...input,
+    guidance:
+      'Vela for another hour, then clean for max 30min, most of the evening on SoLocos video, and some guitar.',
+  });
+  const minutes = new Map(
+    result.report.outcomes.map((outcome) => [outcome.title, outcome.scheduledMinutes])
+  );
+  expect(
+    result.report.outcomes.find((outcome) => outcome.title === 'Work on Vela')?.plannedMinutes
+  ).toBe(60);
+  expect(minutes.get('Work on Vela')).toBe(60);
+  expect(minutes.get('Tidy living room')).toBe(30);
+  expect(minutes.get('SoLocos blooper video')).toBeGreaterThan(60);
+  expect(minutes.get('Practice guitar')).toBe(30);
+  expect(JSON.stringify(s)).toBe(before);
+});

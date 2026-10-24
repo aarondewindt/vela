@@ -5,6 +5,7 @@ jest.mock('./conversations', () => ({
   conversationService: { beginTurn: jest.fn(), finishTurn: jest.fn() },
 }));
 jest.mock('ai', () => ({
+  stepCountIs: jest.fn(() => 'four-step-limit'),
   convertToModelMessages: jest.fn(),
   streamText: jest.fn(),
   toUIMessageStream: jest.fn(),
@@ -109,4 +110,26 @@ describe('aiDevService', () => {
       })
     ).rejects.toThrow('The response could not be saved.');
   });
+});
+
+it('replays saved planning cards and diagnostics without calling the model', async () => {
+  const output = { date: '2030-01-07', reply: 'Preview only' };
+  const debug = { events: [], omittedEvents: 0 };
+  jest.mocked(conversationService.beginTurn).mockResolvedValue({
+    ...turn,
+    generationId: null,
+    response: {
+      ...reply,
+      parts: [
+        { type: 'data-planning', data: output },
+        { type: 'data-plannerDebug', data: debug },
+      ],
+    },
+  } as any);
+  await aiDevService.streamChat('owner', input, signal);
+  const writer = { write: jest.fn() };
+  (jest.mocked(createUIMessageStream).mock.calls[0][0] as any).execute({ writer });
+  expect(writer.write).toHaveBeenCalledWith({ type: 'data-planning', data: output });
+  expect(writer.write).toHaveBeenCalledWith({ type: 'data-plannerDebug', data: debug });
+  expect(resolveChatModel).not.toHaveBeenCalled();
 });

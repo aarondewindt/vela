@@ -14,6 +14,7 @@ export function placementIntent(candidates: Candidate[], selection: Selection, g
       ...selection.selected.map((item) => ({
         candidate: candidates.find((candidate) => candidate.key === item.key)!,
         reason: item.reason,
+        plannedMinutes: guided ? item.plannedMinutes : undefined,
       })),
       ...additional.map((candidate) => ({
         candidate,

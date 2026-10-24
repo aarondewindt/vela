@@ -16,7 +16,7 @@ jest.mock('@/lib/ai', () => ({ resolveChatModel: jest.fn() }));
 
 import { prisma } from '@/lib/prisma';
 import { resolveChatModel } from '@/lib/ai';
-import { conversationService } from './conversations';
+import { conversationService, createConversationService } from './conversations';
 import type { ChatInput } from './schema';
 
 const id = '45f6af99-9a30-4638-b05f-fb826b970379';
@@ -101,7 +101,7 @@ describe('model inheritance and switching', () => {
     await conversationService.changeModel('user-a', id, null);
     expect(resolveChatModel).not.toHaveBeenCalled();
     expect(prisma.aiConversation.updateMany).toHaveBeenCalledWith({
-      where: { id, userId: 'user-a', activeGenerationId: null },
+      where: { id, scope: 'ai-dev', userId: 'user-a', activeGenerationId: null },
       data: { inheritsModel: true },
     });
     await expect(
@@ -121,14 +121,14 @@ describe('conversationService authorization', () => {
   it('scopes listing and deletion to the authenticated user', async () => {
     await conversationService.list('user-a');
     expect(prisma.aiConversation.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { userId: 'user-a' } })
+      expect.objectContaining({ where: { userId: 'user-a', scope: 'ai-dev' } })
     );
     (prisma.aiConversation.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
     await expect(conversationService.delete('user-a', id)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
     expect(prisma.aiConversation.deleteMany).toHaveBeenCalledWith({
-      where: { id, userId: 'user-a' },
+      where: { id, scope: 'ai-dev', userId: 'user-a' },
     });
   });
   it('does not expose conversations owned by another user', async () => {
@@ -141,7 +141,7 @@ describe('conversationService authorization', () => {
       code: 'NOT_FOUND',
     });
     expect(tx.aiConversation.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id, userId: 'user-b' } })
+      expect.objectContaining({ where: { id, scope: 'ai-dev', userId: 'user-b' } })
     );
     expect(tx.aiMessage.create).not.toHaveBeenCalled();
   });
@@ -172,7 +172,7 @@ describe('conversationService turns', () => {
       }),
     });
     expect(tx.aiConversation.updateMany).toHaveBeenCalledWith({
-      where: { id, userId: 'user-a' },
+      where: { id, scope: 'ai-dev', userId: 'user-a' },
       data: { title: 'Hello' },
     });
   });
@@ -273,12 +273,45 @@ describe('conversationService turns', () => {
     await conversationService.finishTurn('user-a', id, 'generation-1', response, 'INTERRUPTED');
     expect(tx.aiConversation.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id, userId: 'user-a', activeGenerationId: 'generation-1' },
+        where: { id, scope: 'ai-dev', userId: 'user-a', activeGenerationId: 'generation-1' },
       })
     );
     expect(tx.aiMessage.updateMany).toHaveBeenCalledWith({
       where: { conversationId: id, id: 'a', role: 'assistant', conversation: { userId: 'user-a' } },
       data: { parts: [{ type: 'text', text: 'Partial', state: 'done' }], status: 'INTERRUPTED' },
     });
+  });
+});
+
+describe('Planner conversation isolation', () => {
+  const planner = createConversationService('planner');
+  it('scopes reads, model edits and deletion to Planner and owner', async () => {
+    await planner.list('user-a');
+    expect(prisma.aiConversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'user-a', scope: 'planner' } })
+    );
+    (prisma.aiConversation.findFirst as jest.Mock).mockResolvedValue(null);
+    await expect(planner.changeModel('user-a', id, null)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    expect(prisma.aiConversation.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id, userId: 'user-a', scope: 'planner' } })
+    );
+    (prisma.aiConversation.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
+    await expect(planner.delete('user-a', id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(prisma.aiConversation.deleteMany).toHaveBeenCalledWith({
+      where: { id, userId: 'user-a', scope: 'planner' },
+    });
+  });
+  it('rejects an AI Dev conversation before writing a Planner message', async () => {
+    tx.aiConversation.updateMany.mockResolvedValue({ count: 0 });
+    tx.aiConversation.findFirst.mockResolvedValue(null);
+    await expect(planner.beginTurn('user-a', input)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(tx.aiConversation.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user-a', scope: 'planner' }),
+      })
+    );
+    expect(tx.aiMessage.create).not.toHaveBeenCalled();
   });
 });

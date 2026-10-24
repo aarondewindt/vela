@@ -2,8 +2,127 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Issue #90 manual Android health synchronization implemented on the current branch. Full Jest, isolated PostgreSQL ingestion, TypeScript and Android build/JVM/lint/device-test compilation pass. Physical phone-to-Vela verification and Samsung elapsed/projected semantic classification remain manual gates. No #91 background sync implemented.
+**Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
+
+## Integrated task/theme conversation #38 — 2026-10-24
+
+- Existing Today chat now has owner-bound inventory find/propose/revise tools,
+  inline shared record-review cards, explicit deletion confirmation, match choices,
+  ordinary Tasks links and planner/search/review cache invalidation. No new chat.
+- `PlannerRecordProposal` persists preview state and transactional receipts linked
+  to the Planner-scoped streaming conversation. Stable per-message identity blocks
+  duplicate creates; current-message fencing, stale fingerprints, serial acceptance
+  and superseded/discarded statuses protect retries and corrections. Interrupted
+  pending cards recover independently of message persistence. Existing domain record
+  services and lock ordering are reused; shared locks moved into conversation/transaction.ts.
+- Dedicated revision tool derives target/action from the pending preview. Live
+  qwen3:8b initially tried updating an unaccepted creation and omitted irrelevant
+  nullable tool fields; optional tool arguments and the dedicated revision tool
+  corrected tool invocation in synthetic smoke checks. Model prose can still
+  describe previews imprecisely; canonical cards/explicit acceptance own state.
+- Migration `20261024140000_planner_record_proposals` is additive and NOT applied
+  to the application DB. Isolated PostgreSQL tests passed concurrency, replay after
+  deletion, stale rejection, receipt-write rollback, theme relationships, status,
+  creation corrections and destructive confirmation. No deployment/restart.
+- Production build and TypeScript pass. Synthetic live model used production tool
+  schemas with stub operations, not actual record persistence. Authenticated desktop/
+  mobile acceptance remains; keep #38 open. See PLANNER_WORKSPACE.md for supported
+  properties, persistence, deployment and acceptance. Final checks: full Jest 1,256 passed / eight opt-in skips; three isolated
+  PostgreSQL checks passed; changed-file Oxlint/format, Prisma validation, TypeScript
+  and production build passed. Sandbox build stalled, was stopped, and its stale
+  lock removed after checking no build process remained; external build passed.
+
+## Planner guidance and debug continuation — 2026-10-24
+
+- Generation chat tool now takes only date/guidance. Removed chat-side hard
+  classification/rejection and forced typed duration/free-time extraction; latest
+  user request is preserved with bounded prior context for the existing scheduler.
+  Deterministic constraints, typed application APIs and proposal approval remain.
+- Planner stream now records owner-scoped `data-plannerDebug` parts: bounded model
+  request, tool input/output/error, finish reason/token counts and status. Collapsed
+  Mantine inspector streams/restores these beneath each response. Redaction,
+  escaped text and payload/event bounds avoid raw SDK/config/header serialization.
+- Planner uses Ollama think:false, 4,096 output tokens and a 150s deadline. Empty
+  completions, output exhaustion, setup/provider/tool failures get visible text and
+  persisted trace; cancellation remains distinct. Existing AI Dev behavior retained.
+- Real AI SDK stream composition verified with a mock provider, then live qwen3:8b
+  verified against all five production tool schemas with synthetic context and stub
+  operations: generateDayPlan received durations and produced a complete visible
+  response/card/debug trace. No real planning records were read or changed. No
+  application migration/restart/deployment performed. Full Jest: 1,211 passed, five
+  opt-in skips; TypeScript, production build and changed-file lint/format pass.
+  #37 remains open for actual scheduler/browser acceptance.
+
+## Conversational duration fix — 2026-10-24
+
+- Fixed the broad unsupported-constraint response for normal remaining-day requests.
+  Saved availability/current-time cutoffs, approximate durations, ordering and focus
+  are supported. Prompt/tool schema distinguish these from unsupported restrictions;
+  errors now name the restriction and do not advise reserving empty time for tasks.
+- Existing AI scheduler selection supports optional per-task `plannedMinutes` for
+  guided allocation; unguided fill ignores unsolicited model targets. Explicit
+  `taskLimits` resolve task names/IDs against the owner's snapshot, share deterministic
+  future-minute accounting with the proposal validator and survive revisions,
+  corrections, regeneration and acceptance. No task estimate or schedule writes
+  occur before normal explicit approval. No migration/dependency added.
+- Full Jest: 1,199 passed, five opt-in skips; focused checks cover the reported mix
+  of approximate duration, cleaning cap, main-task emphasis and practice. TypeScript,
+  production build and changed-file lint/format pass. Live Ollama interpretation
+  and authenticated browser behavior remain unverified. No application restart,
+  migration or deployment was performed.
+
+## Conversational planning #37 — Phase 2 — 2026-10-24
+
+- Planner streaming now has typed owner-bound context, generation, edit/progress,
+  review and explanation tools. Generation calls the same `generateDayPlan` as the
+  ordinary UI; review uses `reviewDayPlan`; edits/progress reuse `planInstruction`
+  and `proposalService.replan`. No task/theme CRUD or second scheduler.
+- Conversation model/override remains independent of `planner.dayPlan` and
+  `planner.planReview`. Tools cannot accept proposals or access arbitrary Prisma.
+- Compact typed result parts restore inline application-owned preview/review cards;
+  Apply/Discard/Revise and saved proposal controls retain canonical acceptance.
+  Serial tool calls, deterministic request identities, saved-result recovery,
+  owner/date checks and existing fingerprints/receipts handle retries and stale data.
+- Explicit empty intervals are subtracted by shared availability for task/meal
+  generation and retained as `freeIntervals` in proposal JSON for creation,
+  correction/revision and acceptance checks. These constrain the proposal and its
+  revisions, not later independent planning; use saved availability for persistence.
+  Other hard restrictions report a limitation rather than becoming soft guidance.
+- Transient workspace state contains preview/focus IDs only; TanStack Query owns
+  proposal data. Calendar ghosts are labeled, cannot drag/resize or block manual
+  placement, and task/block selections link across columns. Other zero-allocation
+  outcomes are collapsed, while allocated/deadline-risk work remains prominent.
+- No new migration or dependency. Phase 1's `20261024130000_planner_chat_scope`
+  still needs normal deployment where not applied. No application DB migration,
+  deployment, browser session or actual Ollama inference was performed here.
+- Validation: full Jest 150 suites / 1,190 tests pass, five opt-in skips; final
+  inline-preview focused run 63 tests and bounded-history/tool run 28 tests pass.
+  TypeScript, production build and changed-file lint/style/format pass. Broad
+  lint/format retain untouched baseline violations.
+- See [workspace documentation](PLANNER_WORKSPACE.md) for tools, lifecycle, limits
+  and live acceptance. Keep #37/#59 open pending actual model and authenticated
+  desktop/mobile drag/resize/highlight/reload checks; #38/#39/#40 remain deferred.
+
+## Planner workspace #59 — Phase 1
+
+- Today retains candidate picker and DayView handlers, adds resizable Planner chat,
+  and uses focused panes below `lg` without unmounting the chat.
+- Shared AI Dev conversation/streaming factories and UI support separate Planner
+  histories, `planner.conversation` model settings, streaming, retry and basic Markdown.
+- Planner context is server-owned and bounded; chat has no mutation tools. Existing
+  proposal generation/review/replan/acceptance controls are embedded in a planning
+  card. See [workspace architecture and next steps](PLANNER_WORKSPACE.md).
+- Additive migration `20261024130000_planner_chat_scope` must be deployed before
+  runtime use. Prisma generated and schema validated; application DB not migrated.
+- Full Jest passed: 1,165 tests, five opt-in tests skipped; the final Markdown
+  rendering test also passed separately. TypeScript, Prisma schema validation,
+  production build and changed-file lint/style/format checks pass. Repository-wide
+  lint/format retain unrelated baseline failures. The build required running outside
+  the sandbox after stopping a stalled sandbox build and removing its stale lock.
+- Authenticated desktop/mobile drag/resize and live Ollama smoke checks remain
+  manual; no browser automation is installed. Keep #59 open for later linked
+  proposal highlighting and conversational tools. Do not close #37/#38/#73.
 
 ## Android manual synchronization #90 — 2026-10-24
 
@@ -844,3 +963,45 @@ connected test execution, live Withings/Samsung validation or issue closure.
 Stop after this continuation for user review; #12/#94/heart-rate/Health Connect
 were excluded. Remaining live-device, cadence, BMR availability and calorie
 semantics checks are in the source-matrix guide.
+
+## Planner continuation eligibility — 2026-10-24
+
+User acceptance trace exposed unfinished SoLocos work disappearing from generation:
+all dates' planned/active minutes consumed the effort estimate, and future occurrence
+dates were rejected. BACKLOG/IN_PROGRESS one-off tasks can now reuse open occurrences
+on either side of their original date. DONE effort plus selected-local-day commitments
+consume the day budget; other dates' unfinished blocks remain intact. If completed
+effort exhausts an unfinished task's estimate, use a labelled 25-minute continuation
+allowance without modifying the estimate. Shared proposal validation/acceptance applies
+the same accounting; recurrence dates, prerequisites, earliest starts, actual history,
+explicit completion and session-extension protections remain. Future move-versus-add
+confirmation is deferred; continuation currently adds a reviewed block.
+
+The trace also supplied a bare task UUID instead of a composite candidate ID.
+Conversation replacement/addition now resolves unique task IDs and clarifies multiple
+eligible occurrences. Prior uncommitted replacement-tool/result-detail changes from
+this session remain in the working tree. The model still failed the requested Vela
+one-hour preference in the pasted trace; eligibility correction does not demonstrate
+that the model will select or allocate the requested work correctly. Live Ollama/UI
+acceptance remains required. No saved user schedule was modified or deployed.
+
+
+## Guided allocation correction — 2026-10-24
+
+Latest trace restored SoLocos eligibility/selection but allocated 186 minutes to
+Vela, starving video and cleaning. Guided selection previously allowed omitted/null
+plannedMinutes, which fell back to the full task estimate. The model contract now
+requires positive numeric allocations for every guided selection, with explicit
+approximate-duration examples. Missing allocations reject the proposal; unguided
+fill behavior stays compatible. Allocation targets persist in generation outcomes
+and display separately from actual placement under the AI assessment. Proposal
+card headings use a concise summary; detailed actual results still reach chat.
+
+Synthetic real qwen3:8b selection plus application placement passed with Vela
+estimated at 9,999 minutes: 60 Vela / 30 cleaning / 96 video / 30 guitar minutes,
+plus dinner/breaks/leisure. Repeatable no-user-record/no-proposal check:
+`node --conditions=react-server --import tsx scripts/evaluate-planner-allocations.ts`.
+Full Jest: 154 suites, 1,239 tests passed; five opt-in tests skipped. TypeScript,
+scoped lint/format and whitespace passed. This verifies one synthetic model case;
+actual authenticated chat/UI acceptance and general guidance compliance remain
+unverified. No deployment, user schedule edits or commits in this turn.

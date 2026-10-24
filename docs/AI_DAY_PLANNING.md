@@ -42,7 +42,7 @@ now generates proposals instead of calling it.
 
 ## Responsibilities and persistence
 
-Protected `planningProposals.generate({requestId,date,mode,guidance})` delegates to
+Protected `planningProposals.generate({requestId,date,mode,guidance,freeTimes?,taskLimits?,reviseProposalId?})` delegates to
 `lib/planner/generation/service.ts`. Generation reads a consistent owner-scoped
 snapshot, performs inference outside transactions, computes placements, and calls
 the existing proposal creation service with that snapshot's fingerprint. Input
@@ -50,9 +50,12 @@ changes during generation require a fresh preview. Nothing updates planning
 records before acceptance.
 
 AI chooses candidate order, explains selections/omissions, and may suggest a
-smaller work-minute budget when guidance was supplied. Unguided generation tries
+smaller work-minute budget. Guided model output requires a positive integer
+`plannedMinutes` for every selected task; an omitted/null allocation is invalid rather
+than silently scheduling its entire remaining estimate. Numeric allocation targets
+are saved alongside actual placed minutes and shown under the AI assessment. Approximate requests such as “about an hour” become bounded allocation targets rather than changes to recorded task estimates. Unguided generation tries
 remaining eligible candidates after the AI shortlist, without a model-imposed
-work cap. It cannot supply placement timestamps, alter task
+work cap or unsolicited per-task allocation target. It cannot supply placement timestamps, alter task
 properties, waive constraints, complete prerequisites, or apply changes. The
 application calculates availability, remaining estimates, category compatibility,
 leisure reservations, task splitting and rest. Trial placements use the shared
@@ -90,8 +93,21 @@ blocks or reservations can be added, the service returns an unsaved report with
 
 Eligibility uses current task/occurrence status, unresolved hard prerequisites,
 selected date and earliest start. Due dates propagate through hard dependency
-chains. Remaining work subtracts completed effort and commitments in all current
-plans, separately per recurring occurrence. Missing effort uses the existing
+chains. BACKLOG and IN_PROGRESS tasks remain candidates when they have planned or
+active blocks on earlier or later dates. Open non-recurring occurrences can be
+continued before or after their original date; future recurring occurrences still
+respect their recurrence date. Planning adds a block for the existing occurrence
+and preserves other dates' blocks. Moving those blocks or asking whether to move
+versus add is deferred.
+
+Remaining work subtracts actual DONE effort across current plans and selected-day
+PLANNED/IN_PROGRESS commitments, separately per recurring occurrence. Other dates'
+uncompleted allocations do not consume today's effort budget. If completed effort
+has exhausted a positive estimate while the task remains unfinished, a labelled
+25-minute continuation allowance keeps it discoverable without changing its estimate.
+Creation and acceptance use the same accounting and warn about retained blocks on
+other dates. Session finish extensions still inspect all commitments, so continuation
+cannot falsely qualify as completing the whole task. Missing effort uses the existing
 25-minute default and is identified in the report. Blocked tasks are reported;
 scheduling a prerequisite does not unlock its dependents.
 
@@ -159,3 +175,41 @@ light-day guidance, preview isolation, deferred recurrence creation, atomic leis
 insertion, owner isolation, stale inputs and duplicate acceptance. Browser checks
 exercise unavailable-model errors, explicit deterministic fallback, preview/apply
 and desktop/390px layouts. Temporary fixtures are removed after verification.
+
+## Requested task durations
+
+Chat planning uses saved availability and the existing current-time cutoff automatically.
+Approximate durations, ordering and relative emphasis belong in guidance; the scheduler
+must return numeric `plannedMinutes` for each selected candidate. Deterministic placement caps
+that allocation at remaining effort, available time and existing session constraints.
+Unguided fill ignores unsolicited model allocation targets, preserving normal fill behavior.
+
+Application callers can request an explicit maximum, such as “clean my room for max 30 minutes,” using typed
+`taskLimits: [{taskQuery, maxMinutes}]`. The generation service resolves names/IDs
+within the owner's snapshot and clarifies unknown/ambiguous matches before inference.
+Canonical limits retain the owned task ID, title, a stable request-time boundary and
+maximum. All remaining PLANNED/IN_PROGRESS minutes for that task after the boundary,
+including preserved commitments and separate occurrences, count toward the maximum;
+completed history is retained. Existing commitments already above the maximum require
+explicit adjustment rather than silent removal. Generation, revision, correction and
+acceptance use the same accounting function and validator. Limits survive regeneration,
+are shown in previews, and do not alter task effort or future independent plans.
+
+Conversational generation passes the original request and relevant context as
+guidance; the chat does not classify hard requirements or reject the request before
+calling the scheduler. Typed limits remain an application API feature. Guidance
+alone is not represented as a verified arbitrary hard constraint. Scheduler reports
+and validated proposals describe the actual result; chat must not ask users to
+re-enter saved availability or reserve an empty interval for a task.
+
+
+### Guided allocation regression check
+
+`node --conditions=react-server --import tsx scripts/evaluate-planner-allocations.ts`
+runs the selection contract and deterministic placement with synthetic tasks only;
+it reads no user records and saves no proposals. It uses configured Ollama and
+`PLANNER_EVAL_MODEL` (default `qwen3:8b`). With Vela estimated at 9,999 minutes and
+guidance requesting an hour, cleaning up to 30 minutes, video focus and guitar,
+the 2026-10-24 check returned actual allocations of 60 / 30 / 96 / 30 minutes
+respectively, alongside dinner, breaks and leisure reservations. This is one
+synthetic real-model case, not general natural-language compliance evidence.

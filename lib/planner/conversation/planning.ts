@@ -1,4 +1,5 @@
 import 'server-only';
+import { selectionExplanation } from '../proposals/explanations';
 import { prisma } from '@/lib/prisma';
 import { generateDayPlan } from '../generation/service';
 import { proposalService } from '../proposals/service';
@@ -12,7 +13,7 @@ export async function planInstruction(
   userId: string,
   requestId: string,
   instruction: Exclude<Instruction, { type: 'record' | 'clarify' | 'find' }>,
-  previous?: ConversationResult,
+  previous?: Pick<ConversationResult, 'date' | 'proposalId'>,
   userTimezone?: string
 ) {
   const { date } = instruction;
@@ -90,6 +91,83 @@ export async function planInstruction(
     ) ?? []),
   ].map((b) => ({ ...b, label: b.title }));
   const candidates = context.candidates.map((c) => ({ ...c, label: c.title }));
+  const resolveCandidate = (query: string | null) => {
+    // Chat may copy a task ID instead of the composite candidate/occurrence ID.
+    const taskMatches = candidates.filter((candidate) => candidate.taskId === query);
+    if (taskMatches.length > 1) {
+      throw new Clarification(
+        'Several eligible task occurrences match this task ID. Choose one by its candidate ID.',
+        taskMatches
+      );
+    }
+    return taskMatches[0] ?? resolveOne(candidates, query, 'eligible task occurrence');
+  };
+  if (old && old.baseHash !== context.baseHash) {
+    throw new Clarification('Planning inputs changed. Refresh and generate a fresh proposal.');
+  }
+  if (instruction.type === 'replaceBlocks') {
+    const selected = instruction.blockQueries.map((query) => resolveOne(blocks, query, 'block'));
+    if (new Set(selected.map((block) => block.id)).size !== selected.length) {
+      throw new Clarification('Choose each block only once.');
+    }
+    if (selected.some((block) => block.status !== 'PLANNED' || !block.editable)) {
+      throw new Clarification('Choose editable planned blocks for replacement.');
+    }
+    const candidate = resolveCandidate(instruction.candidateQuery);
+    const document = old ? documentSchema.parse(old.document) : undefined;
+    if (document?.replan) {
+      throw new Clarification('Accept or discard the progress preview first.');
+    }
+    let operations = [...(document?.operations ?? [])];
+    for (const block of selected) {
+      const replacement = {
+        kind: 'TASK' as const,
+        taskId: candidate.taskId,
+        occurrenceId: candidate.occurrenceId,
+        startsAt: block.startsAt,
+        endsAt: block.endsAt,
+      };
+      if (block.id.startsWith('new:')) {
+        const index = Number(block.id.slice(4));
+        const original = operations[index];
+        if (!original || !('block' in original)) {
+          throw new Clarification(
+            'Could not identify this pending block. Generate a new proposal.'
+          );
+        }
+        operations[index] = {
+          ...original,
+          block: replacement,
+          explanation: instruction.explanation,
+        };
+      } else {
+        operations = operations.filter((op) => !('blockId' in op && op.blockId === block.id));
+        operations.push({
+          type: 'replace',
+          blockId: block.id,
+          block: replacement,
+          explanation: instruction.explanation,
+        });
+      }
+    }
+    const result = await proposalService.create(userId, {
+      requestId,
+      date,
+      baseHash: context.baseHash,
+      document: {
+        schemaVersion: 1,
+        operations,
+        taskLimits: document?.taskLimits,
+        selectionExplanation: document ? selectionExplanation(document) : undefined,
+        reservations: document?.reservations,
+        freeIntervals: document?.freeIntervals,
+      },
+    });
+    return {
+      reply: `Review the replacement of ${selected.length} blocks with “${candidate.title}”, preserving their start and end times. Your plan has not changed.`,
+      proposalId: result.id,
+    };
+  }
   if (instruction.type === 'reserve') {
     const startsAt = wallInstant(
       date,
@@ -98,7 +176,7 @@ export async function planInstruction(
     ).toISOString();
     const endsAt = wallInstant(
       date,
-      timeMinute(instruction.endTime),
+      instruction.endTime === '24:00' ? 1440 : timeMinute(instruction.endTime),
       context.timezone
     ).toISOString();
     const overlapping = blocks.filter(
@@ -111,29 +189,57 @@ export async function planInstruction(
         overlapping.map((b) => ({ id: b.id, label: b.label }))
       );
     }
-    if (old) {
-      throw new Clarification(
-        'Should this free interval replace the pending proposal? Ask to keep this interval free in a new conversation, or discard the pending proposal first.'
-      );
+    const priorDocument = old ? documentSchema.parse(old.document) : undefined;
+    if (priorDocument?.replan) {
+      throw new Clarification('Accept or discard the progress preview first.');
     }
+    const removed = new Set(overlapping.map((b) => b.id));
+    const operations = (priorDocument?.operations ?? []).filter((op, index) => {
+      if (removed.has(`new:${index}`) && 'block' in op) {
+        return false;
+      }
+      return !('blockId' in op && removed.has(op.blockId));
+    });
     const result = await proposalService.create(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
       document: {
         schemaVersion: 1,
-        operations: overlapping.map((b) => ({
-          type: 'remove',
-          blockId: b.id,
-          explanation: instruction.explanation,
-        })),
-        reservations: [
-          { category: 'LEISURE', startsAt, endsAt, explanation: instruction.explanation },
+        taskLimits: priorDocument?.taskLimits,
+        selectionExplanation: priorDocument ? selectionExplanation(priorDocument) : undefined,
+        operations: [
+          ...operations,
+          ...overlapping.flatMap((b) => {
+            if (b.id.startsWith('new:')) {
+              const original = priorDocument?.operations[Number(b.id.slice(4))];
+              return original && 'blockId' in original
+                ? [
+                    {
+                      type: 'remove' as const,
+                      blockId: original.blockId,
+                      explanation: instruction.explanation,
+                    },
+                  ]
+                : [];
+            }
+            return [
+              { type: 'remove' as const, blockId: b.id, explanation: instruction.explanation },
+            ];
+          }),
+        ],
+        reservations: priorDocument?.reservations?.filter(
+          (r) => r.endsAt <= startsAt || r.startsAt >= endsAt
+        ),
+        freeIntervals: [
+          ...(priorDocument?.freeIntervals ?? []),
+          { startsAt, endsAt, explanation: instruction.explanation },
         ],
       },
     });
     return {
-      reply: 'Review the free-time reservation and any released task blocks below. Tasks are kept.',
+      reply:
+        'Review the enforced free interval and released blocks below. Tasks are kept. This constraint belongs to this proposal; change availability separately for future generation.',
       proposalId: result.id,
     };
   }
@@ -143,7 +249,7 @@ export async function planInstruction(
       : resolveOne(blocks, instruction.blockQuery, 'block');
   const candidate =
     instruction.action === 'replace' || instruction.action === 'add'
-      ? resolveOne(candidates, instruction.candidateQuery, 'eligible task occurrence')
+      ? resolveCandidate(instruction.candidateQuery)
       : undefined;
   if (instruction.type === 'replan') {
     if (old) {
@@ -274,7 +380,12 @@ export async function planInstruction(
         operation,
       ];
     }
-    if (!operations.length && !document.reservations?.length) {
+    if (
+      !operations.length &&
+      !document.reservations?.length &&
+      !document.freeIntervals?.length &&
+      !document.taskLimits?.length
+    ) {
       throw new Clarification(
         'This would remove every proposed change. Use Discard conversation preview to keep the current plan.'
       );
@@ -283,7 +394,14 @@ export async function planInstruction(
       requestId,
       date,
       baseHash: context.baseHash,
-      document: { schemaVersion: 1, operations, reservations: document.reservations },
+      document: {
+        schemaVersion: 1,
+        taskLimits: document.taskLimits,
+        selectionExplanation: selectionExplanation(document),
+        operations,
+        reservations: document.reservations,
+        freeIntervals: document.freeIntervals,
+      },
     });
     return {
       reply: 'Review this revised proposal. It replaces the previous preview.',

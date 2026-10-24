@@ -246,3 +246,15 @@ it('validates full-window durations and rejects unbounded/general routine config
     false
   );
 });
+
+it('keeps meal and optional task placement outside explicitly excluded free intervals', () => {
+  const { s } = withMeals([90]);
+  s.planningExclusions = [{ startsAt: at('17:00'), endsAt: at('23:59') }];
+  const result = run(s);
+  expect(
+    result.document.operations.every(
+      (op) => !('block' in op) || op.block.endsAt <= at('17:00').toISOString()
+    )
+  ).toBe(true);
+  expect(result.meals.some((meal) => meal.status === 'unmet')).toBe(true);
+});
