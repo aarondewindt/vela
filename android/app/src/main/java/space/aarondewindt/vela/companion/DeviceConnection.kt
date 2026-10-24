@@ -60,14 +60,18 @@ class DeviceRequestFailure(message: String, val status: Int? = null) : Exception
 /** No cookies, redirects, arbitrary trust managers or response-body logging. */
 class DeviceConnection(val origin: String) {
     init { require(deviceOrigin(origin) == origin) }
-    suspend fun request(path: String, body: JSONObject? = null, token: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        require(path in setOf("/api/devices/pairing/start", "/api/devices/pairing/redeem", "/api/devices/verify", "/api/health/ingest"))
+    suspend fun request(path: String, body: JSONObject? = null, token: String? = null, diagnosticHeaders: Map<String, String> = emptyMap()): JSONObject = withContext(Dispatchers.IO) {
+        require(path in setOf("/api/devices/pairing/start", "/api/devices/pairing/redeem", "/api/devices/verify", "/api/health/ingest", "/api/devices/diagnostics"))
         val connection = URI(origin + path).toURL().openConnection() as HttpsURLConnection
         try {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
             connection.readTimeout = 15_000
             connection.setRequestProperty("Accept", "application/json")
+            diagnosticHeaders.forEach { (name, value) ->
+                require(name in setOf("x-vela-attempt-id", "x-vela-trigger", "x-vela-retry", "x-vela-replay"))
+                connection.setRequestProperty(name, value)
+            }
             token?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
             if (body != null) {
                 connection.requestMethod = "POST"

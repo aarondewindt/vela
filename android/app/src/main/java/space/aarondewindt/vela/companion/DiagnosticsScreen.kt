@@ -96,6 +96,8 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
             ) {
                 Text("Vela Companion", style = MaterialTheme.typography.headlineLarge)
                 PairingCard()
+                SyncHistoryCard(provider.source, provider.environment, permission,
+                    if (readings.isEmpty()) null else diagnosticReport(provider.source, provider.environment, readings))
                 Text("Calorie diagnostics", style = MaterialTheme.typography.titleLarge)
                 Text("Read-only Samsung Health experiment. Total already includes activity: never add active calories to total. Elapsed-day versus projected-day semantics remain UNVERIFIED.")
                 DiagnosticCard("Source", "${provider.source}\n${provider.environment}\nSource filter: Samsung Health platform (deduplicated activity summary; individual device attribution unavailable).")

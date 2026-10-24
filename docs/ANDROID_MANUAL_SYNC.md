@@ -193,3 +193,12 @@ semantic classification remains unverified and is preserved in upload metadata.
   advisories concern pinned dependency versions, backup rules and KTX edit helpers.
   Host `local.properties` was restored. Connected tests and actual phone uploads
   remain unperformed.
+
+## Sync diagnostics (#103)
+
+The shared sync coordinator now persists bounded local attempt history, including
+pre-HTTP failures and WorkManager context. Android explicitly uploads snapshots
+through **Send debug logs to Vela**; the server independently audits ingestion.
+Use Dev Tools → Companion App for filters, reports and correlated request details.
+See [diagnostics, retention and verification](COMPANION_DIAGNOSTICS.md). Pairing, permissions,
+outbox replay, idempotency and receipt validation retain their existing behavior.

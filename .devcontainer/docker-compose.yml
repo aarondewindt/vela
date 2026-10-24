@@ -5,10 +5,20 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../vela.env
+    environment:
+      VELA_ANDROID_DEBUG_KEYSTORE: /run/vela-android/debug.keystore
     volumes:
       - ..:/workspaces/vela:cached
       - vela-android-gradle:/home/node/.gradle
       - vela-android-user:/home/node/.android
+      # Reuse the existing host signing identity without exposing the rest of ~/.android.
+      # A missing source must fail rather than create a directory or a replacement key.
+      - type: bind
+        source: ${HOME}/.android/debug.keystore
+        target: /run/vela-android/debug.keystore
+        read_only: true
+        bind:
+          create_host_path: false
       # Host initializeCommand creates this private directory before Compose.
       # Mount the directory so relay restarts replace the visible socket safely.
       - type: bind

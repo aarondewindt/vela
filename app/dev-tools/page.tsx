@@ -1,5 +1,4 @@
-import { DevToolsView } from '@/components/DevToolsView/DevToolsView';
-
+import { redirect } from 'next/navigation';
 export default function DevToolsPage() {
-  return <DevToolsView />;
+  redirect('/dev-tools/planner');
 }

@@ -5,6 +5,38 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Companion diagnostics #103 — 2026-10-24
+
+- Entire implementation is in the current working tree, not committed/pushed:
+  preserved Planner Dev Tools moved to its subroute; Companion UI has persisted
+  server requests, uploaded attempts/reports, owner-only filters/pagination/details,
+  correlation and JSON export. `lib/companion` owns schemas, audit, queries/retention.
+- Android shared `HealthSync` persists bounded local execution history, SDK queries,
+  HTTP outcomes and explicit report uploads, preserving the mutex, durable outbox,
+  stable replay bytes and receipt validation. New batch IDs and current-operation
+  headers are optional for old clients. No tooling/SDK/signing configuration changed.
+- Both additive companion migrations are applied to the local database; regenerate
+  Prisma Client on deployment and deploy backend before Android. Schedule
+  `yarn companion:prune` daily. See COMPANION_DIAGNOSTICS.md for exact commands.
+- Validation: 81 Android verification tasks / 29 JVM tests, zero lint errors;
+  all eight connected tests passed on the Galaxy in a separate package using fake
+  SDK/HTTP boundaries. Full Jest: 1,278 passed; 11 isolated PostgreSQL integration
+  tests passed; production build, typecheck, scoped lint/format and migration drift
+  checks passed. Whole-repo lint/format still have unrelated pre-existing failures.
+- Phone installation retry succeeded on 2026-10-24 using the mounted original
+  host debug key: `build.sh --offline`, then `deploy.sh --no-build --serial …`.
+  Original-package `adb install -r` returned Success and MainActivity launched
+  with Status: ok on the Galaxy SM-S731B; no uninstall or data clearing occurred.
+  Keep #103 open for real manual/WorkManager Samsung sync and explicit report
+  upload acceptance in the private web page. New code is not deployed to the
+  normal public runtime. Earlier signing mismatch is resolved; earlier temporary
+  ADB stalls recovered with a device reconnect and no host daemon reset.
+- 2026-10-25: User restarted the web server. Fixed Dev Tools' RSC serialization
+  error by moving Mantine/Next Link navigation into a client component; authentication
+  stays in the server layout. Three page tests, typecheck and scoped lint/format
+  pass; running Next.js reports no session/config errors after the change. Real
+  sync/report acceptance above remains outstanding.
+
 ## Android devcontainer #104 — 2026-10-24
 
 - Implemented headless JDK 17/SDK 36/Build Tools 35.0.0/ADB 37.0.1 in the existing

@@ -40,11 +40,14 @@ object BackgroundSync {
 class HealthSyncWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result {
         val state = applicationContext.getSharedPreferences("health_sync", Context.MODE_PRIVATE)
-        if (state.getBoolean("paused", false)) return Result.success()
+        if (state.getBoolean("paused", false)) {
+            SyncAttempt(SyncHistory(applicationContext), applicationContext, "automatic", "samsung_health", id.toString(), runAttemptCount).finish("paused")
+            return Result.success()
+        }
         fun status(message: String) { check(state.edit().putString("status", message).commit()) }
         return try {
             status("Synchronization running")
-            val message = HealthSync(applicationContext).run(SamsungHealthProvider(applicationContext))
+            val message = HealthSync(applicationContext).run(SamsungHealthProvider(applicationContext), trigger = "automatic", workId = id.toString(), retry = runAttemptCount)
             status(message)
             Result.success()
         } catch (cancelled: CancellationException) { throw cancelled }

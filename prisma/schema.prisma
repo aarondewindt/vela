@@ -13,6 +13,8 @@ datasource db {
 }
 
 model User {
+  companionEvents CompanionEvent[]
+  companionUploads CompanionUpload[]
   id                        String                     @id
   name                      String
   email                     String
@@ -1141,6 +1143,8 @@ model PlannerConversationTurn {
 }
 
 model DeviceCredential {
+  companionEvents CompanionEvent[]
+  companionUploads CompanionUpload[]
   id         String    @id @default(uuid()) @db.Uuid
   userId     String
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1193,4 +1197,58 @@ model PlannerRecordProposal {
 
   @@index([conversationId, createdAt])
   @@map("planner_record_proposals")
+}
+
+// Separate observational records; never used as health ingestion receipts or outbox state.
+model CompanionEvent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String @db.Uuid
+  device DeviceCredential @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  uploadId String? @db.Uuid
+  upload CompanionUpload? @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  kind String @db.VarChar(16)
+  receivedAt DateTime @default(now())
+  occurredAt DateTime @default(now())
+  attemptId String? @db.Uuid
+  batchId String? @db.Uuid
+  trigger String @default("unknown") @db.VarChar(16)
+  status String @db.VarChar(24)
+  source String @default("samsung_health") @db.VarChar(40)
+  count Int?
+  metrics String[]
+  dateFrom String? @db.VarChar(10)
+  dateTo String? @db.VarChar(10)
+  durationMs Int?
+  retry Int?
+  replay Boolean?
+  errorCategory String? @db.VarChar(40)
+  detail Json @default("{}") @db.JsonB
+
+  @@index([userId, kind, occurredAt, id])
+  @@index([userId, deviceId, occurredAt])
+  @@index([userId, attemptId])
+  @@index([userId, batchId])
+  @@index([receivedAt])
+  @@index([uploadId])
+  @@map("companion_events")
+}
+
+model CompanionUpload {
+  id String @id @default(uuid()) @db.Uuid
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId String @db.Uuid
+  device DeviceCredential @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  receivedAt DateTime @default(now())
+  appVersion String @db.VarChar(80)
+  version Int
+  report Json @db.JsonB
+  events CompanionEvent[]
+
+  @@index([userId, receivedAt, id])
+  @@index([userId, deviceId, receivedAt])
+  @@index([receivedAt])
+  @@map("companion_uploads")
 }

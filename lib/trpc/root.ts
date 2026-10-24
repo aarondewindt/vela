@@ -1,3 +1,4 @@
+import { companionRouter } from '@/lib/companion/router';
 import { plannerChatRouter } from '@/lib/planner/chat/router';
 import { devicesRouter } from '@/lib/devices/router';
 import { conversationRouter } from '@/lib/planner/conversation/router';
@@ -15,6 +16,7 @@ import { router } from './server';
 import { discoverRouter } from '@/lib/discover/router';
 
 export const appRouter = router({
+  companion: companionRouter,
   plannerChat: plannerChatRouter,
   devices: devicesRouter,
   discover: discoverRouter,

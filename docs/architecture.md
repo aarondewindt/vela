@@ -153,3 +153,15 @@ HA health mapping/worker normalization now permits only Withings weight/body fat
 lean mass. Legacy health rows remain preserved; Samsung is authoritative for its
 metrics. BMR retains actual point provenance and carries forward without entering
 calorie balance. See [source matrix](ANDROID_SOURCE_MATRIX.md).
+
+## Companion diagnostics
+
+Dev Tools separates preserved Planner controls (`/dev-tools/planner`) from private
+Companion diagnostics (`/dev-tools/companion`). `lib/companion` owns strict snapshot
+schemas, independent ingestion auditing, protected paginated queries, correlation
+and retention. `CompanionEvent` distinguishes server requests from uploaded local
+attempts; `CompanionUpload` stores explicit report snapshots. Android checkpoints
+shared sync execution into bounded private preferences separate from its durable
+outbox; optional IDs/headers do not change measurement identity or receipt handling.
+See [Companion diagnostics](COMPANION_DIAGNOSTICS.md) for visibility limits, bounds,
+migrations, maintenance, verification and signing-safe phone testing.

@@ -126,8 +126,9 @@ Versions and SDK package levels are pinned and `app/gradle.lockfile` records res
 ### Container builds and ADB
 
 Use [the Android devcontainer guide](../docs/ANDROID_DEVCONTAINER.md). SDK tools
-are installed in the image; Gradle and debug-signing data persist in named
-volumes. No host SDK mount or USB passthrough is needed. Host commands in this
+are installed in the image; Gradle and Android user state persist in named
+volumes. The original Ubuntu debug keystore is mounted read-only for matching
+host/container signing. No host SDK mount or USB passthrough is needed. Host commands in this
 README remain valid when using the host workflow; container ADB reaches the same
 Ubuntu server through a private Unix socket and container loopback relay.
 
@@ -157,7 +158,13 @@ Run all ADB commands on the **Ubuntu host**, using SDK Platform-Tools:
 
    Alternatively select the phone and the `app` configuration in Android Studio and click Run. The launcher name is **Vela Companion**; the application ID is `space.aarondewindt.vela.companion`.
 
-Debug signing is local (`~/.android/debug.keystore`); preserve that key privately if you need stable signing identity for later Samsung registration. Build/install consistently on the host to keep it stable. If a temporary container or another machine signed an earlier install, Android may report `INSTALL_FAILED_UPDATE_INCOMPATIBLE`: uninstall with `adb -s "$ANDROID_SERIAL" uninstall space.aarondewindt.vela.companion`, then reinstall. Uninstalling clears app data. No release keys or release publishing are configured in this phase.
+Debug signing uses the original host `~/.android/debug.keystore`. The devcontainer
+mounts that file read-only and selects it through `VELA_ANDROID_DEBUG_KEYSTORE`;
+see [shared signing setup](../docs/ANDROID_DEVCONTAINER.md#shared-host-debug-signing-key-read-only).
+Preserve the key privately and keep it outside Git. If Android reports
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, check the signing identity and recover the
+original key; do not uninstall the paired app, since that deletes pairing and data.
+No release keys or release publishing are configured.
 
 ## Debug and verify
 
@@ -253,3 +260,12 @@ access** for activity summary, steps, sleep and body composition, then resume sy
 Withings weight/body fat/lean mass remain in Home Assistant. See
 [source matrix and rollout](../docs/ANDROID_SOURCE_MATRIX.md) for backend migration,
 source precedence, BMR availability, historical data and phone acceptance.
+
+## Sync diagnostics (#103)
+
+The shared sync coordinator now persists bounded local attempt history, including
+pre-HTTP failures and WorkManager context. Android explicitly uploads snapshots
+through **Send debug logs to Vela**; the server independently audits ingestion.
+Use Dev Tools → Companion App for filters, reports and correlated request details.
+See [diagnostics, retention and verification](../docs/COMPANION_DIAGNOSTICS.md). Pairing, permissions,
+outbox replay, idempotency and receipt validation retain their existing behavior.

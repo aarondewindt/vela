@@ -57,7 +57,15 @@ const navbar_map = [
       { label: 'Embeddings', link: '/ai-dev/embeddings' },
     ],
   },
-  { label: 'Dev tools', icon: BugIcon, link: '/dev-tools' },
+  {
+    label: 'Dev tools',
+    icon: BugIcon,
+    pathPattern: /^\/dev-tools(?:\/|$)/,
+    links: [
+      { label: 'Planner', link: '/dev-tools/planner' },
+      { label: 'Companion App', link: '/dev-tools/companion' },
+    ],
+  },
 ];
 
 export function NavbarNested() {

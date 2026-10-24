@@ -1,7 +1,9 @@
 package space.aarondewindt.vela.companion
 
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.activity.ComponentActivity
+import android.view.WindowManager
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -12,7 +14,7 @@ import space.aarondewindt.vela.companion.health.*
 
 /** UI verification with an injected provider; this does NOT validate Samsung SDK access. */
 class CompanionScreenTest {
-    @get:Rule val composeRule = createComposeRule()
+    @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun deniedReadAndManualPermissionGrantAreVisible() {
         val provider = object : HealthProvider {
@@ -25,7 +27,17 @@ class CompanionScreenTest {
             override suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric) =
                 MetricReading(window, metric, Instant.now(), Instant.now())
         }
+        // Keep only this synthetic test activity visible if Android has dozed/locked.
+        // No lock credentials or persistent phone settings are changed.
+        composeRule.runOnUiThread {
+            composeRule.activity.apply {
+                setTurnScreenOn(true)
+                setShowWhenLocked(true)
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
         composeRule.setContent { VelaCompanionApp(provider) }
+        composeRule.onNodeWithText("Send debug logs to Vela").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Not granted").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Grant / manage read access").performScrollTo().performClick()
         composeRule.onNodeWithText("Granted: activity summary, steps, sleep and body composition READ").performScrollTo().assertIsDisplayed()

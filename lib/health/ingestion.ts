@@ -106,6 +106,9 @@ export const healthUploadSchema = z
   .object({
     version: z.literal(1),
     source: z.literal('samsung_health'),
+    attemptId: z.uuid().optional(),
+    batchId: z.uuid().optional(),
+    trigger: z.enum(['manual', 'automatic']).optional(),
     measurements: z.array(measurementSchema).min(1).max(100),
   })
   .strict()

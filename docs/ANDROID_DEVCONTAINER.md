@@ -73,14 +73,56 @@ new revisions for the same platform package; command tools and Platform-Tools
 archives are checksum pinned. Do not run routine `sdkmanager --update`.
 
 Compose named volumes persist `/home/node/.gradle` (wrapper distributions,
-dependencies and caches) and `/home/node/.android` (including the debug signing
-key). The post-create script repairs ownership after UID remapping. They are
-separate from host Gradle caches. `docker compose down` retains them;
-`docker compose down -v` deletes them. Keep a private backup of the debug key if
-its identity matters. Host and container keys can differ: an APK signed with a
-different key cannot update an existing installation. Prefer keeping one key;
-uninstalling the app to recover deletes its local pairing/data and must be an
-intentional manual action.
+dependencies and caches) and `/home/node/.android` (Android user state). The
+post-create script repairs their ownership after UID remapping. They are separate
+from host Gradle caches. `docker compose down` retains them;
+`docker compose down -v` deletes them.
+
+### Shared host debug signing key (read-only)
+
+Before rebuilding, confirm **on Ubuntu** that the original key used for the
+installed phone app exists:
+
+```bash
+test -r "$HOME/.android/debug.keystore"
+```
+
+Compose bind-mounts only that file read-only at
+`/run/vela-android/debug.keystore` and sets `VELA_ANDROID_DEBUG_KEYSTORE` to it.
+Gradle uses this explicit file for debug APKs, including instrumentation builds.
+Host builds without the variable keep AGP's normal `~/.android/debug.keystore`.
+The mount is outside the directories whose ownership the container repairs, so
+startup never attempts to chown the host key. The previous container-generated key
+remains untouched in the Android named volume, but is no longer used for these
+container builds.
+
+Use **Dev Containers: Rebuild Container** to activate the mount and environment.
+Then, in the container:
+
+```bash
+test -r "$VELA_ANDROID_DEBUG_KEYSTORE"
+./android/scripts/verify.sh --offline
+./android/scripts/deploy.sh --serial YOUR_PHONE_SERIAL
+```
+
+The host key must match the installed APK; mounting another key cannot resolve a
+signing mismatch. Preserve it privately and keep its existing restrictive
+permissions. The remapped container UID must be able to read it; do not make it
+world-readable. No key is copied into the image or repository, and the container
+cannot modify the mounted file. Read-only access still allows signing with the
+key, so use this mount only with trusted containers.
+
+A missing host file causes container creation to fail (`create_host_path: false`);
+an explicitly configured unreadable/missing key fails Gradle rather than silently
+using or generating a different identity. Recover the original key if needed;
+do not create a replacement or uninstall the paired app. A matching key allows
+normal `install -r` updates to retain pairing and app data.
+
+Configuration checks passed: Compose validation confirms a read-only file mount
+with automatic source creation disabled. Android `verify.sh --offline` passed
+with an explicit existing container key; a deliberately missing key failed with
+the expected error. The actual host-key mount and phone signing match require
+container recreation and are not yet verified in this running container.
 
 For upgrades, edit the Dockerfile's pinned tool versions/checksums, align platform
 and Build Tools packages with Gradle, rebuild, and rerun verification. Obtain

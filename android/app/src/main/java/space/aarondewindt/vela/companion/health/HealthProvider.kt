@@ -13,6 +13,7 @@ interface HealthProvider {
     suspend fun requestReadPermission(): Boolean
     suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading
     suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> = emptyList()
+    suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>, trace: (ProviderQuery) -> Unit): List<CalorieUpload> = readAdditionalMeasurements(windows)
     fun resolveAvailability()
 }
 
@@ -68,6 +69,7 @@ class HealthFailure(
     val detail: String,
     val canResolve: Boolean = false,
     cause: Throwable? = null,
+    val sdkCode: String? = null,
 ) : Exception(detail, cause) {
     enum class Kind { PERMISSION, AVAILABILITY, AUTHORIZATION, QUERY }
 }
@@ -92,3 +94,7 @@ fun diagnosticReport(source: String, environment: String, readings: List<MetricR
         }
     }
 }
+
+/** Actual SDK request observations. Null counts/times remain unavailable, never guessed. */
+data class ProviderQuery(val metric: String, val start: String?, val end: String,
+    val at: Instant, val endedAt: Instant? = null, val rows: Int? = null, val failed: Boolean = false)

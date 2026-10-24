@@ -16,9 +16,30 @@ android {
         applicationId = "space.aarondewindt.vela.companion"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Container builds use the read-only host debug key. Host builds retain AGP's
+    // default ~/.android/debug.keystore; an explicit missing key must never fall back.
+    providers.environmentVariable("VELA_ANDROID_DEBUG_KEYSTORE").orNull?.let { path ->
+        val hostDebugKey = file(path)
+        check(hostDebugKey.isFile && hostDebugKey.canRead()) {
+            "VELA_ANDROID_DEBUG_KEYSTORE must name a readable existing debug keystore. " +
+                "Check the host key, read-only mount and container UID; do not generate a replacement."
+        }
+        signingConfigs.getByName("debug").storeFile = hostDebugKey
+    }
+
+    // Opt-in side-by-side package for connected fixture tests when the phone's real app
+    // has a different signing key. Never replaces or clears the paired installation.
+    buildTypes {
+        getByName("debug") {
+            if (providers.gradleProperty("velaIsolatedDeviceTests").orNull == "true") {
+                applicationIdSuffix = ".diagnosticstest"
+            }
+        }
     }
 
     compileOptions {

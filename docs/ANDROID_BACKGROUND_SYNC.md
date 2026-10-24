@@ -98,3 +98,12 @@ The same batch now includes steps, Samsung sleep-date duration and actual option
 BMR body-composition points. Grant the four required READ types after upgrading.
 See [source matrix and rollout](ANDROID_SOURCE_MATRIX.md). BMR scans are bounded;
 its actual measurement date is retained, with labeled carry-forward in Health.
+
+## Sync diagnostics (#103)
+
+The shared sync coordinator now persists bounded local attempt history, including
+pre-HTTP failures and WorkManager context. Android explicitly uploads snapshots
+through **Send debug logs to Vela**; the server independently audits ingestion.
+Use Dev Tools → Companion App for filters, reports and correlated request details.
+See [diagnostics, retention and verification](COMPANION_DIAGNOSTICS.md). Pairing, permissions,
+outbox replay, idempotency and receipt validation retain their existing behavior.

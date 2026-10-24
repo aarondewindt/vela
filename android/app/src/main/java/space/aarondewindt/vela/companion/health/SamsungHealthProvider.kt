@@ -69,46 +69,71 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
         })
     }
 
-    override suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> = sdkCall {
+    override suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> =
+        readAdditionalMeasurements(windows) {}
+
+    override suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>, trace: (ProviderQuery) -> Unit): List<CalorieUpload> = sdkCall {
         if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION,
             "Grant activity summary, steps, sleep and body composition READ access in Samsung Health.")
         val uploads = mutableListOf<CalorieUpload>()
         for (window in windows) {
-            val steps = store().aggregateData(DataType.StepsType.TOTAL.requestBuilder
+            val steps = traced("STEPS", window.start.toString(), window.endExclusive.toString(), trace, { it.dataList.size }) {
+                store().aggregateData(DataType.StepsType.TOTAL.requestBuilder
                 .setLocalTimeFilter(LocalTimeFilter.of(window.start, window.endExclusive))
                 .setSourceFilter(AggregateSourceFilter.fromPlatform()).build())
+            }
             check(steps.pageToken == null && steps.dataList.size <= 1) { "Unexpected steps aggregate." }
             steps.dataList.singleOrNull()?.value?.let { count ->
                 uploads += dailyMetricUpload(window, "STEPS", count.toDouble(), "steps", "sdk_steps_total")
             }
             // Samsung's date-based sleep aggregate includes overnight sessions in its sleep date.
-            val sleep = store().aggregateData(DataType.SleepType.TOTAL_DURATION.requestBuilder
+            val sleep = traced("SLEEP", window.date.toString(), window.date.plusDays(1).toString(), trace, { it.dataList.size }) {
+                store().aggregateData(DataType.SleepType.TOTAL_DURATION.requestBuilder
                 .setLocalDateFilter(samsungSleepDateFilter(window.date))
                 .setSourceFilter(AggregateSourceFilter.fromPlatform()).build())
+            }
             check(sleep.pageToken == null && sleep.dataList.size <= 1) { "Unexpected sleep aggregate." }
             sleep.dataList.singleOrNull()?.value?.let { duration ->
                 uploads += dailyMetricUpload(window, "SLEEP", duration.toMillis() / 3600000.0, "hours", "sdk_sleep_date_total")
             }
             readBmr(window.endExclusive.atZone(window.zone).toInstant(), window.zone,
-                window.start.atZone(window.zone).toInstant())?.let { uploads += it }
+                window.start.atZone(window.zone).toInstant(), trace)?.let { uploads += it }
         }
         // BMR can be measured infrequently. Preserve its actual date and carry forward in Vela.
         val zone = windows.firstOrNull()?.zone
-        if (zone != null) readBmr(Instant.now(), zone)?.let { latest ->
+        if (zone != null) readBmr(Instant.now(), zone, trace = trace)?.let { latest ->
             if (uploads.none { it.metric == "BMR" && it.date == latest.date }) uploads += latest
         }
         if (!hasReadPermission()) throw HealthFailure(HealthFailure.Kind.PERMISSION, "Samsung read permission changed during sync.")
         uploads
     }
 
-    private suspend fun readBmr(end: Instant, zone: java.time.ZoneId, start: Instant? = null): CalorieUpload? {
+    private suspend fun <T> traced(metric: String, start: String?, end: String, trace: (ProviderQuery) -> Unit,
+        count: (T) -> Int, block: suspend () -> T): T {
+        val at = Instant.now()
+        fun emit(query: ProviderQuery) { runCatching { trace(query) } } // Diagnostics never break SDK reads.
+        emit(ProviderQuery(metric, start, end, at))
+        try {
+            val result = block()
+            emit(ProviderQuery(metric, start, end, at, Instant.now(), count(result)))
+            return result
+        } catch (error: Exception) {
+            emit(ProviderQuery(metric, start, end, at, Instant.now(), failed = true))
+            throw error
+        }
+    }
+
+    private suspend fun readBmr(end: Instant, zone: java.time.ZoneId, start: Instant? = null,
+        trace: (ProviderQuery) -> Unit = {}): CalorieUpload? {
         var page: String? = null
         repeat(10) {
             val builder = DataTypes.BODY_COMPOSITION.readDataRequestBuilder
                 .setInstantTimeFilter(if (start == null) InstantTimeFilter.to(end) else InstantTimeFilter.of(start, end))
                 .setSourceFilter(ReadSourceFilter.fromPlatform()).setOrdering(Ordering.DESC).setPageSize(100)
             page?.let { builder.setPageToken(it) }
-            val response = store().readData(builder.build())
+            val response = traced("BMR_PAGE", start?.toString(), end.toString(), trace, { it.dataList.size }) {
+                store().readData(builder.build())
+            }
             for (point in response.dataList) {
                 val bmr = point.getValue(DataType.BodyCompositionType.BASAL_METABOLIC_RATE) ?: continue
                 if (point.startTime >= end || (start != null && point.startTime < start)) continue
@@ -146,7 +171,7 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
             HealthFailure.Kind.QUERY -> "Open Samsung Health, let wearable data arrive, then retry. If it persists, retain the code and query range for investigation."
         }
         // Do not log SDK messages: they may contain private health data.
-        throw HealthFailure(kind, "${error.javaClass.simpleName}; SDK code ${error.errorCode}. $action", resolution != null, error)
+        throw HealthFailure(kind, "${error.javaClass.simpleName}; SDK code ${error.errorCode}. $action", resolution != null, error, error.errorCode.toString())
     }
 }
 
