@@ -55,13 +55,13 @@ fun deviceOrigin(value: String): String {
     return URI("https", null, uri.host, uri.port, null, null, null).toASCIIString()
 }
 
-class DeviceRequestFailure(message: String) : Exception(message)
+class DeviceRequestFailure(message: String, val status: Int? = null) : Exception(message)
 
 /** No cookies, redirects, arbitrary trust managers or response-body logging. */
 class DeviceConnection(val origin: String) {
     init { require(deviceOrigin(origin) == origin) }
     suspend fun request(path: String, body: JSONObject? = null, token: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        require(path in setOf("/api/devices/pairing/start", "/api/devices/pairing/redeem", "/api/devices/verify"))
+        require(path in setOf("/api/devices/pairing/start", "/api/devices/pairing/redeem", "/api/devices/verify", "/api/health/ingest"))
         val connection = URI(origin + path).toURL().openConnection() as HttpsURLConnection
         try {
             connection.instanceFollowRedirects = false
@@ -78,9 +78,13 @@ class DeviceConnection(val origin: String) {
             val status = connection.responseCode
             if (status != 200) throw DeviceRequestFailure(when (status) {
                     401 -> "Credential expired, revoked or already redeemed. Start pairing again if needed."
+                    400 -> "Invalid health upload. Check phone date/time and update the companion app; inspect diagnostics before retrying."
+                    403 -> "Vela requires HTTPS and health:write permission. Check server setup or pair again."
+                    409 -> "Capture conflicts with a previous upload. Read Samsung Health again and retry sync."
+                    413 -> "Upload too large. Update the companion app."
                     429 -> "Too many requests. Wait a minute and retry."
                     else -> "Vela request failed (HTTP $status)."
-                })
+                }, status)
             val bytes = connection.inputStream.use { input ->
                 val output = ByteArrayOutputStream()
                 val buffer = ByteArray(1024)

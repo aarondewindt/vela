@@ -48,8 +48,8 @@ function ManualEntry({ date }: { date: string }) {
       <Stack>
         <Title order={3}>Add a manual reading</Title>
         <Text size="sm">
-          Recorded for {date}. A daily total replaces the displayed total; it is never added to
-          other totals.
+          Recorded for {date}. Manual daily totals take priority over Samsung Health, then Home
+          Assistant; totals are never added together.
         </Text>
         <Group align="flex-end">
           <Select
@@ -170,7 +170,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
               {date === dateInTimezone(timezone) ? ' · Today (provisional)' : ''}
             </Title>
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-              {(['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP'] as const).map((metric) => {
+              {metricKinds.map((metric) => {
                 const record = selected.metrics[metric];
                 return (
                   <Paper withBorder p="md" key={metric}>
@@ -187,7 +187,9 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                           <Text size="xs" c="dimmed">
                             {record.source === 'manual'
                               ? 'Manual reading'
-                              : 'Home Assistant · sensor state time'}{' '}
+                              : record.source === 'samsung_health'
+                                ? 'Samsung Health · SDK query capture · calorie semantics unverified'
+                                : 'Home Assistant · sensor state time'}{' '}
                             · {record.observedAt.toLocaleString()}
                             {record.entityId ? ` · ${record.entityId}` : ''}
                           </Text>

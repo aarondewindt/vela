@@ -1,7 +1,14 @@
 import { goalOptionsSchema, validateGoalBounds } from '@/lib/goals/semantics';
 import { z } from 'zod';
 import { diaryDateSchema } from '@/lib/nutrition/dates';
-export const metricKinds = ['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'SLEEP', 'TOTAL_CALORIES'] as const;
+export const metricKinds = [
+  'WEIGHT',
+  'BODY_FAT',
+  'LEAN_MASS',
+  'SLEEP',
+  'TOTAL_CALORIES',
+  'ACTIVE_CALORIES',
+] as const;
 export type MetricKind = (typeof metricKinds)[number];
 export const metricLabels: Record<MetricKind, string> = {
   WEIGHT: 'Weight',
@@ -9,6 +16,7 @@ export const metricLabels: Record<MetricKind, string> = {
   LEAN_MASS: 'Lean mass',
   SLEEP: 'Sleep',
   TOTAL_CALORIES: 'Total calories burned',
+  ACTIVE_CALORIES: 'Active calories burned',
 };
 export const metricUnits: Record<MetricKind, string> = {
   WEIGHT: 'kg',
@@ -16,6 +24,7 @@ export const metricUnits: Record<MetricKind, string> = {
   LEAN_MASS: 'kg',
   SLEEP: 'hours',
   TOTAL_CALORIES: 'kcal',
+  ACTIVE_CALORIES: 'kcal',
 };
 export const goalMetricKinds = ['WEIGHT', 'BODY_FAT', 'SLEEP'] as const;
 const metricGoalSchema = z
@@ -106,7 +115,7 @@ export const mappingSchema = z
         .max(240),
     })
   )
-  .max(5)
+  .max(6)
   .superRefine((items, ctx) => {
     if (
       new Set(items.map((x) => x.metric)).size !== items.length ||
@@ -132,7 +141,14 @@ export function validMetricValue(metric: MetricKind, value: number) {
     Number.isFinite(value) &&
     value >= 0 &&
     value <=
-      { WEIGHT: 1000, BODY_FAT: 100, LEAN_MASS: 1000, SLEEP: 24, TOTAL_CALORIES: 100000 }[metric] &&
+      {
+        WEIGHT: 1000,
+        BODY_FAT: 100,
+        LEAN_MASS: 1000,
+        SLEEP: 24,
+        TOTAL_CALORIES: 100000,
+        ACTIVE_CALORIES: 100000,
+      }[metric] &&
     (!['WEIGHT', 'LEAN_MASS'].includes(metric) || value > 0)
   );
 }

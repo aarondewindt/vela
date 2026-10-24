@@ -1010,6 +1010,7 @@ enum HealthMetricKind {
   LEAN_MASS
   SLEEP
   TOTAL_CALORIES
+  ACTIVE_CALORIES
 }
 
 model HealthMetric {
@@ -1025,6 +1026,7 @@ model HealthMetric {
   entityId       String?          @db.VarChar(240)
   sourceKey      String           @db.VarChar(500)
   timestampBasis String           @db.VarChar(32)
+  metadata       Json             @default("{}")
 
   @@unique([userId, sourceKey])
   @@index([userId, date, metric, observedAt])

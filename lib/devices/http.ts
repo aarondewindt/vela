@@ -27,16 +27,23 @@ export async function deviceResponse(operation: () => Promise<unknown>) {
         UNAUTHORIZED: 401,
         FORBIDDEN: 403,
         BAD_REQUEST: 400,
+        CONFLICT: 409,
         TOO_MANY_REQUESTS: 429,
         PAYLOAD_TOO_LARGE: 413,
       }[code as string] ?? 500;
     return Response.json(
-      { error: status === 500 ? 'Device request failed.' : code },
+      {
+        error: status === 500 ? 'Device request failed.' : code,
+        ...(error instanceof z.ZodError
+          ? { issues: error.issues.map((issue) => ({ path: issue.path, message: issue.message })) }
+          : {}),
+        ...(error instanceof TRPCError && code === 'CONFLICT' ? { message: error.message } : {}),
+      },
       { status, headers: { ...headers, ...(status === 429 ? { 'Retry-After': '60' } : {}) } }
     );
   }
 }
-export async function boundedJson(request: Request) {
+export async function boundedJson(request: Request, maxBytes = 2048) {
   if (!request.headers.get('content-type')?.startsWith('application/json')) {
     throw new TRPCError({ code: 'BAD_REQUEST' });
   }
@@ -53,7 +60,7 @@ export async function boundedJson(request: Request) {
         break;
       }
       size += value.length;
-      if (size > 2048) {
+      if (size > maxBytes) {
         await reader.cancel();
         throw new TRPCError({ code: 'PAYLOAD_TOO_LARGE' });
       }

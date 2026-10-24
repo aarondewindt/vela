@@ -172,7 +172,7 @@ midnight, delayed wearable updates and developer-mode persistence, are in the
 ## Container → Ubuntu → phone networking
 
 The companion pairs only with an HTTPS Vela origin; HTTP LAN/ADB routes below
-remain browser-only development checks. No health uploads are implemented. For browser checks over the LAN, open
+remain browser-only development checks. Manual health uploads are available; see [manual synchronization](../docs/ANDROID_MANUAL_SYNC.md). For browser checks over the LAN, open
 `http://192.168.0.106:3000` on the phone while connected to the same LAN (use the
 desktop’s current LAN IP if it changes). See [LAN development access](../docs/DAILY_USE_DEPLOYMENT.md#lan-development-access)
 for origin configuration. If this works, no ADB reverse is necessary.
@@ -205,7 +205,7 @@ devcontainer :3000 (yarn dev listening on 0.0.0.0)
 
 `localhost` in the phone normally means the phone, in Ubuntu means Ubuntu, and in the container means the container. `10.0.2.2` is an emulator convention and is not the physical S25 FE's host address. ADB reverse still uses loopback even though Compose also publishes port 3000 for LAN development. No extra port or ADB-in-container workaround is necessary. Do not expose the dev server through a public tunnel. Existing public production port 3001 and database ports are unaffected.
 
-The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela adds no backend client or cleartext allowance. When native development networking is introduced in #90, use HTTPS for credentials/health uploads and scope any local HTTP exception to a debug variant. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
+The browser check works independently of Android app networking policy. Samsung’s SDK contributes `INTERNET` through manifest merging; Vela uses an HTTPS backend client with no cleartext allowance. When native development networking is introduced in #90, use HTTPS for credentials/health uploads and scope any local HTTP exception to a debug variant. Do not weaken release transport policy to make this browser check work. Existing Better Auth browser sessions are not device credentials.
 
 ## Verification record
 
@@ -219,3 +219,15 @@ for the latest performed checks. CI and compiling the instrumented test APK cann
 establish physical-device results.
 
 The earlier launch confirmation covers #88 only. #89 Samsung Health reads and calorie semantics require the physical-device checks in the validation guide; implementation or fake-provider test success does not close that feasibility gate.
+
+## Manual synchronization (#90)
+
+See [Android manual sync](../docs/ANDROID_MANUAL_SYNC.md) for deployment, snapshot semantics, source precedence and the complete physical phone test. Pair first, select a completed historical day and tap **Sync now**. No automatic synchronization is enabled.
+
+## Automatic synchronization (#91)
+
+Hourly, network-connected, battery-conscious WorkManager synchronization reuses the
+manual upload coordinator, with a durable pending batch and seven-day correction
+window. The sync card exposes pause/resume, pending work, last success and errors.
+See [background synchronization](../docs/ANDROID_BACKGROUND_SYNC.md) for retry,
+reboot, Samsung battery limitations, historical backfill and phone acceptance.

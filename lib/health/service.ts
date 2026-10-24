@@ -84,7 +84,11 @@ export const healthService = {
         (SELECT DISTINCT ON ("date", metric) * FROM health_metrics
         WHERE "userId" = ${userId} AND "date" >= ${diaryDate(nutrition.startDate)}
           AND "date" <= ${diaryDate(input.endDate)}
-        ORDER BY "date", metric, "observedAt" DESC, "receivedAt" DESC, id DESC)
+        ORDER BY "date", metric,
+          CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES') THEN
+            CASE source WHEN 'manual' THEN 2 WHEN 'samsung_health' THEN 1 ELSE 0 END
+          ELSE 0 END DESC,
+          "observedAt" DESC, "receivedAt" DESC, id DESC)
         UNION ALL
         (SELECT DISTINCT ON (metric) * FROM health_metrics
         WHERE "userId" = ${userId} AND "date" < ${diaryDate(nutrition.startDate)}

@@ -105,6 +105,48 @@ class CalorieDiagnosticsTest {
         } catch (_: CancellationException) { /* expected */ }
     }
 
+    @Test fun manualSyncReadsElapsedAndHistoricalWithoutProjectionOrAddition() = runBlocking {
+        val provider = FakeProvider()
+        val uploads = ManualSync(provider, clock).read(yesterday, zone)
+        assertEquals(4, uploads.size)
+        assertEquals(4, provider.calls)
+        assertEquals("TOTAL_CALORIES", uploads[0].metric)
+        assertEquals(2000.0, uploads[0].value, 0.0)
+        assertEquals("ACTIVE_CALORIES", uploads[1].metric)
+        assertEquals(300.0, uploads[1].value, 0.0)
+        assertEquals(now.toString(), uploads[0].periodEnd)
+        assertEquals("2026-10-23", uploads[2].date)
+    }
+
+    @Test fun manualSyncRejectsPermissionLossAndQueryFailures() = runBlocking {
+        expectFailure(HealthFailure.Kind.PERMISSION) { ManualSync(FakeProvider(granted = false), clock).read(yesterday, zone) }
+        expectFailure(HealthFailure.Kind.PERMISSION) { ManualSync(FakeProvider(revokeAfterReads = true), clock).read(yesterday, zone) }
+        expectFailure(HealthFailure.Kind.QUERY) { ManualSync(FakeProvider(failure = HealthFailure(HealthFailure.Kind.QUERY, "query failed")), clock).read(yesterday, zone) }
+    }
+
+    @Test fun uploadSkipsMissingAndDoesNotInventZero() {
+        val window = calorieWindows(now, zone, yesterday).first()
+        assertNull(calorieUpload(MetricReading(window, CalorieMetric.TOTAL_CALORIES_BURNED, now, now)))
+        val zero = MetricReading(window, CalorieMetric.TOTAL_CALORIES_BURNED, now, now, listOf(AggregateRow(0f, now, now)))
+        assertEquals(0.0, calorieUpload(zero)!!.value, 0.0)
+    }
+
+    @Test fun backgroundReconciliationReadsTodayOnceAndSevenCompletedDays() = runBlocking {
+        val provider = FakeProvider()
+        val uploads = ManualSync(provider, clock).readDays((1L..7L).map { yesterday.plusDays(1).minusDays(it) }, zone)
+        assertEquals(16, provider.calls)
+        assertEquals(16, uploads.size)
+        assertEquals(8, uploads.map { it.date }.distinct().size)
+        assertEquals(16, uploads.map { it.metric to it.date }.distinct().size)
+    }
+
+    @Test fun reconciliationCancellationPropagates() = runBlocking {
+        try {
+            ManualSync(FakeProvider(cancel = true), clock).readDays(listOf(yesterday), zone)
+            fail("Cancellation must propagate")
+        } catch (_: CancellationException) { }
+    }
+
     private suspend fun expectFailure(kind: HealthFailure.Kind, block: suspend () -> Unit) {
         try { block(); fail("Expected $kind") } catch (failure: HealthFailure) { assertEquals(kind, failure.kind) }
     }

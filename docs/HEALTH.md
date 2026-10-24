@@ -171,3 +171,7 @@ Migration `20261022000000_health_metric_goals` adds `health_goals.metricGoals`
 with an empty JSONB default, preserving existing calorie goals and versions. All
 goals save under the existing owner/version check; omitted metric goals from older
 clients are retained.
+
+## Android companion ingestion (#90)
+
+Samsung Health manual snapshots now share the existing measurement store. Total and active calories remain separate; calorie balance selects one total per day with manual override → Samsung Health → Home Assistant priority. Active calories are visible but never added to total or used as total burn. Samsung query/capture timestamps and unverified calorie semantics are labeled explicitly. See [manual sync deployment and phone testing](ANDROID_MANUAL_SYNC.md).

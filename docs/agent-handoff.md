@@ -2,8 +2,19 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Issue #93 device authentication and Android pairing implemented on the current branch. Security/unit and isolated PostgreSQL concurrency checks pass; Android APK/JVM/lint/device-test compilation passes. Public HTTPS/physical-phone pairing and Keystore device execution remain manual verification. No health ingestion/sync (#90/#91) was added; stop for authentication review.
+**Status:** Issue #90 manual Android health synchronization implemented on the current branch. Full Jest, isolated PostgreSQL ingestion, TypeScript and Android build/JVM/lint/device-test compilation pass. Physical phone-to-Vela verification and Samsung elapsed/projected semantic classification remain manual gates. No #91 background sync implemented.
 **Last updated:** 2026-10-24
+
+## Android manual synchronization #90 — 2026-10-24
+
+- `/api/health/ingest` reuses scoped #93 authentication and bounds versioned JSON snapshots. `lib/health/ingestion.ts` validates local calendar intervals, units and capture times, and serializes owner/device/source/day snapshot upserts. Downward corrections replace prior values; equal retries and stale captures do not write.
+- Additive migration `20261024100000_android_health_ingestion` adds ACTIVE_CALORIES and metadata to the existing store. Tested in an isolated PostgreSQL schema; **not applied to the application database**. Deploy it, regenerate Prisma and rebuild/restart before phone testing. No new dependencies or configuration secrets.
+- Health shows separate total/active cards and Samsung query-capture/uncertainty labels. Calorie priority: manual override, Samsung Health, HA; active is excluded from balance. Owner/date series are never summed.
+- Android Sync now uses existing Keystore credentials and HTTPS client, reads elapsed today plus the selected historical date, and reports progress/status/skips and persistent last-success time. No automatic retries/queue/background scheduler.
+- Full Jest: 1,127 passed, four opt-in tests skipped. Separate isolated PostgreSQL ingestion test passed, including simultaneous retry, six-decimal precision, stale/corrected captures, owner isolation, HA/Samsung priority and manual override. Changed TS files pass lint/format and TypeScript passes. Repository-wide lint/format retain unrelated failures.
+- Production `NODE_ENV=production yarn build` passed outside the sandbox. Inherited nonstandard NODE_ENV caused the initial prerender failure; restricted Turbopack stalled and its stale build lock was removed after confirming no build remained. No application deployment was performed.
+- Android `assembleDebug`, `testDebugUnitTest` (17 tests), `lintDebug` (zero errors, ten advisory warnings), and `assembleDebugAndroidTest` passed offline with the existing temporary `/tmp/vela-android-toolchain`. Host `local.properties` restored. No connected tests or phone sync performed; rebuild on host to preserve Samsung signing identity.
+- See [manual sync](ANDROID_MANUAL_SYNC.md) for deployment, full physical phone acceptance, API contract, calorie semantics and #91 recommendations. Stop for manual testing/review before #91.
 
 ## Device authentication #93 — 2026-10-24
 
@@ -769,3 +780,19 @@ User authorized implementing the reusable per-user Home Assistant connector and 
   Do not merge automatically. Future metadata integrations should preserve
   editable fields separately from provider snapshots and reuse existing shared
   AI/embedding infrastructure when requested.
+
+## Issue #91 — Android background sync (2026-10-24)
+
+Implementation is in the current working tree alongside existing #90 changes.
+WorkManager 2.10.1 adds hourly unique connected/battery-not-low work; `HealthSync`
+shares the manual/worker mutex and durable outbox, rereads today plus seven days,
+and replays original capture timestamps. Permanent failures pause automatic sync;
+UI supports recovery, pause/resume and single-day historical backfill. Credentials
+remain Keystore encrypted. See `docs/ANDROID_BACKGROUND_SYNC.md` for design and
+physical-phone acceptance. Do not close #91 without device cadence/reboot/offline/
+revision and battery checks. No device execution or deployment performed here.
+
+#91 validation: `assembleDebug`, `testDebugUnitTest` (21 passed), `lintDebug`
+(zero errors, 21 advisories) and `assembleDebugAndroidTest` passed offline with
+locks enforced. Seventeen focused ingestion/route Jest tests passed. Recovery
+instrumentation test compiled but was not run. Host local.properties restored.

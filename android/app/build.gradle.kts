@@ -59,6 +59,7 @@ val verifySamsungSdk by tasks.registering {
 tasks.named("preBuild").configure { dependsOn(verifySamsungSdk) }
 
 dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation(files(samsungSdk))
     implementation("com.google.code.gson:gson:2.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

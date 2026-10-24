@@ -66,7 +66,7 @@ stay in memory, with explicit clipboard copy and no automatic health logging.
 Samsung Health Data SDK 1.1.0 is a locally supplied, Git-ignored AAR. Debug reads
 require Samsung Health Data Read developer mode plus user consent. The user accepted the
 S25 FE read diagnostics for #89; detailed elapsed/projected semantics are not
-classified in the recorded evidence; no health ingestion or background synchronization are implemented.
+classified in the recorded evidence; manual ingestion is implemented in #90; background synchronization is implemented in #91 with physical-device acceptance pending.
 
 Issue #93 adds generic account-owned device credentials, separate-secret one-time
 pairing, protected Settings → Devices management and Android Keystore-backed
@@ -80,6 +80,8 @@ Android Studio, JDK 17/SDK builds and USB ADB run on the Ubuntu host. Android
 tooling remains opt-in and Android CI is separate from web checks. See
 [Android setup](../android/README.md) and [calorie validation](ANDROID_HEALTH_VALIDATION.md)
 for the licensed SDK setup, signing/developer-mode limits, deployment and tests.
+
+Manual sync (#90) uses `/api/health/ingest` and `lib/health/ingestion.ts` to authenticate scoped device uploads, validate bounded versioned snapshots and upsert the existing Health records. Total/active calories remain separate; manual calorie overrides take priority, then Samsung Health, then HA. Query interval/timezone and unverified calorie semantics persist as metadata. See [Android manual sync](ANDROID_MANUAL_SYNC.md).
 
 ## Daily meal requirements
 
@@ -120,3 +122,8 @@ Important future product goals and deployment assumptions are documented in [PRO
 ## Experimental desktop deployment
 
 The initial daily-use deployment runs the app and PostgreSQL in the existing Ubuntu desktop dev container, with the Pi retaining gateway services. Public `yarn public:build` / `yarn public:start` commands serve an optimized Next.js build on port 3001 with a fixed HTTPS auth origin; local `yarn dev` is available on desktop LAN port 3000. Both processes share the database. The existing Cloudflare Tunnel points directly from the Pi to the desktop, without Caddy or Access. See [daily-use deployment](DAILY_USE_DEPLOYMENT.md) for setup, account provisioning, Docker volume retention, tested database backup/restore commands and operational limitations.
+
+Background sync (#91) schedules unique hourly WorkManager work with connectivity
+and battery constraints. `HealthSync` shares manual/worker serialization and a
+durable bounded outbox; SDK reads reconcile today and seven completed days. See
+[Android background sync](ANDROID_BACKGROUND_SYNC.md) for retries and acceptance.

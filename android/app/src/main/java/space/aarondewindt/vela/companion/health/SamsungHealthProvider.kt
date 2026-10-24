@@ -1,6 +1,7 @@
 package space.aarondewindt.vela.companion.health
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import com.samsung.android.sdk.health.data.HealthDataService
@@ -17,26 +18,27 @@ import com.samsung.android.sdk.health.data.request.LocalTimeFilter
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 
-/** The only layer that imports Samsung SDK types. Activity-scoped; never retained globally. */
-class SamsungHealthProvider(private val activity: Activity) : HealthProvider {
+/** Only this adapter imports Samsung SDK types. Workers use application context without dialogs. */
+class SamsungHealthProvider(private val context: Context) : HealthProvider {
     override val source = "Samsung Health / Data SDK ${SdkVersion.getVersionName()} / ACTIVITY_SUMMARY"
     override val environment: String get() {
         val version = try {
             @Suppress("DEPRECATION")
-            activity.packageManager.getPackageInfo("com.sec.android.app.shealth", 0).versionName ?: "unknown"
+            context.packageManager.getPackageInfo("com.sec.android.app.shealth", 0).versionName ?: "unknown"
         } catch (_: PackageManager.NameNotFoundException) { "not installed" }
         return "Samsung Health $version; Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}); ${Build.MANUFACTURER} ${Build.MODEL}"
     }
     private val permissions = setOf(Permission.of(DataTypes.ACTIVITY_SUMMARY, AccessType.READ))
     private var resolution: ResolvablePlatformException? = null
     // getStore can throw; defer until an explicit permission/read action, not composition.
-    private fun store() = HealthDataService.getStore(activity.applicationContext)
+    private fun store() = HealthDataService.getStore(context.applicationContext)
 
     override suspend fun hasReadPermission(): Boolean = sdkCall {
         store().getGrantedPermissions(permissions).containsAll(permissions)
     }
 
     override suspend fun requestReadPermission(): Boolean = sdkCall {
+        val activity = context as? Activity ?: throw HealthFailure(HealthFailure.Kind.PERMISSION, "Open the app to grant Samsung Health read access.")
         store().requestPermissions(permissions, activity)
         // Recheck instead of assuming the dialog granted consent.
         hasReadPermission()
@@ -65,7 +67,7 @@ class SamsungHealthProvider(private val activity: Activity) : HealthProvider {
     override fun resolveAvailability() {
         val pending = resolution ?: return
         resolution = null
-        pending.resolve(activity)
+        (context as? Activity)?.let { pending.resolve(it) }
     }
 
     private suspend fun <T> sdkCall(block: suspend () -> T): T = try {

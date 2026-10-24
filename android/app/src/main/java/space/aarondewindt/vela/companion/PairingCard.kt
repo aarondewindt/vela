@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
 @Composable
@@ -30,7 +31,7 @@ fun PairingCard() {
     var code by remember { mutableStateOf<String?>(null) }
     var expires by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var message by remember { mutableStateOf("Pair with Vela over HTTPS. Health upload is not implemented.") }
+    var message by remember { mutableStateOf("Pair with Vela over HTTPS, then use Sync now below.") }
     fun action(block: suspend () -> Unit) {
         if (busy) return
         busy = true
@@ -64,7 +65,11 @@ fun PairingCard() {
                 val result = DeviceConnection(server).request("/api/devices/pairing/redeem", JSONObject().put("sessionSecret", sessionSecret))
                 if (result.getString("status") == "pending") message = "Waiting for browser approval. Approve, then finish again."
                 else {
-                    store.save(server, result.getString("token"))
+                    HealthSync.mutex.withLock {
+                        check(context.getSharedPreferences("health_sync", 0).edit().clear().commit())
+                        store.save(server, result.getString("token"))
+                    }
+                    BackgroundSync.schedule(context)
                     sessionSecret = null
                     code = null
                     message = "Paired. Credential saved securely. No health data has been sent."
@@ -79,7 +84,11 @@ fun PairingCard() {
                 }
             } }) { Text("Check saved connection") }
             Button(enabled = !busy, onClick = { action {
-                store.clear()
+                HealthSync.mutex.withLock {
+                    store.clear()
+                    check(context.getSharedPreferences("health_sync", 0).edit().clear().putBoolean("paused", true).commit())
+                }
+                BackgroundSync.cancel(context)
                 sessionSecret = null
                 code = null
                 message = "Local credential forgotten. Revoke the device in Vela to remove server access."

@@ -152,7 +152,7 @@ fun VelaCompanionApp(provider: HealthProvider, resumeCount: Int = 0) {
                     Text("Copy includes private calorie readings. Nothing is uploaded. Results are held in memory and cleared on return, rotation, date edits or a new action.")
                     SelectionContainer { DiagnosticCard("Raw query details", report) }
                 }
-                DiagnosticCard("Vela connection", "Not configured. No backend ingestion or automatic synchronization in this version.")
+                ManualSyncCard(provider, historicalDate, !busy && validDate)
             }
         }
     }

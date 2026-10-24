@@ -17,7 +17,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
     .trim();
   const unsupportedUnit = {
     normalized: null,
-    issue: `Unsupported unit ${unit ? JSON.stringify(unit) : '(missing)'}. Expected ${{ WEIGHT: 'g, kg, lb or lbs', LEAN_MASS: 'g, kg, lb or lbs', BODY_FAT: '%', SLEEP: 'min, minutes, s, seconds, h, hr or hours', TOTAL_CALORIES: 'kcal or kJ' }[metric]}.`,
+    issue: `Unsupported unit ${unit ? JSON.stringify(unit) : '(missing)'}. Expected ${{ WEIGHT: 'g, kg, lb or lbs', LEAN_MASS: 'g, kg, lb or lbs', BODY_FAT: '%', SLEEP: 'min, minutes, s, seconds, h, hr or hours', TOTAL_CALORIES: 'kcal or kJ', ACTIVE_CALORIES: 'kcal or kJ' }[metric]}.`,
   };
   if (metric === 'WEIGHT' || metric === 'LEAN_MASS') {
     if (unit === 'g') {
@@ -55,7 +55,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
   }
   // HA timestamps describe sensor state, not necessarily the underlying measurement.
   const observedAt = new Date(
-    metric === 'TOTAL_CALORIES' ? state.last_updated : state.last_changed
+    ['TOTAL_CALORIES', 'ACTIVE_CALORIES'].includes(metric) ? state.last_updated : state.last_changed
   );
   if (!Number.isFinite(observedAt.getTime()) || observedAt.getTime() > Date.now() + 300000) {
     return {
@@ -75,7 +75,7 @@ export function inspectMetric(metric: MetricKind, state: HomeAssistantState, tim
       entityId: state.entity_id,
       source: 'home_assistant',
       timestampBasis: 'sensor_state',
-      sourceKey: `ha:${state.entity_id}:${metric}:${metric === 'TOTAL_CALORIES' ? date : observedAt.toISOString()}`,
+      sourceKey: `ha:${state.entity_id}:${metric}:${['TOTAL_CALORIES', 'ACTIVE_CALORIES'].includes(metric) ? date : observedAt.toISOString()}`,
     },
   };
 }
