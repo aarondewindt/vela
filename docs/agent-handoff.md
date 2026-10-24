@@ -5,6 +5,20 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-24
 
+## Next.js DevTools MCP #106 — 2026-10-25
+
+- Phase 1 implementation is in the working tree: official connector pinned to
+  0.4.0 in both MCP configs, Codex startup timeout 60s, devcontainer extension
+  installation and runtime workflow guidance. No Phase 2/3 or Android changes.
+- Existing VS Code/devcontainer Codex tools successfully discovered Vela on 3000
+  and returned project metadata, 36 routes, empty current errors and a readable
+  log path. A fresh-cache pinned stdio connector repeated all calls successfully.
+  Config parsing/preservation checks, `git diff --check` and `yarn typecheck` passed.
+- Keep #106 open pending a rebuilt/reloaded VS Code container window and a new
+  Codex conversation recognizing the pinned server and repeating the smoke check.
+  This session cannot reload its own extension host. See NEXT_DEVTOOLS_MCP.md for
+  commands, evidence, limitations and troubleshooting. Leave parent #105 open.
+
 ## Companion diagnostics #103 — 2026-10-24
 
 - Entire implementation is in the current working tree, not committed/pushed:

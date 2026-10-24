@@ -13,7 +13,7 @@
 	"forwardPorts": [3000, 5050],
 	"customizations": {
 		"vscode": {
-			"extensions": []
+			"extensions": ["openai.chatgpt"]
 		}
 	},
 	"features": {

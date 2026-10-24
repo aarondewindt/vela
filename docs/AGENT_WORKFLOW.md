@@ -22,7 +22,7 @@ The source of truth is `.vscode/mcp.json`; `.codex/config.toml` mirrors its serv
 | --- | --- | --- |
 | `better-auth` | Streamable HTTP | `https://mcp.better-auth.com/mcp`; neither file currently specifies credentials. |
 | `mantine-mcp-server` | stdio | Runs `npx @mantine/mcp-server`; VS Code prompts for `MANTINE_MCP_DATA_URL`, while Codex forwards that variable from its host environment. Timeout is 10000 ms. |
-| `next-devtools` | stdio | Runs `npx -y next-devtools-mcp@latest`; it relies on the local Next.js development server for runtime tools. |
+| `next-devtools` | stdio | Runs `npx -y next-devtools-mcp@0.4.0` inside the devcontainer; Codex allows 60 seconds for startup. See [runtime diagnostics and troubleshooting](NEXT_DEVTOOLS_MCP.md). |
 
 The remote Better Auth endpoint is shared by URL. Each agent starts its own local stdio process for Mantine and Next DevTools; the current VS Code definitions do not expose shared local endpoints for those processes. Codex project configuration is loaded only after the repository is trusted. If the remote service requires authentication in your environment, configure it through Codex's supported user-level OAuth/token mechanism, not a committed secret.
 

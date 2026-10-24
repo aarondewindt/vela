@@ -44,6 +44,8 @@ This template comes with the following features:
 
 ## AI coding agents
 
+For live Next.js errors, routes and logs in Codex, see [Next.js DevTools MCP](docs/NEXT_DEVTOOLS_MCP.md), including devcontainer startup, reload steps and troubleshooting.
+
 Vela supports GitHub Copilot and OpenAI Codex. Shared project instructions are in [AGENTS.md](AGENTS.md); shared architecture and agent setup are in [docs/architecture.md](docs/architecture.md) and [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md). Both agents discover the canonical project skills in `.agents/skills/`, including the Prisma skills.
 
 In VS Code, install the OpenAI Codex extension from the Extensions view and choose **Sign in with ChatGPT** using the subscription account that has Codex access; availability depends on the account's current plan entitlements. Copilot uses the existing VS Code GitHub sign-in. Codex reads the repository MCP configuration in `.codex/config.toml` after you trust the project; VS Code continues to use `.vscode/mcp.json`. Set `MANTINE_MCP_DATA_URL` in the environment that launches Codex if you need the Mantine MCP server; VS Code instead prompts for this value. Do not commit tokens or credentials.

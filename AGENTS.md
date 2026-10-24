@@ -17,6 +17,7 @@ Vela is a private personal planning app, separate from OpenClaw. The application
 - Shared project skills live in `.agents/skills/`; use a relevant `SKILL.md` when its task scope applies. Copilot and Codex both support this location. Claude and Windsurf skill paths are local symlink mirrors; do not replace them with copied skill trees.
 - Prisma skills are managed by the `skills` CLI and `skills-lock.json`, not by a Prisma configuration option. Review skill changes when upgrading Prisma; see [agent workflow](docs/AGENT_WORKFLOW.md).
 - VS Code MCP servers are defined in `.vscode/mcp.json`; Codex equivalents are in `.codex/config.toml`. Keep the definitions aligned and never commit credentials. Codex project configuration applies only to a trusted project.
+- For Next.js changes, use `next-devtools` runtime diagnostics when the development server is available: discover with `nextjs_index`, verify the project with `get_project_metadata`, then use `nextjs_call` for routes, current errors and logs before and after the change. Exercise affected pages in a browser; empty errors do not prove unvisited routes work. Report unavailable diagnostics explicitly and retain focused tests/typechecks. See [Next.js DevTools MCP](docs/NEXT_DEVTOOLS_MCP.md).
 - For a significant unfinished task likely to move between agents, update [the shared handoff](docs/agent-handoff.md). It is a Git-tracked checkpoint, not a copy or synchronization of chat history. Avoid simultaneous edits to the same working tree; use separate Git worktrees for concurrent work.
 
 ## Commands
