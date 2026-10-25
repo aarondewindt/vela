@@ -1,6 +1,6 @@
 'use client';
 
-import { GaugeChart } from '@mantine/charts';
+import { VelaGaugeChart } from '@/components/VelaGaugeChart/VelaGaugeChart';
 import { Box, Stack, Text } from '@mantine/core';
 import { calorieBalanceGaugeScale } from '@/lib/health/gauge-scale';
 import type { GoalOptions } from '@/lib/goals/semantics';
@@ -35,7 +35,7 @@ export function CalorieBalanceWidget({ intake, burned, balance, goal }: Props) {
   return (
     <Box>
       <div className={classes.layout}>
-        <GaugeChart
+        <VelaGaugeChart
           className={classes.gauge}
           size={220}
           thickness={30}
@@ -44,8 +44,10 @@ export function CalorieBalanceWidget({ intake, burned, balance, goal }: Props) {
           min={0}
           max={100}
           value={scale?.target ?? 50}
-          target={scale?.target}
-          targetSize={3}
+          valueFormatter={() => balanceLabel}
+          markers={
+            scale ? [{ id: 'current', value: scale.target, size: 3, label: 'Current balance' }] : []
+          }
           sections={
             scale
               ? [
