@@ -141,7 +141,7 @@ of HA update-date grouping; full sleep-stage/session export is not implemented.
 A user timezone should match the timezone used for daily totals on the source phone.
 Changing Vela's timezone affects future imports after the worker reloads; existing
 dates are retained. No missing day is reconstructed from a later cumulative total.
-The view shows one selected reading per day, not every intraday sample. For
+The daily detail shows one selected reading per day, not every intraday sample. For
 Android-designated metrics, Samsung has priority over manual and legacy HA
 readings. For weight, body fat and lean mass, Home Assistant has priority over
 manual and other retained sources on the same measurement date. Within a source,
@@ -204,3 +204,87 @@ Samsung Health manual snapshots now share the existing measurement store. Total 
 
 See [Android source matrix](ANDROID_SOURCE_MATRIX.md) for steps, sleep and direct
 SDK BMR ingestion, schema migration, new read permissions and phone acceptance.
+
+## Shared history and dashboard (#25, #26, #107)
+
+One Health-page dropdown controls all eight existing history plots: last 10/30
+days, 3/6 calendar months, one calendar year, and all time. The default is 10 days.
+The `health-history` Zustand store persists only this UI selection in localStorage
+and restores it after mount. Server data stays in tRPC/TanStack Query. The existing
+period-ending date still anchors history; daily cards/table retain a small,
+explicitly labeled seven-day detail window.
+
+`health.chartHistory` validates the range and delegates to `lib/health/history.ts`.
+It reuses the daily history's authoritative source/date selection and Nutrition's
+scalar snapshot grouping query. All time starts at the owner's earliest Health
+or diary date, never another owner's data. Future end dates are capped at today
+in the owner's timezone. Stored source calendar dates are retained after timezone
+changes; historical measurements are not reassigned using the viewer's timezone.
+Manual writes/deletes invalidate both detail and chart queries.
+
+Aggregation occurs on the server before transmission/rendering:
+
+- Up to 93 inclusive days: daily observations; 94–366 days: Monday–Sunday
+  calendar weeks clipped to the selected window; longer periods: calendar months.
+- Histories exceeding 180 months use multi-month buckets to bound output to at
+  most 181 points. Empty periods remain present without allocating every empty
+  day in long histories. The database still reads one authoritative scalar row per
+  observed metric/day, so query cost grows with the stored daily history.
+- Weight, lean mass, body fat, sleep, steps and BMR use means of actual daily
+  readings in multi-day buckets. Tooltips retain observed minima/maxima and day
+  coverage. Carry-forward values never become chart observations.
+- Burn uses sums of recorded daily totals, with missing/partial-day coverage
+  exposed. Active/resting stacks require explicitly verified expenditure semantics,
+  matching source/device, timezone and query bounds, and `0 ≤ active ≤ total`.
+  Otherwise the same chart shows an orange **Total (unsplit)** bar. No invalid
+  difference is clamped, and BMR is never used as resting expenditure.
+- Balance preserves `intake − total burn`, rounding each daily balance using the
+  existing calculation before summing. A multi-day sum is present only when all
+  selected days have both inputs, are in the past, and Samsung burn covers the
+  complete source day. Today and incomplete periods remain gaps. A diary with
+  some food logged is still not proof that all intake was recorded.
+- Current body/sleep goal references stay visible, including missing observations;
+  sleep references apply to daily means. Signed balance references apply only to
+  daily values and are hidden for multi-day sums.
+
+Calories burned alone has a local Today toggle; it leaves the shared range intact.
+Today currently shows **10-minute data unavailable**, with no synthetic bins.
+Investigation inspected the production Samsung adapter, version-1 upload/upsert
+contract, background schedule, and the existing private #92 physical-device probe.
+The production adapter requests an ungrouped midnight-to-query aggregate. Upload
+capture times are SDK response/sync times, not underlying measurement times, and
+each device/metric/date is updated in place. The probe's explicit hourly groups
+had hour-sized bounds (including DST/partial-period anomalies), not evidence of
+10-minute resolution. No 10-minute read or ingestion has been validated. WorkManager
+allows 15/30/60/120-minute scheduling, default 60, without guaranteeing exact timing.
+The [recorded investigation](ANDROID_DST_INVESTIGATION.md) also demonstrates delayed
+SDK availability associated with opening Samsung Health. It does not prove an
+internal synchronization trigger or classify elapsed/projected expenditure.
+
+Samsung documents [local-time calorie aggregation](https://developer.samsung.com/health/data/api-reference/-shd/com.samsung.android.sdk.health.data.request/-data-type/-activity-summary-type/-companion/-t-o-t-a-l_-c-a-l-o-r-i-e-s_-b-u-r-n-e-d.html)
+and [aggregate interval bounds](https://developer.samsung.com/health/data/api-reference/-shd/com.samsung.android.sdk.health.data.data/-aggregated-data/index.html).
+Neither establishes measurement timestamps for these imported daily snapshots.
+Current ingestion retains `sdk_aggregate_semantics_unverified`; no current adapter
+emits the explicit verified classification required for decomposition. Therefore
+current Samsung history displays unsplit totals. Enabling verified stacks or real
+intraday bins requires new source evidence and an adapter/ingestion change, not
+interpolation of existing snapshots. No Android synchronization policy is changed
+by this UI work.
+
+The main dashboard adds compact Weight, Body fat and Sleep summaries alongside
+the existing calorie-balance gauge. They share the same seven-day Health query and
+goals. Body readings can carry forward from before that window and retain their
+measurement dates; Sleep shows the latest reading within seven days, dated and
+labeled when stale, or an explicit missing state. All eight detailed history plots
+remain on the Health page.
+
+Verification for this batch (2026-10-25): 140 focused Health/component/Nutrition
+history/store tests passed; three existing integration tests were skipped. Typecheck,
+production build (`NODE_ENV=production yarn build`), changed-file Oxlint/formatting,
+Stylelint and diff checks passed. Authenticated browser checks used a disposable
+synthetic account with 17 years of daily history, exercised every range, reload
+persistence, Today isolation, missing-day balances, goal display and dashboard
+summaries at 1440/390/320px. The account and its data were removed afterward.
+Next.js runtime diagnostics returned no current errors after exercising the pages.
+Full-repository `yarn lint` remains blocked by 28 existing errors in unrelated
+auth, shell, editor and Planner files; no Health/range/chart lint errors remain.

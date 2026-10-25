@@ -28,13 +28,7 @@ export const nutritionHistory = {
     const input = historyInputSchema.parse(rawInput);
     const startDate = shiftDiaryDate(input.endDate, 1 - input.days);
     // Scalar snapshots allow database aggregation without loading large recipe JSON documents.
-    const records = await prisma.nutritionLogEntry.groupBy({
-      by: ['logDate'],
-      where: { userId, logDate: { gte: diaryDate(startDate), lte: diaryDate(input.endDate) } },
-      _sum: { calories: true, protein: true, carbohydrates: true, fat: true, fiber: true },
-      _count: { _all: true, fiber: true },
-      orderBy: { logDate: 'asc' },
-    });
+    const records = await readNutritionHistoryRecords(userId, startDate, input.endDate);
     const days = nutritionHistoryDays(
       input.endDate,
       input.days,
@@ -59,3 +53,18 @@ export const nutritionHistory = {
     };
   },
 };
+
+/** Shared scalar-only query for daily and adaptive Health history. */
+export async function readNutritionHistoryRecords(
+  userId: string,
+  startDate: string,
+  endDate: string
+) {
+  return prisma.nutritionLogEntry.groupBy({
+    by: ['logDate'],
+    where: { userId, logDate: { gte: diaryDate(startDate), lte: diaryDate(endDate) } },
+    _sum: { calories: true, protein: true, carbohydrates: true, fat: true, fiber: true },
+    _count: { _all: true, fiber: true },
+    orderBy: { logDate: 'asc' },
+  });
+}

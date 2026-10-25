@@ -6,6 +6,7 @@ jest.mock('./service', () => ({
   healthService: {
     getGoal: jest.fn(),
     history: jest.fn(),
+    chartHistory: jest.fn(),
     diagnostics: jest.fn(),
     saveGoal: jest.fn(),
     mappings: jest.fn(),
@@ -36,6 +37,7 @@ it('requires authentication for health records and connection credentials', asyn
   const ha = homeAssistantRouter.createCaller({ userId: null });
   for (const call of [
     () => health.history({ endDate: '2026-01-10', days: 7 }),
+    () => health.chartHistory({ endDate: '2026-01-10', range: 'all' }),
     () => health.getGoal(),
     () => health.mappings(),
     () => health.diagnostics(),
@@ -60,6 +62,14 @@ it('always obtains the owner from the session and validates balance goals', asyn
   });
   await health.getGoal();
   expect(healthService.getGoal).toHaveBeenCalledWith('alice');
+  await health.chartHistory({ endDate: '2026-01-10', range: 'all', userId: 'bob' } as never);
+  expect(healthService.chartHistory).toHaveBeenCalledWith('alice', {
+    endDate: '2026-01-10',
+    range: 'all',
+  });
+  await expect(
+    health.chartHistory({ endDate: '2026-01-10', range: 'today' } as never)
+  ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   await health.diagnostics();
   expect(healthService.diagnostics).toHaveBeenCalledWith('alice');
   await ha.get();

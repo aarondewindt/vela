@@ -3,7 +3,6 @@ import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { Prisma, type HealthMetric } from '../../generated/prisma/client';
 import { diaryDate } from '@/lib/nutrition/dates';
 import { nutritionHistory } from '@/lib/nutrition/history';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
@@ -19,8 +18,11 @@ import { ownerClient } from '@/lib/integrations/home-assistant/service';
 import { HomeAssistantError } from '@/lib/integrations/home-assistant/client';
 import { settingsService } from '@/lib/settings/service';
 import { calorieBalance, inspectMetric } from './normalization';
+import { readHealthMetrics } from './persistence';
+import { healthChartHistory } from './history';
 
 export const healthService = {
+  chartHistory: healthChartHistory,
   async getGoal(userId: string) {
     const goal = await prisma.healthGoal.findUnique({ where: { userId } });
     return {
@@ -81,27 +83,19 @@ export const healthService = {
   async history(userId: string, input: z.infer<typeof historyInputSchema>) {
     const nutrition = await nutritionHistory.get(userId, input);
     const [records, goal] = await Promise.all([
-      prisma.$queryRaw<HealthMetric[]>(Prisma.sql`
-        (SELECT DISTINCT ON ("date", metric) * FROM health_metrics
-        WHERE "userId" = ${userId} AND "date" >= ${diaryDate(nutrition.startDate)}
-          AND "date" <= ${diaryDate(input.endDate)}
-        ORDER BY "date", metric,
-          CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP', 'BMR') THEN
-            CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
-          ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
-          "observedAt" DESC, "receivedAt" DESC, id DESC)
-        UNION ALL
-        (SELECT DISTINCT ON (metric) * FROM health_metrics
-        WHERE "userId" = ${userId} AND "date" < ${diaryDate(nutrition.startDate)}
-          AND metric IN ('WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'BMR')
-        ORDER BY metric, "date" DESC,
-          CASE WHEN metric = 'BMR' THEN
-            CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
-          ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
-          "observedAt" DESC, "receivedAt" DESC, id DESC)
-      `),
+      readHealthMetrics(userId, nutrition.startDate, input.endDate),
       prisma.healthGoal.findUnique({ where: { userId } }),
     ]);
+    const recordsByDate = new Map<string, typeof records>();
+    for (const record of records) {
+      const date = record.date.toISOString().slice(0, 10);
+      const entries = recordsByDate.get(date) ?? [];
+      entries.push(record);
+      recordsByDate.set(date, entries);
+    }
+    const carried = new Map(
+      records.filter((x) => x.date < diaryDate(nutrition.startDate)).map((x) => [x.metric, x])
+    );
     const goalOptions = readGoalOptions(goal?.semantics);
     return {
       goal: {
@@ -111,19 +105,18 @@ export const healthService = {
         version: goal?.version ?? 0,
       },
       days: nutrition.days.map((day) => {
-        const entries = records.filter((x) => x.date.toISOString().slice(0, 10) === day.date);
+        const entries = recordsByDate.get(day.date) ?? [];
         const metrics = Object.fromEntries(
           metricKinds.map((metric) => {
             const measured = entries.find((x) => x.metric === metric);
             const record =
               measured ??
               (['WEIGHT', 'BODY_FAT', 'LEAN_MASS', 'BMR'].includes(metric)
-                ? records
-                    .filter(
-                      (x) => x.metric === metric && x.date.toISOString().slice(0, 10) < day.date
-                    )
-                    .sort((a, b) => b.date.getTime() - a.date.getTime())[0]
+                ? carried.get(metric)
                 : undefined);
+            if (measured) {
+              carried.set(metric, measured);
+            }
             return [
               metric,
               record

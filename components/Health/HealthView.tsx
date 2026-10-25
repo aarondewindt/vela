@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Alert,
@@ -10,7 +10,6 @@ import {
   Loader,
   NumberInput,
   Paper,
-  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -19,14 +18,15 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { LineChart } from '@mantine/charts';
-import { goalChartReferences } from '@/lib/goals/chart-references';
 import { describeGoal } from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
 import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { dateInTimezone } from '@/lib/nutrition/dates';
 import { CalorieBalanceWidget } from './CalorieBalanceWidget';
+import { HealthHistoryCharts } from './HealthHistoryCharts';
+import { healthRanges, healthRangeSchema } from '@/lib/health/history-range';
+import { useHealthHistoryStore } from '@/store/health-history';
 
 const amount = (value: number | null | undefined, unit = '') =>
   value == null
@@ -41,7 +41,10 @@ function ManualEntry({ date }: { date: string }) {
     onSuccess: async () => {
       setValue('');
       setRequestId(crypto.randomUUID());
-      await utils.health.history.invalidate();
+      await Promise.all([
+        utils.health.history.invalidate(),
+        utils.health.chartHistory.invalidate(),
+      ]);
     },
   });
   return (
@@ -91,33 +94,30 @@ function ManualEntry({ date }: { date: string }) {
 }
 export function HealthView({ initialDate, timezone }: { initialDate: string; timezone: string }) {
   const [date, setDate] = useState(initialDate);
-  const [days, setDays] = useState<7 | 30>(7);
+  const days = 7;
+  const range = useHealthHistoryStore((state) => state.range);
+  const setRange = useHealthHistoryStore((state) => state.setRange);
+  useEffect(() => {
+    void useHealthHistoryStore.persist.rehydrate();
+  }, []);
   const valid = historyInputSchema.safeParse({ endDate: date, days }).success;
   const history = trpc.health.history.useQuery(
     { endDate: date, days },
     { enabled: valid, refetchInterval: 30000 }
   );
+  const chartHistory = trpc.health.chartHistory.useQuery(
+    { endDate: date, range },
+    { enabled: valid, refetchInterval: 30000 }
+  );
   const connection = trpc.homeAssistant.get.useQuery(undefined, { refetchInterval: 30000 });
   const utils = trpc.useUtils();
   const remove = trpc.health.remove.useMutation({
-    onSuccess: () => utils.health.history.invalidate(),
+    onSuccess: () =>
+      Promise.all([utils.health.history.invalidate(), utils.health.chartHistory.invalidate()]),
   });
   const data = valid && !history.error ? history.data : undefined;
   const selected = data?.days.at(-1);
   const latestBurn = data?.days.findLast((day) => day.burned !== null);
-  const chart =
-    data?.days.map((day) => ({
-      date: day.date.slice(5),
-      weight: day.metrics.WEIGHT?.carriedForward ? null : (day.metrics.WEIGHT?.value ?? null),
-      lean: day.metrics.LEAN_MASS?.carriedForward ? null : (day.metrics.LEAN_MASS?.value ?? null),
-      fat: day.metrics.BODY_FAT?.carriedForward ? null : (day.metrics.BODY_FAT?.value ?? null),
-      sleep: day.metrics.SLEEP?.value ?? null,
-      steps: day.metrics.STEPS?.value ?? null,
-      bmr: day.metrics.BMR?.carriedForward ? null : (day.metrics.BMR?.value ?? null),
-      total: day.metrics.TOTAL_CALORIES?.value ?? null,
-      active: day.metrics.ACTIVE_CALORIES?.value ?? null,
-      balance: day.balance,
-    })) ?? [];
   return (
     <Container size="lg" py="xl">
       <Stack gap="lg">
@@ -126,6 +126,26 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
           <Button component={Link} href="/settings/home-assistant" variant="default">
             Home Assistant settings
           </Button>
+        </Group>
+        <Group align="flex-end">
+          <TextInput
+            type="date"
+            label="Period ending"
+            value={date}
+            onChange={(e) => setDate(e.currentTarget.value)}
+          />
+          <Select
+            label="Health history range"
+            value={range}
+            data={[...healthRanges]}
+            allowDeselect={false}
+            onChange={(value) => {
+              const parsed = healthRangeSchema.safeParse(value);
+              if (parsed.success) {
+                setRange(parsed.data);
+              }
+            }}
+          />
         </Group>
         <Text c="dimmed">
           Track Withings body composition and Samsung Health sleep, steps, BMR and calorie balance.
@@ -150,23 +170,6 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
             companion for Samsung Health measurements.
           </Alert>
         )}
-        <Group align="flex-end">
-          <TextInput
-            type="date"
-            label="Period ending"
-            value={date}
-            onChange={(e) => setDate(e.currentTarget.value)}
-          />
-          <SegmentedControl
-            aria-label="History period"
-            value={String(days)}
-            onChange={(v) => setDays(Number(v) as 7 | 30)}
-            data={[
-              { value: '7', label: '7 days' },
-              { value: '30', label: '30 days' },
-            ]}
-          />
-        </Group>
         {!valid && <Alert color="yellow">Choose a valid date with enough previous days.</Alert>}
         {valid && history.isPending && <Loader />}
         {history.error && <Alert color="red">{history.error.message}</Alert>}
@@ -300,98 +303,25 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 </Anchor>
               </Stack>
             </Paper>
-            <Text size="xs" c="dimmed">
-              Goal references: yellow minimum; green target or acceptable band; red maximum; lime
-              excellent. Current goals apply to all dates.
+            {chartHistory.isPending && <Loader aria-label="Loading health history" />}
+            {chartHistory.error && <Alert color="red">{chartHistory.error.message}</Alert>}
+            {chartHistory.data && !chartHistory.error && (
+              <>
+                <Text size="sm" c="dimmed">
+                  History: {chartHistory.data.startDate} – {chartHistory.data.endDate} · {timezone}
+                </Text>
+                <HealthHistoryCharts
+                  history={chartHistory.data}
+                  goal={data.goal}
+                  today={dateInTimezone(timezone)}
+                  timezone={timezone}
+                />
+              </>
+            )}
+            <Text size="sm" c="dimmed">
+              Daily detail: latest 7 days ending {date}. The shared range controls all eight history
+              charts.
             </Text>
-            <SimpleGrid cols={{ base: 1, md: 2 }}>
-              {[
-                {
-                  title: 'Weight',
-                  metric: 'WEIGHT' as const,
-                  unit: ' kg',
-                  series: [{ name: 'weight', label: 'Weight', color: 'teal.6' }],
-                },
-                {
-                  title: 'Lean mass',
-                  metric: 'LEAN_MASS' as const,
-                  unit: ' kg',
-                  series: [{ name: 'lean', label: 'Lean mass', color: 'blue.6' }],
-                },
-                {
-                  title: 'Body fat',
-                  metric: 'BODY_FAT' as const,
-                  unit: '%',
-                  series: [{ name: 'fat', label: 'Body fat', color: 'grape.6' }],
-                },
-                {
-                  title: 'Sleep',
-                  metric: 'SLEEP' as const,
-                  unit: ' h',
-                  series: [{ name: 'sleep', label: 'Sleep', color: 'indigo.6' }],
-                },
-                {
-                  title: 'Steps',
-                  metric: 'STEPS' as const,
-                  unit: ' steps',
-                  series: [{ name: 'steps', label: 'Steps', color: 'teal.6' }],
-                },
-                {
-                  title: 'BMR',
-                  metric: 'BMR' as const,
-                  unit: ' kcal/day',
-                  series: [{ name: 'bmr', label: 'BMR', color: 'blue.6' }],
-                },
-                {
-                  title: 'Calories burned',
-                  metric: 'TOTAL_CALORIES' as const,
-                  unit: ' kcal',
-                  series: [
-                    { name: 'total', label: 'Total', color: 'orange.6' },
-                    { name: 'active', label: 'Active (included in total)', color: 'teal.6' },
-                  ],
-                },
-                {
-                  title: 'Calorie balance',
-                  metric: null,
-                  unit: ' kcal',
-                  series: [{ name: 'balance', label: 'Balance', color: 'orange.6' }],
-                },
-              ].map((item) => (
-                <Paper withBorder p="md" key={item.title}>
-                  <Title order={3} mb="md">
-                    {item.title}
-                  </Title>
-                  <LineChart
-                    h={220}
-                    data={chart}
-                    dataKey="date"
-                    series={item.series}
-                    {...(item.metric === null
-                      ? goalChartReferences(
-                          data.goal.calorieBalance?.toString() ?? null,
-                          data.goal.semantics
-                        )
-                      : !(['WEIGHT', 'BODY_FAT', 'SLEEP'] as readonly string[]).includes(
-                            item.metric
-                          )
-                        ? goalChartReferences(null)
-                        : goalChartReferences(
-                            data.goal.metricGoals?.[
-                              item.metric as 'WEIGHT' | 'BODY_FAT' | 'SLEEP'
-                            ]?.target?.toString() ?? null,
-                            data.goal.metricGoals?.[item.metric as 'WEIGHT' | 'BODY_FAT' | 'SLEEP']
-                              ?.semantics
-                          ))}
-                    unit={item.unit}
-                    connectNulls={false}
-                    curveType="linear"
-                    withLegend
-                    yAxisProps={{ domain: ['auto', 'auto'] }}
-                  />
-                </Paper>
-              ))}
-            </SimpleGrid>
             <Table.ScrollContainer minWidth={800}>
               <Table>
                 <Table.Caption>
