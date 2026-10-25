@@ -13,17 +13,10 @@ import {
   Select,
   Stack,
   Text,
-  Textarea,
   Title,
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
-import {
-  IconMessagePlus,
-  IconRefresh,
-  IconSend,
-  IconPlayerStop,
-  IconTrash,
-} from '@tabler/icons-react';
+import { IconMessagePlus, IconRefresh, IconTrash } from '@tabler/icons-react';
 import type { inferRouterOutputs } from '@trpc/server';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -37,7 +30,9 @@ import { trpc } from '@/lib/trpc/client';
 import type { AppRouter } from '@/lib/trpc/root';
 import type { AiModel } from '@/lib/ai';
 import classes from './AiDevView.module.css';
-import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import { ModelPicker } from '@/components/AiPromptComposer/ModelPicker';
+import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
 
 type SavedConversation = inferRouterOutputs<AppRouter>['aiDev']['getConversation'];
 
@@ -205,7 +200,7 @@ export function ConversationChat({
         )}
         {!conversationId && (
           <Group align="flex-end">
-            <FeatureModelSelect
+            <ModelPicker
               override={override}
               onChange={(value) => setModelId(value?.modelId ?? null)}
               models={models.data ?? []}
@@ -221,6 +216,9 @@ export function ConversationChat({
               Refresh models
             </Button>
           </Group>
+        )}
+        {!conversationId && resolution.error && (
+          <Alert color="red">{resolution.error.message}</Alert>
         )}
         {!conversationId ? (
           <Paper withBorder p="xl" radius="md">
@@ -384,13 +382,6 @@ function ChatPanel({
   };
   return (
     <Stack gap="md">
-      <FeatureModelSelect
-        override={conversation.override}
-        models={models}
-        resolution={resolution}
-        disabled={busy || generatingElsewhere || changeModel.isPending}
-        onChange={(selection) => changeModel.mutate({ id: conversation.id, selection })}
-      />
       {changeModel.error && <Alert color="red">{changeModel.error.message}</Alert>}
       {generatingElsewhere && (
         <Alert color="blue">
@@ -511,67 +502,28 @@ function ChatPanel({
           </Stack>
         </Alert>
       )}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
+      <AiPromptComposer
+        inputRef={messageInput}
+        value={input}
+        onChange={setInput}
+        onSubmit={submit}
+        modelPicker={{
+          override: conversation.override,
+          models,
+          resolution,
+          disabled: busy || generatingElsewhere || changeModel.isPending,
+          onChange: (selection) => changeModel.mutate({ id: conversation.id, selection }),
         }}
-      >
-        <Stack gap="sm">
-          <Textarea
-            ref={messageInput}
-            label="Message"
-            placeholder="Write a message…"
-            autosize
-            minRows={2}
-            maxRows={8}
-            maxLength={planner ? 2000 : maxMessageLength}
-            value={input}
-            onChange={(event) => setInput(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            disabled={
-              busy ||
-              Boolean(error) ||
-              generatingElsewhere ||
-              changeModel.isPending ||
-              !resolution.selection
-            }
-          />
-          <Group justify="space-between">
-            <Text size="xs" c="dimmed">
-              Enter to send · Shift+Enter for a new line
-            </Text>
-            {busy ? (
-              <Button
-                variant="default"
-                leftSection={<IconPlayerStop size={16} />}
-                onClick={() => void stop()}
-              >
-                Stop response
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                leftSection={<IconSend size={16} />}
-                disabled={
-                  !input.trim() ||
-                  Boolean(error) ||
-                  generatingElsewhere ||
-                  changeModel.isPending ||
-                  !resolution.selection
-                }
-              >
-                Send
-              </Button>
-            )}
-          </Group>
-        </Stack>
-      </form>
+        textareaProps={{
+          maxLength: planner ? 2000 : maxMessageLength,
+          disabled: busy || Boolean(error) || generatingElsewhere || changeModel.isPending,
+        }}
+        submitDisabled={
+          Boolean(error) || generatingElsewhere || changeModel.isPending || !resolution.selection
+        }
+        submitting={busy}
+        onStop={() => void stop()}
+      />
     </Stack>
   );
 }

@@ -113,6 +113,35 @@ async function openSaved(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('AiDevView saved conversations', () => {
+  it('shows the feature default even when the saved conversation has an override', async () => {
+    const defaultSelection = { provider: 'ollama', modelId: 'default:latest' };
+    (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: {
+        resolved: { 'aiDev.chat': { selection: defaultSelection, source: 'Balanced default' } },
+      },
+    });
+    (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: [
+        { provider: 'ollama', id: 'first:latest', capabilities: ['chat'] },
+        { provider: 'ollama', id: 'default:latest', capabilities: ['chat'] },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    await openSaved(user);
+    expect(trpc.settings.getAiModels.useQuery).toHaveBeenLastCalledWith(
+      undefined,
+      expect.objectContaining({ enabled: true })
+    );
+    await user.click(screen.getByRole('button', { name: 'Chat model' }));
+    expect(screen.getByRole('option', { name: 'default:latest Default' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /first:latest/ })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
   it('starts with the configured default and sends an inherited selection', async () => {
     (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
       isFetchedAfterMount: true,
@@ -121,8 +150,9 @@ describe('AiDevView saved conversations', () => {
     });
     const user = userEvent.setup();
     render(<AiDevView />);
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toHaveValue('Use settings');
-    expect(screen.getByText('Using first:latest · Default LLM')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chat model' })).toHaveTextContent(
+      'first:latest · Default'
+    );
     await user.click(screen.getByRole('button', { name: 'Start conversation' }));
     expect(create).toHaveBeenCalledWith({ selection: null });
   });
@@ -132,8 +162,8 @@ describe('AiDevView saved conversations', () => {
     const user = userEvent.setup();
     const view = render(<AiDevView />);
     await openSaved(user);
-    await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
-    await user.click(screen.getByRole('option', { name: 'Use settings' }));
+    await user.click(screen.getByRole('button', { name: 'Chat model' }));
+    await user.click(screen.getByRole('option', { name: /Use default/ }));
     expect(mutate).toHaveBeenCalledWith({ id, selection: null });
     (useChat as jest.Mock).mockReturnValue({ ...chat, status: 'streaming' });
     view.rerender(
@@ -141,13 +171,13 @@ describe('AiDevView saved conversations', () => {
         <AiDevView />
       </>
     );
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Chat model' })).toBeDisabled();
   });
   it('creates a saved conversation with the chosen model before chatting', async () => {
     const user = userEvent.setup();
     render(<AiDevView />);
     expect(screen.getByRole('button', { name: 'Start conversation' })).toBeDisabled();
-    await user.click(screen.getByRole('combobox', { name: 'Chat model' }));
+    await user.click(screen.getByRole('button', { name: 'Chat model' }));
     await user.click(await screen.findByRole('option', { name: 'first:latest' }));
     await user.click(screen.getByRole('button', { name: 'Start conversation' }));
     expect(create).toHaveBeenCalledWith({
@@ -165,7 +195,7 @@ describe('AiDevView saved conversations', () => {
     render(<AiDevView />);
     await openSaved(user);
     expect(screen.getByText('Saved message')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Chat model' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Chat model' })).toBeEnabled();
     expect(useChat).toHaveBeenCalledWith(expect.objectContaining({ id, messages }));
   });
   it('sends only the latest user message for a saved conversation', async () => {

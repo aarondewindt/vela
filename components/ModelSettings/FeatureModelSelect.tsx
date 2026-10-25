@@ -12,7 +12,7 @@ export function useFeatureModel(
   enabled = true
 ) {
   const settings = trpc.settings.getAiModels.useQuery(undefined, {
-    enabled: enabled && !override,
+    enabled,
     retry: false,
     refetchOnMount: 'always',
     staleTime: 0,
@@ -20,6 +20,10 @@ export function useFeatureModel(
   const inherited =
     settings.isFetchedAfterMount && !settings.error ? settings.data?.resolved[feature] : undefined;
   return {
+    defaultSelection: inherited?.selection ?? null,
+    defaultSource: inherited?.source ?? 'Not configured',
+    defaultError: settings.error,
+    defaultLoading: settings.isFetching && !inherited,
     selection: override ?? inherited?.selection ?? null,
     source: override ? 'Chat override' : (inherited?.source ?? 'Use settings'),
     error: override ? null : settings.error,

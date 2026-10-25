@@ -1,0 +1,34 @@
+.modelTrigger {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.modelLabel {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionLabel {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+}
+
+.footer {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-xs);
+}
+
+.footer > :first-child {
+  flex: 0 1 auto;
+}
+
+.footer > :last-child {
+  flex-shrink: 0;
+}
