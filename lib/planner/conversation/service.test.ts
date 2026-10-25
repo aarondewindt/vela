@@ -3,6 +3,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({
   prisma: { $transaction: jest.fn(), plannerConversation: { findFirst: jest.fn() } },
 }));
+jest.mock('@/lib/ai', () => ({ validateModelSelection: jest.fn() }));
 jest.mock('@/lib/ai/structured', () => ({ generateStructured: jest.fn() }));
 jest.mock('@/lib/model-settings/service', () => ({ requireModelSelection: jest.fn() }));
 jest.mock('../proposals/service', () => ({ proposalService: { context: jest.fn() } }));
@@ -14,6 +15,9 @@ jest.mock('./records', () => ({
 }));
 import { prisma } from '@/lib/prisma';
 import { generateStructured } from '@/lib/ai/structured';
+import { validateModelSelection } from '@/lib/ai';
+import { AiError } from '@/lib/ai/errors';
+import { Prisma } from '@/generated/prisma/client';
 import { requireModelSelection } from '@/lib/model-settings/service';
 import { proposalService } from '../proposals/service';
 import { recordContext, previewRecord, applyRecord } from './records';
@@ -237,4 +241,105 @@ it('discards a preview explicitly without touching tasks', async () => {
     data: { status: 'DISCARDED' },
   });
   expect(applyRecord).not.toHaveBeenCalled();
+});
+
+it('uses the conversation override captured with the generation lease', async () => {
+  const selection = { provider: 'ollama', modelId: 'conversation:latest' };
+  tx.plannerConversation.findFirst.mockResolvedValue({
+    id: id(1),
+    userId: 'owner',
+    revision: 0,
+    modelOverride: selection,
+  });
+  await conversationService.send('owner', input);
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.conversation', selection);
+});
+
+it('persists a model override with a revision change and returns it on reload', async () => {
+  const selection = { provider: 'ollama' as const, modelId: 'conversation:latest' };
+  jest
+    .mocked(prisma.plannerConversation.findFirst)
+    .mockResolvedValue({ id: id(1), revision: 1, modelOverride: selection, turns: [] } as any);
+  const result = await conversationService.changeModel('owner', {
+    conversationId: id(1),
+    revision: 0,
+    selection,
+  });
+  expect(tx.plannerConversation.update).toHaveBeenCalledWith({
+    where: { id: id(1) },
+    data: { modelOverride: selection, revision: { increment: 1 } },
+  });
+  expect(result.override).toEqual(selection);
+});
+
+it('allows returning to settings and fences stale or busy model changes', async () => {
+  await conversationService.changeModel('owner', {
+    conversationId: id(1),
+    revision: 0,
+    selection: null,
+  });
+  expect(tx.plannerConversation.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        modelOverride: Prisma.DbNull,
+        revision: { increment: 1 },
+      }),
+    })
+  );
+  tx.plannerConversation.update.mockClear();
+  await expect(
+    conversationService.changeModel('owner', {
+      conversationId: id(1),
+      revision: 2,
+      selection: null,
+    })
+  ).rejects.toMatchObject({ code: 'CONFLICT' });
+  tx.plannerConversation.findFirst.mockResolvedValue({
+    id: id(1),
+    revision: 0,
+    activeTurnId: id(9),
+    leaseExpiresAt: new Date(Date.now() + 60000),
+  });
+  await expect(
+    conversationService.changeModel('owner', {
+      conversationId: id(1),
+      revision: 0,
+      selection: null,
+    })
+  ).rejects.toMatchObject({ code: 'CONFLICT' });
+  expect(tx.plannerConversation.update).not.toHaveBeenCalled();
+});
+
+it('rejects model changes for another owner and invalid selections', async () => {
+  jest.mocked(prisma.plannerConversation.findFirst).mockResolvedValue(null);
+  await expect(
+    conversationService.changeModel('other', {
+      conversationId: id(1),
+      revision: 0,
+      selection: null,
+    })
+  ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  await expect(
+    conversationService.changeModel('owner', {
+      conversationId: id(1),
+      revision: 0,
+      selection: { provider: 'ollama', modelId: '' },
+    })
+  ).rejects.toThrow();
+  expect(tx.plannerConversation.update).not.toHaveBeenCalled();
+});
+
+it('rejects unavailable or incompatible model selections before persisting changes', async () => {
+  jest
+    .mocked(validateModelSelection)
+    .mockRejectedValue(new AiError('MODEL_NOT_FOUND', 'Choose an installed chat model.'));
+  await expect(
+    conversationService.changeModel('owner', {
+      conversationId: id(1),
+      revision: 0,
+      selection: model,
+    })
+  ).rejects.toMatchObject({ code: 'BAD_REQUEST', message: 'Choose an installed chat model.' });
+  expect(validateModelSelection).toHaveBeenCalledWith(model, ['chat']);
+  expect(tx.plannerConversation.update).not.toHaveBeenCalled();
 });

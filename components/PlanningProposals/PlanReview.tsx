@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Badge, Button, Group, Paper, Select, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Badge, Button, Group, Paper, Select, Stack, Text } from '@mantine/core';
 import type { z } from 'zod';
 import type { reviewResultSchema } from '@/lib/planner/review/schema';
 import { usePlannerStore } from '@/lib/planner/store';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { trpc } from '@/lib/trpc/client';
+import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
+import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import type { ModelSelection } from '@/lib/model-settings/schema';
 
 export function PlanReview({
   date,
@@ -21,6 +24,12 @@ export function PlanReview({
 }) {
   const [guidance, setGuidance] = useState('');
   const [mode, setMode] = useState<'deterministic' | 'ai'>('deterministic');
+  const [modelOverride, setModelOverride] = useState<ModelSelection | null>(null);
+  const models = trpc.aiDev.listChatModels.useQuery(undefined, {
+    enabled: mode === 'ai',
+    retry: false,
+  });
+  const resolution = useFeatureModel('planner.planReview', modelOverride, mode === 'ai');
   const [target, setTarget] = useState(initialResult?.proposalId ?? 'current');
   const [showInitial, setShowInitial] = useState(true);
   const focus = usePlanningWorkspaceStore((state) => state.focus);
@@ -82,33 +91,64 @@ export function PlanReview({
           reset();
         }}
       />
-      <Textarea
-        label="Review guidance"
-        value={guidance}
-        maxLength={2000}
-        disabled={busy || mode !== 'ai'}
-        onChange={(event) => {
-          setGuidance(event.currentTarget.value);
-          reset();
-        }}
-      />
-      <Button
-        loading={review.isPending}
-        disabled={busy || (target !== 'current' && target !== proposalId)}
-        onClick={() => {
-          setShowInitial(false);
-          setRequest(null);
-          create.reset();
-          review.mutate({
-            date,
-            ...(target !== 'current' ? { proposalId: target } : {}),
-            mode,
-            guidance: mode === 'ai' ? guidance : '',
-          });
-        }}
-      >
-        Review day plan
-      </Button>
+      {mode === 'ai' ? (
+        <AiPromptComposer
+          value={guidance}
+          onChange={(value) => {
+            setGuidance(value);
+            reset();
+          }}
+          allowEmpty
+          sendShortcut="shift-enter"
+          submitLabel="Review day plan"
+          submitting={review.isPending}
+          submitDisabled={
+            busy || !resolution.selection || (target !== 'current' && target !== proposalId)
+          }
+          textareaProps={{ label: 'Review guidance', maxLength: 2000, disabled: busy }}
+          modelPicker={{
+            models: models.data ?? [],
+            override: modelOverride,
+            resolution,
+            disabled: busy,
+            onChange: (selection) => {
+              setModelOverride(selection);
+              reset();
+            },
+          }}
+          onSubmit={() => {
+            setShowInitial(false);
+            setRequest(null);
+            create.reset();
+            review.mutate({
+              date,
+              ...(target !== 'current' ? { proposalId: target } : {}),
+              mode: 'ai',
+              guidance,
+              selection: modelOverride,
+            });
+          }}
+        />
+      ) : (
+        <Button
+          loading={review.isPending}
+          disabled={busy || (target !== 'current' && target !== proposalId)}
+          onClick={() => {
+            setShowInitial(false);
+            setRequest(null);
+            create.reset();
+            review.mutate({
+              date,
+              ...(target !== 'current' ? { proposalId: target } : {}),
+              mode: 'deterministic',
+              guidance: '',
+            });
+          }}
+        >
+          Review day plan
+        </Button>
+      )}
+      {mode === 'ai' && models.error && <Alert color="red">{models.error.message}</Alert>}
       {(review.error || create.error) && (
         <Alert color="red" role="alert">
           {(review.error ?? create.error)?.message}

@@ -43,7 +43,7 @@ it('keeps AI concerns separate with resolved task/block references and user guid
     mode: 'ai',
     guidance: 'Keep it light',
   });
-  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.planReview');
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.planReview', undefined);
   expect(result.concerns[0]).toMatchObject({
     code: 'AI_CONTEXT',
     blockIds: [taskId(21)],
@@ -110,4 +110,23 @@ it('reviews the projected pending plan without persisting or applying it', async
           .length > 1
     )
   ).toBe(false);
+});
+
+it('uses the operation model override with empty review guidance', async () => {
+  const selection = { provider: 'ollama' as const, modelId: 'review:latest' };
+  jest.mocked(requireModelSelection).mockResolvedValue(selection);
+  jest.mocked(generateStructured).mockResolvedValue({ concerns: [] });
+  const result = await reviewDayPlan('owner', { date: '2030-01-07', mode: 'ai', selection });
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.planReview', selection);
+  expect(generateStructured).toHaveBeenCalledWith(expect.objectContaining({ selection }));
+  expect(result.model).toEqual(selection);
+});
+
+it('ignores model overrides for verified-only review', async () => {
+  await reviewDayPlan('owner', {
+    date: '2030-01-07',
+    selection: { provider: 'ollama', modelId: 'unused' },
+  });
+  expect(requireModelSelection).not.toHaveBeenCalled();
+  expect(generateStructured).not.toHaveBeenCalled();
 });

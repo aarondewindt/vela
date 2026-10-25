@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelSelectionSchema } from '@/lib/model-settings/schema';
 import { documentSchema } from '../proposals/schema';
 
 export const reviewDaySchema = z
@@ -6,6 +7,7 @@ export const reviewDaySchema = z
     date: z.iso.date(),
     proposalId: z.uuid().optional(),
     guidance: z.string().trim().max(2000).default(''),
+    selection: modelSelectionSchema.nullable().optional(),
     mode: z.enum(['deterministic', 'ai']).default('deterministic'),
   })
   .strict();

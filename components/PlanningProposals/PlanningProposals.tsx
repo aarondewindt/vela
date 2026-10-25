@@ -18,6 +18,9 @@ import {
 } from '@mantine/core';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { trpc } from '@/lib/trpc/client';
+import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
+import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import type { ModelSelection } from '@/lib/model-settings/schema';
 import { ReplanningControls, type ProgressPreset } from './ReplanningControls';
 import type { GenerationReport } from '@/lib/planner/proposals/schema';
 import { PlanReview } from './PlanReview';
@@ -88,6 +91,16 @@ export function ProposalWorkspace({
   const [selectedId, setSelectedId] = useState<string | null>(initialProposalId ?? null);
   const [mode, setMode] = useState<'ai' | 'deterministic'>('ai');
   const [guidance, setGuidance] = useState('');
+  const [modelOverride, setModelOverride] = useState<ModelSelection | null>(null);
+  const models = trpc.aiDev.listChatModels.useQuery(undefined, {
+    enabled: !previewOnly && mode === 'ai',
+    retry: false,
+  });
+  const resolution = useFeatureModel(
+    'planner.dayPlan',
+    modelOverride,
+    !previewOnly && mode === 'ai'
+  );
   const [generationRequestId, setGenerationRequestId] = useState<string | null>(null);
   const [emptyReport, setEmptyReport] = useState<GenerationReport | null>(null);
   const generate = trpc.planningProposals.generate.useMutation({
@@ -213,36 +226,66 @@ export function ProposalWorkspace({
               generate.reset();
             }}
           />
-          <Textarea
-            label="Planning guidance"
-            placeholder="Focus on housework, or keep today light…"
-            description="Without guidance, fill eligible open time. Guidance can narrow the focus or request a lighter day. Existing commitments stay in place."
-            value={guidance}
-            maxLength={2000}
-            disabled={busy || mode === 'deterministic'}
-            onChange={(event) => {
-              setGuidance(event.currentTarget.value);
-              setGenerationRequestId(null);
-              generate.reset();
-            }}
-          />
-          <Button
-            loading={generate.isPending}
-            disabled={busy}
-            onClick={() => {
-              const id = generationRequestId ?? crypto.randomUUID();
-              setGenerationRequestId(id);
-              setEmptyReport(null);
-              generate.mutate({
-                date,
-                requestId: id,
-                mode,
-                guidance: mode === 'ai' ? guidance : '',
-              });
-            }}
-          >
-            Generate plan preview
-          </Button>
+          {mode === 'ai' ? (
+            <AiPromptComposer
+              value={guidance}
+              onChange={(value) => {
+                setGuidance(value);
+                setGenerationRequestId(null);
+                generate.reset();
+              }}
+              allowEmpty
+              sendShortcut="shift-enter"
+              submitLabel="Generate plan preview"
+              submitting={generate.isPending}
+              submitDisabled={busy || !resolution.selection}
+              onSubmit={() => {
+                const id = generationRequestId ?? crypto.randomUUID();
+                setGenerationRequestId(id);
+                setEmptyReport(null);
+                generate.mutate({
+                  date,
+                  requestId: id,
+                  mode: 'ai',
+                  guidance,
+                  selection: modelOverride,
+                });
+              }}
+              textareaProps={{
+                label: 'Planning guidance',
+                placeholder: 'Focus on housework, or keep today light…',
+                description:
+                  'Without guidance, fill eligible open time. Guidance can narrow the focus or request a lighter day. Existing commitments stay in place.',
+                maxLength: 2000,
+                disabled: busy,
+              }}
+              modelPicker={{
+                models: models.data ?? [],
+                override: modelOverride,
+                resolution,
+                disabled: busy,
+                onChange: (selection) => {
+                  setModelOverride(selection);
+                  setGenerationRequestId(null);
+                  generate.reset();
+                },
+              }}
+            />
+          ) : (
+            <Button
+              loading={generate.isPending}
+              disabled={busy}
+              onClick={() => {
+                const id = generationRequestId ?? crypto.randomUUID();
+                setGenerationRequestId(id);
+                setEmptyReport(null);
+                generate.mutate({ date, requestId: id, mode: 'deterministic', guidance: '' });
+              }}
+            >
+              Generate plan preview
+            </Button>
+          )}
+          {mode === 'ai' && models.error && <Alert color="red">{models.error.message}</Alert>}
           {generate.isPending && (
             <Text size="sm" role="status">
               Choosing tasks and calculating placements. You can review the saved proposal when

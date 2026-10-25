@@ -1,24 +1,14 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import {
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Paper,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  Title,
-} from '@mantine/core';
+import { Alert, Button, Group, Modal, Paper, Select, Stack, Text, Title } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
 import type { MealDraft } from '@/lib/nutrition/drafts';
 import { mealLabels } from '@/lib/nutrition/types';
 import { MealDraftReview } from './MealDraftReview';
 import { MealTurnDiagnostics } from './MealTurnDiagnostics';
-import { FeatureModelSelect, useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
+import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
 
 export function MealDraftComposer({
   date,
@@ -261,27 +251,6 @@ export function MealDraftComposer({
               )}
             </>
           )}
-          {(!current || current.status === 'DRAFT') && (
-            <FeatureModelSelect
-              override={override}
-              models={models.data ?? []}
-              resolution={resolution}
-              disabled={
-                interpret.isPending ||
-                create.isPending ||
-                changeModel.isPending ||
-                Boolean(current?.generating) ||
-                Boolean(draftId && !current)
-              }
-              onChange={(selection) => {
-                if (current) {
-                  changeModel.mutate({ id: current.id, revision: current.revision, selection });
-                } else {
-                  setModelId(selection?.modelId ?? null);
-                }
-              }}
-            />
-          )}
           {changeModel.error && <Alert color="red">{changeModel.error.message}</Alert>}
           {current && (
             <>
@@ -353,52 +322,49 @@ export function MealDraftComposer({
             </>
           )}
           {(!current || current.status === 'DRAFT') && (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void send(text);
-              }}
-            >
-              <Stack gap="sm">
-                <Textarea
-                  label={current ? 'Correct or extend this meal' : 'What did you eat?'}
-                  placeholder="For lunch I had 200 grams of rice and 150 grams of chicken."
-                  autosize
-                  minRows={3}
-                  maxRows={8}
-                  maxLength={4000}
-                  value={text}
-                  onChange={(event) => setText(event.currentTarget.value)}
-                  description="Shift+Enter to send; Enter for a new line."
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && event.shiftKey && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      if (!event.repeat) {
-                        event.currentTarget.form?.requestSubmit();
-                      }
+            <Stack gap="xs">
+              <AiPromptComposer
+                value={text}
+                onChange={setText}
+                onSubmit={() => void send(text)}
+                sendShortcut="shift-enter"
+                submitLabel={current ? 'Update meal draft' : 'Create meal draft'}
+                submitting={interpret.isPending || create.isPending}
+                submitDisabled={
+                  Boolean(current?.generating) ||
+                  !resolution.selection ||
+                  changeModel.isPending ||
+                  Boolean(draftId && !current)
+                }
+                textareaProps={{
+                  label: current ? 'Correct or extend this meal' : 'What did you eat?',
+                  placeholder: 'For lunch I had 200 grams of rice and 150 grams of chicken.',
+                  minRows: 3,
+                  maxLength: 4000,
+                }}
+                modelPicker={{
+                  override,
+                  models: models.data ?? [],
+                  resolution,
+                  disabled:
+                    interpret.isPending ||
+                    create.isPending ||
+                    changeModel.isPending ||
+                    Boolean(current?.generating) ||
+                    Boolean(draftId && !current),
+                  onChange: (selection) => {
+                    if (current) {
+                      changeModel.mutate({ id: current.id, revision: current.revision, selection });
+                    } else {
+                      setModelId(selection?.modelId ?? null);
                     }
-                  }}
-                />
-                <Group justify="space-between">
-                  <Text size="xs" c="dimmed">
-                    Saved drafts survive closing and reloading this page.
-                  </Text>
-                  <Button
-                    type="submit"
-                    loading={interpret.isPending || create.isPending}
-                    disabled={
-                      !text.trim() ||
-                      Boolean(current?.generating) ||
-                      !resolution.selection ||
-                      changeModel.isPending ||
-                      Boolean(draftId && !current)
-                    }
-                  >
-                    {current ? 'Update meal draft' : 'Create meal draft'}
-                  </Button>
-                </Group>
-              </Stack>
-            </form>
+                  },
+                }}
+              />
+              <Text size="xs" c="dimmed">
+                Saved drafts survive closing and reloading this page.
+              </Text>
+            </Stack>
           )}
           {(interpret.isPending || current?.generating) && (
             <Text role="status" size="sm">

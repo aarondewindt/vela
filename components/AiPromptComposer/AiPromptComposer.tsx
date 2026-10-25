@@ -17,6 +17,7 @@ type AiPromptComposerProps = {
   submitting?: boolean;
   onStop?: () => void;
   sendShortcut?: 'enter' | 'shift-enter';
+  allowEmpty?: boolean;
 };
 
 export function AiPromptComposer({
@@ -31,11 +32,16 @@ export function AiPromptComposer({
   submitting,
   onStop,
   sendShortcut = 'enter',
+  allowEmpty = false,
 }: AiPromptComposerProps) {
   const canSubmit =
-    Boolean(value.trim()) && !submitDisabled && !submitting && !textareaProps?.disabled;
+    (allowEmpty || Boolean(value.trim())) &&
+    !submitDisabled &&
+    !submitting &&
+    !textareaProps?.disabled;
   return (
     <form
+      className={classes.composer}
       onSubmit={(event) => {
         event.preventDefault();
         if (canSubmit) {
@@ -56,9 +62,7 @@ export function AiPromptComposer({
               : 'Shift+Enter to send · Enter for a new line'
           }
           {...textareaProps}
-          styles={{
-            wrapper: { '--input-bottom-section-height': 'calc(2.5rem * var(--mantine-scale))' },
-          }}
+          classNames={{ wrapper: classes.inputWrapper }}
           ref={inputRef}
           value={value}
           onChange={(event) => onChange(event.currentTarget.value)}

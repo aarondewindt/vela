@@ -10,11 +10,12 @@ import {
   Select,
   Stack,
   Text,
-  Textarea,
   TextInput,
   Title,
 } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
+import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
+import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 import { ProposalWorkspace } from '@/components/PlanningProposals/PlanningProposals';
 import { RecordReview } from './RecordReview';
 
@@ -35,6 +36,22 @@ export function PlannerConversation() {
     { id: id ?? '' },
     { enabled: Boolean(id), refetchInterval: 5000 }
   );
+  const models = trpc.aiDev.listChatModels.useQuery(undefined, {
+    enabled: Boolean(id),
+    retry: false,
+  });
+  const resolution = useFeatureModel(
+    'planner.conversation',
+    current.data?.override ?? null,
+    Boolean(id)
+  );
+  const changeModel = trpc.plannerConversation.changeModel.useMutation({
+    onSuccess: async (row) => {
+      utils.plannerConversation.get.setData({ id: row.id }, row);
+      setRequest(null);
+      await utils.plannerConversation.list.invalidate();
+    },
+  });
   const settings = trpc.settings.getPreferences.useQuery();
   const create = trpc.plannerConversation.create.useMutation({
     onSuccess: async (row) => {
@@ -67,6 +84,8 @@ export function PlannerConversation() {
   const accept = trpc.plannerConversation.accept.useMutation({ onSuccess: refresh });
   const discard = trpc.plannerConversation.discard.useMutation({ onSuccess: refresh });
   const error =
+    changeModel.error ??
+    models.error ??
     settings.error ??
     list.error ??
     current.error ??
@@ -83,6 +102,7 @@ export function PlannerConversation() {
   }).format(new Date());
   const busy =
     create.isPending ||
+    changeModel.isPending ||
     send.isPending ||
     accept.isPending ||
     discard.isPending ||
@@ -214,56 +234,72 @@ export function PlannerConversation() {
           </Paper>
         ))}
         {id && (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (!current.data || !settings.data || busy || !text.trim()) {
-                return;
-              }
-              const input =
-                request && request.text === text && request.date === (date || today)
-                  ? request
-                  : {
-                      requestId: crypto.randomUUID(),
+          <Stack>
+            <TextInput
+              type="date"
+              label={`Planning date (${timezone})`}
+              value={date || today}
+              onChange={(event) => setDate(event.currentTarget.value)}
+              disabled={busy}
+            />
+            <AiPromptComposer
+              value={text}
+              onChange={setText}
+              sendShortcut="shift-enter"
+              submitLabel="Send message"
+              submitting={send.isPending}
+              submitDisabled={busy || !current.data || !settings.data || !resolution.selection}
+              textareaProps={{
+                label: 'Message',
+                placeholder: 'Plan tomorrow, or create a task called…',
+                disabled: busy,
+                minRows: 3,
+                maxLength: 2000,
+              }}
+              modelPicker={{
+                models: models.data ?? [],
+                override: current.data?.override ?? null,
+                resolution,
+                disabled: busy || !current.data,
+                onChange: (selection) => {
+                  if (current.data) {
+                    setRequest(null);
+                    changeModel.mutate({
                       conversationId: id,
                       revision: current.data.revision,
-                      date: date || today,
-                      text,
-                    };
-              setRequest(input);
-              send.mutate(input);
-            }}
-          >
-            <Stack>
-              <TextInput
-                type="date"
-                label={`Planning date (${timezone})`}
-                value={date || today}
-                onChange={(event) => setDate(event.currentTarget.value)}
-                disabled={busy}
-              />
-              <Textarea
-                label="Message"
-                placeholder="Plan tomorrow, or create a task called…"
-                value={text}
-                onChange={(event) => setText(event.currentTarget.value)}
-                disabled={busy}
-                autosize
-                minRows={3}
-                maxLength={2000}
-              />
-              <Button
-                type="submit"
-                disabled={busy || !settings.data || !text.trim()}
-                loading={send.isPending}
-              >
-                Send message
-              </Button>
-              {busy && (
-                <Text role="status">Preparing your preview. This can take a few minutes.</Text>
-              )}
-            </Stack>
-          </form>
+                      selection,
+                    });
+                  }
+                },
+              }}
+              onSubmit={() => {
+                if (
+                  !current.data ||
+                  !settings.data ||
+                  busy ||
+                  !text.trim() ||
+                  !resolution.selection
+                ) {
+                  return;
+                }
+                const input =
+                  request && request.text === text && request.date === (date || today)
+                    ? request
+                    : {
+                        requestId: crypto.randomUUID(),
+                        conversationId: id,
+                        revision: current.data.revision,
+                        date: date || today,
+                        text,
+                      };
+                setRequest(input);
+                send.mutate(input);
+              }}
+            />
+            {busy && (
+              <Text role="status">Preparing your preview. This can take a few minutes.</Text>
+            )}
+          </Stack>
         )}
       </Stack>
     </Container>

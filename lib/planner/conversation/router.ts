@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import { protectedProcedure, router } from '@/lib/trpc/server';
-import { acceptSchema, turnSchema } from './schema';
+import { acceptSchema, turnSchema, changeModelSchema } from './schema';
 import { conversationService } from './service';
 
 export const conversationRouter = router({
+  changeModel: protectedProcedure
+    .input(changeModelSchema)
+    .mutation(({ ctx, input }) => conversationService.changeModel(ctx.userId, input)),
   create: protectedProcedure.mutation(({ ctx }) => conversationService.create(ctx.userId)),
   list: protectedProcedure.query(({ ctx }) => conversationService.list(ctx.userId)),
   get: protectedProcedure

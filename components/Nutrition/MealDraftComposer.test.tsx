@@ -67,7 +67,7 @@ it('creates a meal draft using settings without selecting another model', async 
   const user = userEvent.setup();
   render(<MealDraftComposer date="2026-10-18" onConfirmed={jest.fn()} />);
   await user.click(screen.getByRole('button', { name: 'Describe a meal' }));
-  expect(screen.getByRole('combobox', { name: 'Chat model' })).toHaveValue('Use settings');
+  expect(screen.getByRole('button', { name: 'Chat model' })).toHaveTextContent('chat · Default');
   await user.type(screen.getByRole('textbox', { name: 'What did you eat?' }), '100 grams of rice');
   await user.click(screen.getByRole('button', { name: 'Create meal draft' }));
   await waitFor(() =>
@@ -252,4 +252,14 @@ it('closes a confirmed dashboard meal without changing the page', async () => {
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(window.location.pathname).toBe('/');
   expect(window.location.search).toBe('');
+});
+
+it('persists model changes from the shared composer with the draft revision', async () => {
+  const mutate = jest.fn();
+  (trpc.nutrition.changeDraftModel.useMutation as jest.Mock).mockReturnValue({ mutate });
+  const user = userEvent.setup();
+  render(<MealDraftComposer date="2026-10-18" initialDraftId={id} onConfirmed={jest.fn()} />);
+  await user.click(screen.getByRole('button', { name: 'Chat model' }));
+  await user.click(screen.getByRole('option', { name: /Use default/ }));
+  expect(mutate).toHaveBeenCalledWith({ id, revision: value.revision, selection: null });
 });

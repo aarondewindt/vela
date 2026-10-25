@@ -7,6 +7,8 @@ import { Prisma } from '@/generated/prisma/client';
 import { generateStructured } from '@/lib/ai/structured';
 import { AiError } from '@/lib/ai/errors';
 import { requireModelSelection } from '@/lib/model-settings/service';
+import { validateModelSelection } from '@/lib/ai';
+import { modelSelectionSchema } from '@/lib/model-settings/schema';
 import { dateInTimezone, shiftDiaryDate } from '@/lib/nutrition/dates';
 import { fingerprint } from '../proposals/snapshot';
 import { proposalService } from '../proposals/service';
@@ -16,6 +18,7 @@ import { planInstruction } from './planning';
 import { Clarification, conflict, findMatches, relativeDueDate } from './resolve';
 import {
   acceptSchema,
+  changeModelSchema,
   instructionSchema,
   resultSchema,
   turnSchema,
@@ -33,6 +36,47 @@ Record operations support the properties in the schema and the task-to-theme rel
 For full day planning use generate with guidance containing ALL still-applicable preferences from previous turns and the latest correction. Explicit appointments without a stored calendar event need clarification; do not invent calendar writes. Use edit for specific additions/moves/removals of existing blocks, replan for progress and downstream shifts, reserve for explicitly timed free intervals, and explain for why a day/task was selected. Free-time reservation may release flexible blocks; explain this. Pending proposal changes remain previews. Existing future manual/fixed commitments require explicit selection and application validation. Unsupported dependencies, recurrence, location, rich notes or availability-profile changes require the regular editor, never claim to have changed them.`;
 
 export const conversationService = {
+  async changeModel(userId: string, raw: z.input<typeof changeModelSchema>) {
+    const input = changeModelSchema.parse(raw);
+    const owned = await prisma.plannerConversation.findFirst({
+      where: { id: input.conversationId, userId },
+    });
+    if (!owned) {
+      throw missing();
+    }
+    if (input.selection) {
+      try {
+        await validateModelSelection(input.selection, ['chat']);
+      } catch (error) {
+        if (!(error instanceof AiError)) {
+          throw error;
+        }
+        throw new TRPCError({ code: 'BAD_REQUEST', message: error.message });
+      }
+    }
+    await locked(async (tx) => {
+      const row = await tx.plannerConversation.findFirst({
+        where: { id: input.conversationId, userId },
+      });
+      if (!row) {
+        throw missing();
+      }
+      if (
+        row.revision !== input.revision ||
+        (row.activeTurnId && row.leaseExpiresAt && row.leaseExpiresAt > new Date())
+      ) {
+        throw conflict('The conversation changed or is generating. Reload before changing models.');
+      }
+      await tx.plannerConversation.update({
+        where: { id: row.id },
+        data: {
+          modelOverride: input.selection ? json(input.selection) : Prisma.DbNull,
+          revision: { increment: 1 },
+        },
+      });
+    });
+    return this.get(userId, input.conversationId);
+  },
   create(userId: string) {
     return prisma.plannerConversation.create({ data: { userId } });
   },
@@ -55,6 +99,7 @@ export const conversationService = {
     return {
       id: row.id,
       revision: row.revision,
+      override: row.modelOverride ? modelSelectionSchema.parse(row.modelOverride) : null,
       busy: Boolean(row.activeTurnId && row.leaseExpiresAt && row.leaseExpiresAt > new Date()),
       turns: row.turns.map((t) => ({
         id: t.id,
@@ -141,13 +186,16 @@ export const conversationService = {
         history,
         pending,
         context,
+        override: conversation.modelOverride
+          ? modelSelectionSchema.parse(conversation.modelOverride)
+          : undefined,
       };
     });
     if (begun.replay) {
       return this.get(userId, input.conversationId);
     }
     try {
-      const model = await requireModelSelection(userId, 'planner.conversation');
+      const model = await requireModelSelection(userId, 'planner.conversation', begun.override);
       const previousResult = begun.pending?.result
         ? resultSchema.parse(begun.pending.result)
         : undefined;

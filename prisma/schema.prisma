@@ -1116,6 +1116,7 @@ model PlannerConversation {
   userId         String
   user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
   revision       Int @default(0)
+  modelOverride  Json? @db.JsonB
   activeTurnId   String? @db.Uuid
   leaseExpiresAt DateTime?
   createdAt      DateTime @default(now())

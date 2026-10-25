@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 import { fireEvent, screen } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { PlanReview } from './PlanReview';
@@ -5,10 +6,30 @@ import { PlanReview } from './PlanReview';
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
+    settings: { getAiModels: { useQuery: jest.fn() } },
+    aiDev: { listChatModels: { useQuery: jest.fn() } },
     planningProposals: { review: { useMutation: jest.fn() }, create: { useMutation: jest.fn() } },
   },
 }));
 import { trpc } from '@/lib/trpc/client';
+beforeEach(() => {
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: {
+      resolved: Object.fromEntries(
+        ['planner.dayPlan', 'planner.planReview', 'planner.conversation'].map((feature) => [
+          feature,
+          { selection: { provider: 'ollama', modelId: 'chat' }, source: 'Default LLM' },
+        ])
+      ),
+    },
+  });
+  (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+    data: [{ provider: 'ollama', id: 'chat', capabilities: ['chat'] }],
+  });
+});
+
 const review = jest.fn();
 const create = jest.fn();
 const reset = jest.fn();
@@ -101,4 +122,27 @@ it('preserves verified results when AI is unavailable and shows stale correction
   expect(screen.getByText(/AI review unavailable/)).toBeInTheDocument();
   expect(screen.getByText('Verified overlap')).toBeInTheDocument();
   expect(screen.getByText('Planning inputs changed. Review again.')).toBeInTheDocument();
+});
+
+beforeAll(() => {
+  Object.defineProperty(window.document, 'fonts', {
+    configurable: true,
+    value: { addEventListener: jest.fn(), removeEventListener: jest.fn() },
+  });
+});
+
+it('reviews with empty AI guidance and the selected model', async () => {
+  const user = userEvent.setup();
+  render(<PlanReview date="2030-01-07" onCreated={jest.fn()} />);
+  await user.click(screen.getByRole('combobox', { name: 'Review method' }));
+  await user.click(screen.getByRole('option', { name: 'Verified conflicts and AI concerns' }));
+  await user.click(screen.getByRole('button', { name: 'Chat model' }));
+  await user.click(screen.getByRole('option', { name: 'chat Default' }));
+  await user.click(screen.getByRole('button', { name: 'Review day plan' }));
+  expect(review).toHaveBeenCalledWith({
+    date: '2030-01-07',
+    mode: 'ai',
+    guidance: '',
+    selection: { provider: 'ollama', modelId: 'chat' },
+  });
 });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelSelectionSchema } from '@/lib/model-settings/schema';
 
 export const generateDaySchema = z
   .object({
@@ -6,6 +7,7 @@ export const generateDaySchema = z
     date: z.iso.date(),
     mode: z.enum(['ai', 'deterministic']).default('ai'),
     guidance: z.string().trim().max(2000).default(''),
+    selection: modelSelectionSchema.nullable().optional(),
     reviseProposalId: z.uuid().optional(),
     taskLimits: z
       .array(

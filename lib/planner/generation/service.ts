@@ -174,7 +174,7 @@ export async function generateDayPlan(userId: string, raw: z.input<typeof genera
   let selection: Selection;
   let pool = candidates;
   if (input.mode === 'ai' && candidates.length) {
-    model = await requireModelSelection(userId, 'planner.dayPlan');
+    model = await requireModelSelection(userId, 'planner.dayPlan', input.selection);
     const semantic = new Set<string>();
     if (input.guidance) {
       const retrieval = await retrievePlanningTasks(

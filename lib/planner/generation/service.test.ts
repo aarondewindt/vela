@@ -58,7 +58,7 @@ beforeEach(() => {
 it('uses centralized settings, current task context and the validated proposal boundary without changing planning data', async () => {
   const before = JSON.stringify(s);
   const result = await generateDayPlan('owner', input);
-  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan');
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan', undefined);
   expect(taskCollection.search).toHaveBeenCalledWith(
     'owner',
     input.guidance,
@@ -459,7 +459,7 @@ it('regenerates a pending proposal through the same scheduler and retains enforc
   expect(
     doc.operations.every((op) => !('block' in op) || op.block.endsAt <= `${date}T12:00:00.000Z`)
   ).toBe(true);
-  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan');
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan', undefined);
 });
 it('rejects inaccessible and stale regeneration references before inference', async () => {
   jest.mocked(prisma.planningProposal.findFirst).mockResolvedValue(null);
@@ -601,4 +601,30 @@ it('allocates an hour to a large task and leaves capacity for cleaning, video an
   expect(minutes.get('SoLocos blooper video')).toBeGreaterThan(60);
   expect(minutes.get('Practice guitar')).toBe(30);
   expect(JSON.stringify(s)).toBe(before);
+});
+
+it('uses the operation model override and includes it in request replay checks', async () => {
+  const selection = { provider: 'ollama' as const, modelId: 'chosen:latest' };
+  jest.mocked(requireModelSelection).mockResolvedValue(selection);
+  const result = await generateDayPlan('owner', { ...input, selection });
+  expect(requireModelSelection).toHaveBeenCalledWith('owner', 'planner.dayPlan', selection);
+  expect(generateStructured).toHaveBeenCalledWith(expect.objectContaining({ selection }));
+  expect(result.report.model).toEqual(selection);
+  const document = jest.mocked(proposalService.create).mock.calls[0][1].document;
+  jest
+    .mocked(prisma.planningProposal.findUnique)
+    .mockResolvedValue({ id: result.id, document } as any);
+  await expect(generateDayPlan('owner', { ...input, selection: null })).rejects.toMatchObject({
+    code: 'CONFLICT',
+  });
+});
+
+it('keeps deterministic generation independent of a supplied model override', async () => {
+  await generateDayPlan('owner', {
+    ...input,
+    mode: 'deterministic',
+    selection: { provider: 'ollama', modelId: 'unused' },
+  });
+  expect(requireModelSelection).not.toHaveBeenCalled();
+  expect(generateStructured).not.toHaveBeenCalled();
 });

@@ -7,6 +7,8 @@ import type { GenerationReport } from '@/lib/planner/proposals/schema';
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
+    settings: { getAiModels: { useQuery: jest.fn() } },
+    aiDev: { listChatModels: { useQuery: jest.fn() } },
     planningProposals: {
       review: { useMutation: jest.fn() },
       create: { useMutation: jest.fn() },
@@ -22,6 +24,23 @@ jest.mock('@/lib/trpc/client', () => ({
   },
 }));
 import { trpc } from '@/lib/trpc/client';
+beforeEach(() => {
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: {
+      resolved: Object.fromEntries(
+        ['planner.dayPlan', 'planner.planReview', 'planner.conversation'].map((feature) => [
+          feature,
+          { selection: { provider: 'ollama', modelId: 'chat' }, source: 'Default LLM' },
+        ])
+      ),
+    },
+  });
+  (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+    data: [{ provider: 'ollama', id: 'chat', capabilities: ['chat'] }],
+  });
+});
 
 const create = jest.fn();
 const generate = jest.fn();
@@ -209,6 +228,7 @@ it('generates a reviewable plan with guidance and an explicit deterministic opti
     requestId: id,
     mode: 'ai',
     guidance: 'Keep today light',
+    selection: null,
   });
   expect(accept).not.toHaveBeenCalled();
   await user.click(screen.getByRole('combobox', { name: 'Planning method' }));
@@ -220,7 +240,7 @@ it('generates a reviewable plan with guidance and an explicit deterministic opti
     mode: 'deterministic',
     guidance: '',
   });
-  expect(screen.getByLabelText('Planning guidance')).toBeDisabled();
+  expect(screen.queryByLabelText('Planning guidance')).not.toBeInTheDocument();
 });
 it('creates a preview without applying changes', async () => {
   render(<ProposalWorkspace date={date} />);
@@ -293,4 +313,26 @@ it('shows scheduled and unmet recurring meal requirements separately from task o
   expect(screen.getByText(/Breakfast: 30 minutes/)).toBeInTheDocument();
   expect(screen.getByText(/Dinner: no continuous/)).toBeInTheDocument();
   expect(screen.getByText(/Planning took 1.3 s/)).toBeInTheDocument();
+});
+
+beforeAll(() => {
+  Object.defineProperty(document, 'fonts', {
+    configurable: true,
+    value: { addEventListener: jest.fn(), removeEventListener: jest.fn() },
+  });
+});
+
+it('generates with empty guidance and passes an explicit model selection', async () => {
+  const user = userEvent.setup();
+  render(<ProposalWorkspace date={date} />);
+  await user.click(screen.getByRole('button', { name: 'Chat model' }));
+  await user.click(screen.getByRole('option', { name: 'chat Default' }));
+  await user.click(screen.getByRole('button', { name: 'Generate plan preview' }));
+  expect(generate).toHaveBeenCalledWith({
+    date,
+    requestId: id,
+    mode: 'ai',
+    guidance: '',
+    selection: { provider: 'ollama', modelId: 'chat' },
+  });
 });

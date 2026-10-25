@@ -144,3 +144,19 @@ it('keeps Stop available while generation disables typing and model changes', as
   await user.click(screen.getByRole('button', { name: 'Stop response' }));
   expect(onStop).toHaveBeenCalledTimes(1);
 });
+
+it('allows empty guidance only when explicitly enabled', async () => {
+  const onSubmit = jest.fn();
+  render(
+    <AiPromptComposer
+      value=""
+      onChange={jest.fn()}
+      onSubmit={onSubmit}
+      modelPicker={props}
+      allowEmpty
+      submitLabel="Generate preview"
+    />
+  );
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Generate preview' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+});

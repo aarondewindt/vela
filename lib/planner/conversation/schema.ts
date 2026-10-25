@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelSelectionSchema } from '@/lib/model-settings/schema';
 import { taskPatchSchema, themePatchSchema } from '../record-schema';
 
 const query = z.string().trim().min(1).max(240);
@@ -73,6 +74,13 @@ export const instructionSchema = z.discriminatedUnion('type', [
     .strict(),
 ]);
 export type Instruction = z.infer<typeof instructionSchema>;
+export const changeModelSchema = z
+  .object({
+    conversationId: z.uuid(),
+    revision: z.number().int().min(0),
+    selection: modelSelectionSchema.nullable(),
+  })
+  .strict();
 export const turnSchema = z
   .object({
     conversationId: z.uuid(),

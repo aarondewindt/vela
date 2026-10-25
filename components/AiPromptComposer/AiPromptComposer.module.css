@@ -1,3 +1,11 @@
+.composer {
+  container-type: inline-size;
+}
+
+.inputWrapper[data-with-bottom-section] {
+  --input-bottom-section-height: calc(2.5rem * var(--mantine-scale));
+}
+
 .modelTrigger {
   min-width: 0;
   max-width: 100%;
@@ -31,4 +39,23 @@
 
 .footer > :last-child {
   flex-shrink: 0;
+}
+
+@container (max-width: 22rem) {
+  .inputWrapper[data-with-bottom-section] {
+    --input-bottom-section-height: calc(4.5rem * var(--mantine-scale));
+  }
+
+  .footer {
+    flex-wrap: wrap;
+  }
+
+  .footer > :first-child {
+    flex-basis: 100%;
+    justify-content: flex-start;
+  }
+
+  .footer > :last-child {
+    margin-inline-start: auto;
+  }
 }

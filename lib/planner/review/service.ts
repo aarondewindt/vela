@@ -58,7 +58,7 @@ export async function reviewDayPlan(userId: string, raw: z.input<typeof reviewDa
             'AI review supports at most 100 occupied blocks. Use the verified review for this plan.',
         });
       }
-      model = await requireModelSelection(userId, 'planner.planReview');
+      model = await requireModelSelection(userId, 'planner.planReview', input.selection);
       const keys = result.blocks.map((_, i) => `B${i + 1}`) as [string, ...string[]];
       const schema = z
         .object({

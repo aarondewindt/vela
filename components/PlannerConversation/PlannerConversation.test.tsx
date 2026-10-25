@@ -10,11 +10,13 @@ jest.mock('@/components/PlanningProposals/PlanningProposals', () => ({
 jest.mock('@/lib/trpc/client', () => ({
   trpc: {
     useUtils: jest.fn(),
-    settings: { getPreferences: { useQuery: jest.fn() } },
+    aiDev: { listChatModels: { useQuery: jest.fn() } },
+    settings: { getAiModels: { useQuery: jest.fn() }, getPreferences: { useQuery: jest.fn() } },
     plannerConversation: {
       list: { useQuery: jest.fn() },
       get: { useQuery: jest.fn() },
       create: { useMutation: jest.fn() },
+      changeModel: { useMutation: jest.fn() },
       send: { useMutation: jest.fn() },
       accept: { useMutation: jest.fn() },
       discard: { useMutation: jest.fn() },
@@ -22,6 +24,27 @@ jest.mock('@/lib/trpc/client', () => ({
   },
 }));
 import { trpc } from '@/lib/trpc/client';
+beforeEach(() => {
+  (trpc.settings.getAiModels.useQuery as jest.Mock).mockReturnValue({
+    isFetchedAfterMount: true,
+    error: null,
+    data: {
+      resolved: Object.fromEntries(
+        ['planner.dayPlan', 'planner.planReview', 'planner.conversation'].map((feature) => [
+          feature,
+          { selection: { provider: 'ollama', modelId: 'chat' }, source: 'Default LLM' },
+        ])
+      ),
+    },
+  });
+  (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+    data: [{ provider: 'ollama', id: 'chat', capabilities: ['chat'] }],
+  });
+  (trpc.plannerConversation.changeModel.useMutation as jest.Mock).mockReturnValue({
+    mutate: jest.fn(),
+  });
+});
+
 const preview = {
   entity: 'task' as const,
   action: 'delete' as const,
@@ -131,4 +154,48 @@ it('shows readable field labels and resolved relationship names', () => {
   );
   expect(screen.getByText('Theme: Clear / inherit → Home projects')).toBeVisible();
   expect(screen.getByText('Estimate (minutes): Clear / inherit → 45')).toBeVisible();
+});
+
+it('changes the saved conversation model from the composer and locks it during a reply', async () => {
+  const user = userEvent.setup();
+  const conversationId = '00000000-0000-4000-8000-000000000001';
+  const mutate = jest.fn();
+  const query = {
+    data: {
+      id: conversationId,
+      revision: 3,
+      busy: false,
+      turns: [],
+      override: { provider: 'ollama', modelId: 'chat' },
+    },
+  };
+  (trpc.useUtils as jest.Mock).mockReturnValue({});
+  (trpc.settings.getPreferences.useQuery as jest.Mock).mockReturnValue({
+    data: { timezone: 'Europe/Amsterdam' },
+  });
+  (trpc.plannerConversation.list.useQuery as jest.Mock).mockReturnValue({
+    data: [{ id: conversationId, updatedAt: new Date() }],
+  });
+  (trpc.plannerConversation.get.useQuery as jest.Mock).mockReturnValue(query);
+  (trpc.plannerConversation.changeModel.useMutation as jest.Mock).mockReturnValue({ mutate });
+  for (const name of ['create', 'send', 'accept', 'discard'] as const) {
+    (trpc.plannerConversation[name].useMutation as jest.Mock).mockReturnValue({
+      mutate: jest.fn(),
+      reset: jest.fn(),
+    });
+  }
+  const view = render(<PlannerConversation />);
+  await user.click(screen.getByRole('combobox', { name: 'Saved conversations' }));
+  await user.click(screen.getByRole('option'));
+  await user.click(screen.getByRole('button', { name: 'Chat model' }));
+  await user.click(screen.getByRole('option', { name: /Use default/ }));
+  expect(mutate).toHaveBeenCalledWith({ conversationId, revision: 3, selection: null });
+  query.data.busy = true;
+  view.rerender(
+    <>
+      <PlannerConversation />
+    </>
+  );
+  expect(screen.getByRole('button', { name: 'Chat model' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
 });
