@@ -24,9 +24,11 @@ export function MealDraftComposer({
   date,
   initialDraftId,
   onConfirmed,
+  compact = false,
 }: {
   date: string;
   initialDraftId?: string;
+  compact?: boolean;
   onConfirmed: (date: string) => Promise<void>;
 }) {
   const utils = trpc.useUtils();
@@ -41,6 +43,7 @@ export function MealDraftComposer({
   const [notice, setNotice] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const list = trpc.nutrition.listDrafts.useQuery(undefined, {
+    enabled: !compact || opened,
     retry: false,
     refetchOnMount: 'always',
   });
@@ -158,68 +161,71 @@ export function MealDraftComposer({
       sending.current = false;
     }
   };
+  const openNewDraft = () => {
+    viewRevision.current += 1;
+    setNotice(null);
+    setDraftId(null);
+    setModelId(null);
+    setText('');
+    creationId.current = null;
+    create.reset();
+    interpret.reset();
+    setSendError(null);
+    setOpened(true);
+    setLocation(null);
+  };
   return (
     <>
-      <Paper withBorder p="md" radius="md">
-        <Stack gap="sm">
-          <div>
-            <Title order={3}>Describe what you ate</Title>
-            <Text size="sm" c="dimmed">
-              Turn a description into a saved draft, then review it before logging.
-            </Text>
-          </div>
-          <Group>
-            <Button
-              onClick={() => {
-                viewRevision.current += 1;
-                setNotice(null);
-                setDraftId(null);
-                setModelId(null);
-                setText('');
-                creationId.current = null;
-                create.reset();
-                interpret.reset();
-                setSendError(null);
-                setOpened(true);
-                setLocation(null);
-              }}
-            >
-              Describe a meal
-            </Button>
-          </Group>
-          {list.error && (
-            <Alert color="red">
-              <Text>{list.error.message}</Text>
-              <Button variant="subtle" onClick={() => void list.refetch()}>
-                Retry loading meal drafts
-              </Button>
-            </Alert>
-          )}
-          {list.isFetchedAfterMount && list.data && list.data.length > 0 && (
-            <Select
-              label="Resume a saved meal draft"
-              placeholder="Choose an unfinished draft"
-              value={null}
-              data={list.data.map((entry) => ({
-                value: entry.id,
-                label: `${entry.logDate.toISOString().slice(0, 10)} · ${mealLabels[entry.mealCategory]} · ${entry.title}`,
-              }))}
-              onChange={(id) => {
-                if (id) {
-                  viewRevision.current += 1;
-                  setNotice(null);
-                  setDraftId(id);
-                  setText('');
-                  interpret.reset();
-                  setSendError(null);
-                  setOpened(true);
-                  setLocation(id);
-                }
-              }}
-            />
-          )}
-        </Stack>
-      </Paper>
+      {compact ? (
+        <Button variant="subtle" size="compact-xs" onClick={openNewDraft}>
+          Add meal
+        </Button>
+      ) : (
+        <Paper withBorder p="md" radius="md">
+          <Stack gap="sm">
+            <div>
+              <Title order={3}>Describe what you ate</Title>
+              <Text size="sm" c="dimmed">
+                Turn a description into a saved draft, then review it before logging.
+              </Text>
+            </div>
+            <Group>
+              <Button onClick={openNewDraft}>Describe a meal</Button>
+            </Group>
+            {list.error && (
+              <Alert color="red">
+                <Text>{list.error.message}</Text>
+                <Button variant="subtle" onClick={() => void list.refetch()}>
+                  Retry loading meal drafts
+                </Button>
+              </Alert>
+            )}
+            {list.isFetchedAfterMount && list.data && list.data.length > 0 && (
+              <Select
+                label="Resume a saved meal draft"
+                placeholder="Choose an unfinished draft"
+                value={null}
+                data={list.data.map((entry) => ({
+                  value: entry.id,
+                  label: `${entry.logDate.toISOString().slice(0, 10)} · ${mealLabels[entry.mealCategory]} · ${entry.title}`,
+                }))}
+                onChange={(id) => {
+                  if (id) {
+                    viewRevision.current += 1;
+                    setNotice(null);
+                    setDraftId(id);
+                    setText('');
+                    interpret.reset();
+                    setSendError(null);
+                    setOpened(true);
+                    setLocation(id);
+                  }
+                }}
+              />
+            )}
+          </Stack>
+        </Paper>
+      )}
       <Modal
         opened={opened}
         onClose={close}

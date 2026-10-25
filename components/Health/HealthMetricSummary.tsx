@@ -18,12 +18,12 @@ export function HealthMetricSummary({
   goal?: { target: number | null; semantics: GoalOptions };
 }) {
   return (
-    <Group justify="label" gap="xs" wrap="nowrap">
-      <Title order={2} size="sm">
+    <Stack justify="flex-start" gap="0" align="flex-start">
+      <Title order={2} size="s" c="dimmed">
         {label}
       </Title>
       <Group gap={4} wrap="nowrap">
-        <Text size="sm" fw={650}>
+        <Text size="xl" fw={650}>
           {record
             ? `${new Intl.NumberFormat('en-GB', { maximumFractionDigits: 2 }).format(record.value)} ${unit}`
             : 'Not recorded'}
@@ -52,6 +52,6 @@ export function HealthMetricSummary({
           </Popover.Dropdown>
         </Popover>
       </Group>
-    </Group>
+    </Stack>
   );
 }

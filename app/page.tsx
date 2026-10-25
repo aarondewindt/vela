@@ -6,6 +6,7 @@ import { dateInTimezone } from '@/lib/nutrition/dates';
 import { DashboardNutrition } from '@/components/Nutrition/DashboardNutrition';
 import { DashboardCalorieBalance } from '@/components/Health/DashboardCalorieBalance';
 import { DashboardHealthSummaries } from '@/components/Health/DashboardHealthSummaries';
+import classes from './page.module.css';
 
 export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -21,17 +22,24 @@ export default async function HomePage() {
   return (
     <Container size="lg" py="xl">
       <Stack gap="lg">
-        <Title order={1}>Dashboard</Title>
-        <DashboardCalorieBalance
-          key={`health-${session.user.id}`}
-          date={dateInTimezone(timezone)}
-        />
-        <DashboardNutrition key={session.user.id} date={dateInTimezone(timezone)} />
-        <DashboardHealthSummaries
-          key={`summaries-${session.user.id}`}
-          date={dateInTimezone(timezone)}
-        />
-        
+        {/* <Title order={1}>Dashboard</Title> */}
+        <div className={classes.grid}>
+          <div className={classes.calorieBalance}>
+            <DashboardCalorieBalance
+              key={`health-${session.user.id}`}
+              date={dateInTimezone(timezone)}
+            />
+          </div>
+          <div className={classes.nutrition}>
+            <DashboardNutrition key={session.user.id} date={dateInTimezone(timezone)} />
+          </div>
+          <div className={classes.health}>
+            <DashboardHealthSummaries
+              key={`summaries-${session.user.id}`}
+              date={dateInTimezone(timezone)}
+            />
+          </div>
+        </div>
       </Stack>
     </Container>
   );

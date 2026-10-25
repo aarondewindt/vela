@@ -12,7 +12,28 @@ jest.mock('@/lib/trpc/client', () => ({
     },
   },
 }));
-jest.mock('./MealDraftReview', () => ({ MealDraftReview: () => <div>Saved draft review</div> }));
+jest.mock('./MealDraftReview', () => ({
+  MealDraftReview: ({
+    onConfirmed,
+    onClosed,
+  }: {
+    onConfirmed: (date: string) => Promise<void>;
+    onClosed: () => void;
+  }) => (
+    <div>
+      Saved draft review
+      <button
+        type="button"
+        onClick={async () => {
+          await onConfirmed('2026-10-21');
+          onClosed();
+        }}
+      >
+        Log reviewed meal
+      </button>
+    </div>
+  ),
+}));
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
@@ -207,4 +228,28 @@ it('uses Shift+Enter for corrections and blocks whitespace and generating drafts
   });
   await user.type(input, 'More chicken{Shift>}{Enter}{/Shift}');
   expect(interpret.mutateAsync).toHaveBeenCalledTimes(1);
+});
+
+it('opens the existing meal dialog from the compact dashboard button without navigating', async () => {
+  window.history.replaceState(null, '', '/');
+  const location = window.location.href;
+  render(<MealDraftComposer date="2026-10-21" compact onConfirmed={jest.fn()} />);
+  expect(screen.queryByText('Describe what you ate')).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Add meal' }));
+  expect(await screen.findByRole('dialog', { name: 'Meal draft' })).toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: 'What did you eat?' })).toBeInTheDocument();
+  expect(window.location.href).toBe(location);
+});
+
+it('closes a confirmed dashboard meal without changing the page', async () => {
+  window.history.replaceState(null, '', '/');
+  const confirmed = jest.fn();
+  render(
+    <MealDraftComposer date="2026-10-21" compact initialDraftId={id} onConfirmed={confirmed} />
+  );
+  await userEvent.setup().click(await screen.findByRole('button', { name: 'Log reviewed meal' }));
+  await waitFor(() => expect(confirmed).toHaveBeenCalledWith('2026-10-21'));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(window.location.pathname).toBe('/');
+  expect(window.location.search).toBe('');
 });

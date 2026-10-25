@@ -1,15 +1,23 @@
 .layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: var(--mantine-spacing-xl);
+  justify-items: center;
+  gap: var(--mantine-spacing-sm);
   max-width: 560px;
-  padding-block: var(--mantine-spacing-xs);
+}
+
+.gauge {
+  margin-top: calc(-1 * var(--mantine-spacing-xs));
+  margin-bottom: calc(-1 * var(--mantine-spacing-xl));
 }
 
 .stats {
   display: grid;
-  gap: var(--mantine-spacing-xs);
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mantine-spacing-md);
+  text-align: center;
 }
 
 .amount {
@@ -19,18 +27,6 @@
 }
 
 @media (max-width: $mantine-breakpoint-xs) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
-    gap: var(--mantine-spacing-sm);
-  }
-
-  .stats {
-    width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--mantine-spacing-md);
-  }
-
   .amount {
     font-size: 26px;
   }

@@ -1,0 +1,31 @@
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--mantine-spacing-lg);
+}
+
+.grid > div {
+  min-width: 0;
+}
+
+.grid > div > * {
+  height: 100%;
+}
+
+@media (min-width: $mantine-breakpoint-md) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .calorieBalance {
+    grid-column: span 3;
+  }
+
+  .nutrition {
+    grid-column: span 2;
+  }
+
+  .health {
+    grid-column: span 1;
+  }
+}

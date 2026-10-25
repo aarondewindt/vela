@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { Alert, Anchor, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Box, Button, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { trpc } from '@/lib/trpc/client';
 import { CalorieBalanceWidget } from './CalorieBalanceWidget';
+import { MealDraftComposer } from '../Nutrition/MealDraftComposer';
 
 export function DashboardCalorieBalance({ date }: { date: string }) {
+  const utils = trpc.useUtils();
   const history = trpc.health.history.useQuery(
     { endDate: date, days: 7 },
     { retry: false, refetchInterval: 30000, refetchOnMount: 'always' }
@@ -15,9 +17,9 @@ export function DashboardCalorieBalance({ date }: { date: string }) {
   const selected = current?.days.find((day) => day.date === date);
 
   return (
-    <Paper withBorder p="sm" w="100%" maw="34rem">
-      <Stack gap="xs">
-        <Group justify="space-between" gap="xs">
+    <Paper p="sm" w="100%">
+      <Stack gap="xs" align="center">
+        <Group justify="center" gap="xs">
           <Title order={2} size="h5">
             Today's calorie balance
           </Title>
@@ -35,20 +37,31 @@ export function DashboardCalorieBalance({ date }: { date: string }) {
           </Alert>
         )}
         {current && (
-          <CalorieBalanceWidget
-            intake={selected?.intake ?? null}
-            burned={selected?.burned ?? null}
-            balance={selected?.balance ?? null}
-            goal={current.goal}
-          />
+          <Box w="100%" maw={560}>
+            <CalorieBalanceWidget
+              intake={selected?.intake ?? null}
+              burned={selected?.burned ?? null}
+              balance={selected?.balance ?? null}
+              goal={current.goal}
+            />
+          </Box>
         )}
-        <Group gap="md">
-          <Anchor component={Link} href="/health" size="xs">
+        <Group gap="md" justify="center">
+          <Button component={Link} href="/health" variant="subtle" size="compact-xs">
             Open health dashboard
-          </Anchor>
-          <Anchor component={Link} href="/settings/health" size="xs">
-            Edit health goals
-          </Anchor>
+          </Button>
+          <MealDraftComposer
+            date={date}
+            compact
+            onConfirmed={async () => {
+              await Promise.all([
+                utils.nutrition.getDiary.invalidate(),
+                utils.nutrition.getHistory.invalidate(),
+                utils.nutrition.productSuggestions.invalidate(),
+                utils.health.history.invalidate(),
+              ]);
+            }}
+          />
         </Group>
       </Stack>
     </Paper>

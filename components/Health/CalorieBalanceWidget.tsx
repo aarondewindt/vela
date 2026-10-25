@@ -36,6 +36,7 @@ export function CalorieBalanceWidget({ intake, burned, balance, goal }: Props) {
     <Box>
       <div className={classes.layout}>
         <GaugeChart
+          className={classes.gauge}
           size={220}
           thickness={30}
           startAngle={-90}

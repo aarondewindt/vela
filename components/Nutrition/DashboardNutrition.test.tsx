@@ -2,9 +2,19 @@ jest.mock('@prisma/client/runtime/client', () =>
   jest.requireActual('@prisma/client/runtime/index-browser')
 );
 jest.mock('@/lib/trpc/client', () => ({
-  trpc: { nutrition: { getDiary: { useQuery: jest.fn() } } },
+  trpc: { useUtils: jest.fn(), nutrition: { getDiary: { useQuery: jest.fn() } } },
 }));
-import { screen } from '@testing-library/react';
+jest.mock('./MealDraftComposer', () => ({
+  MealDraftComposer: jest.fn(
+    ({ onConfirmed }: { onConfirmed: (date: string) => Promise<void> }) => (
+      <button type="button" onClick={() => void onConfirmed('2026-10-21')}>
+        Add meal
+      </button>
+    )
+  ),
+}));
+import { MealDraftComposer } from './MealDraftComposer';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
@@ -44,15 +54,12 @@ it('shows the live daily summary including fiber goals and marked bars on the da
     '30'
   );
   expect(screen.getByText('30 / ≥35 g')).toBeInTheDocument();
-  expect(screen.getAllByRole('progressbar')).toHaveLength(4);
+  expect(screen.getAllByRole('progressbar')).toHaveLength(3);
   expect(screen.getByText(/2,000 kcal logged/)).toBeInTheDocument();
   const fiberBar = screen.getByRole('progressbar', { name: 'Fiber goal progress' });
   const marker = fiberBar.closest('[title]')!.querySelector('span[aria-hidden="true"]');
   expect(marker).toHaveStyle({ left: '75%' });
-  expect(screen.getByRole('link', { name: 'Edit nutrition goals' })).toHaveAttribute(
-    'href',
-    '/settings/nutrition'
-  );
+  expect(screen.getByRole('button', { name: 'Add meal' })).toBeInTheDocument();
 });
 it('shows loading and retryable errors instead of an empty dashboard', async () => {
   const query = trpc.nutrition.getDiary.useQuery as jest.Mock;
@@ -94,7 +101,7 @@ it('preserves unknown fiber and goal markers without presenting unknown intake a
     },
   });
   const view = render(<DashboardNutrition date="2026-10-21" />);
-  expect(screen.getAllByText('No goal')).toHaveLength(3);
+  expect(screen.getAllByText('No goal')).toHaveLength(2);
   const fiber = screen.getByRole('progressbar', { name: 'Fiber goal progress' });
   expect(fiber).not.toHaveAttribute('aria-valuenow');
   expect(fiber).toHaveAttribute('aria-valuetext', 'Unknown g; Minimum 35 g; Waiting for data');
@@ -110,5 +117,37 @@ it('preserves unknown fiber and goal markers without presenting unknown intake a
   });
   view.rerender(<DashboardNutrition date="2026-10-21" />);
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-  expect(screen.getAllByText('No goal')).toHaveLength(4);
+  expect(screen.getAllByText('No goal')).toHaveLength(3);
+});
+
+const invalidateDiary = jest.fn();
+const invalidateHistory = jest.fn();
+const invalidateSuggestions = jest.fn();
+const invalidateHealth = jest.fn();
+beforeEach(() => {
+  jest.clearAllMocks();
+  (trpc.useUtils as jest.Mock).mockReturnValue({
+    nutrition: {
+      getDiary: { invalidate: invalidateDiary },
+      getHistory: { invalidate: invalidateHistory },
+      productSuggestions: { invalidate: invalidateSuggestions },
+    },
+    health: { history: { invalidate: invalidateHealth } },
+  });
+});
+
+it('uses the compact meal composer and refreshes dashboard data without navigating', async () => {
+  (trpc.nutrition.getDiary.useQuery as jest.Mock).mockReturnValue({ isFetchedAfterMount: false });
+  const location = window.location.href;
+  render(<DashboardNutrition date="2026-10-21" />);
+  expect(MealDraftComposer).toHaveBeenCalledWith(
+    expect.objectContaining({ date: '2026-10-21', compact: true }),
+    undefined
+  );
+  await userEvent.setup().click(screen.getByRole('button', { name: 'Add meal' }));
+  await waitFor(() => expect(invalidateDiary).toHaveBeenCalled());
+  expect(invalidateHistory).toHaveBeenCalled();
+  expect(invalidateSuggestions).toHaveBeenCalled();
+  expect(invalidateHealth).toHaveBeenCalled();
+  expect(window.location.href).toBe(location);
 });

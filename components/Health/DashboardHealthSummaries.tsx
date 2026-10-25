@@ -15,7 +15,7 @@ export function DashboardHealthSummaries({ date }: { date: string }) {
   const selected = data?.days.find((day) => day.date === date);
   const sleep = data?.days.findLast((day) => day.metrics.SLEEP != null)?.metrics.SLEEP ?? null;
   return (
-    <Paper withBorder p="sm" w="100%" maw="34rem">
+    <Paper withBorder p="sm" w="100%">
       <Stack gap="xs">
         {history.error && (
           <Alert color="red">Could not load Health summaries: {history.error.message}</Alert>

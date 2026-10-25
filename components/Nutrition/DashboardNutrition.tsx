@@ -18,6 +18,7 @@ import { GoalProgress } from '@/components/Goals/GoalProgress';
 import { describeGoal, goalStatusLabels, type GoalOptions } from '@/lib/goals/semantics';
 import { formatNutritionAmount as amount } from '@/lib/nutrition/format';
 import classes from './DashboardNutrition.module.css';
+import { MealDraftComposer } from './MealDraftComposer';
 
 function goalAmount(target: string, options: GoalOptions) {
   const base = amount(target);
@@ -34,6 +35,7 @@ function goalAmount(target: string, options: GoalOptions) {
 }
 
 export function DashboardNutrition({ date }: { date: string }) {
+  const utils = trpc.useUtils();
   const diary = trpc.nutrition.getDiary.useQuery(
     { date },
     { retry: false, refetchInterval: 30000, refetchOnMount: 'always' }
@@ -77,7 +79,7 @@ export function DashboardNutrition({ date }: { date: string }) {
             {(
               [
                 ['protein', 'Protein'],
-                ['carbohydrates', 'Carbs'],
+                // ['carbohydrates', 'Carbs'],
                 ['fat', 'Fat'],
                 ['fiber', 'Fiber'],
               ] as const
@@ -119,13 +121,22 @@ export function DashboardNutrition({ date }: { date: string }) {
             )}
           </>
         )}
-        <Group gap="md">
-          <Anchor component={Link} href={`/nutrition?date=${date}`} size="xs">
+        <Group gap="md" justify="space-between">
+          <Button variant="subtle" component={Link} href={`/nutrition?date=${date}`} size="xs">
             Open nutrition diary
-          </Anchor>
-          <Anchor component={Link} href="/settings/nutrition" size="xs">
-            Edit nutrition goals
-          </Anchor>
+          </Button>
+          <MealDraftComposer
+            date={date}
+            compact
+            onConfirmed={async () => {
+              await Promise.all([
+                utils.nutrition.getDiary.invalidate(),
+                utils.nutrition.getHistory.invalidate(),
+                utils.nutrition.productSuggestions.invalidate(),
+                utils.health.history.invalidate(),
+              ]);
+            }}
+          />
         </Group>
       </Stack>
     </Paper>
