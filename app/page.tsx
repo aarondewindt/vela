@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { settingsService } from '@/lib/settings/service';
 import { dateInTimezone } from '@/lib/nutrition/dates';
 import { DashboardNutrition } from '@/components/Nutrition/DashboardNutrition';
+import { DashboardCalorieBalance } from '@/components/Health/DashboardCalorieBalance';
 
 export default async function HomePage() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -21,6 +22,10 @@ export default async function HomePage() {
       <Stack gap="lg">
         <Title order={1}>Dashboard</Title>
         <DashboardNutrition key={session.user.id} date={dateInTimezone(timezone)} />
+        <DashboardCalorieBalance
+          key={`health-${session.user.id}`}
+          date={dateInTimezone(timezone)}
+        />
       </Stack>
     </Container>
   );

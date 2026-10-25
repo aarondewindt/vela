@@ -21,11 +21,12 @@ import {
 } from '@mantine/core';
 import { LineChart } from '@mantine/charts';
 import { goalChartReferences } from '@/lib/goals/chart-references';
-import { describeGoal, goalStatusLabels } from '@/lib/goals/semantics';
+import { describeGoal } from '@/lib/goals/semantics';
 import { trpc } from '@/lib/trpc/client';
 import { metricKinds, metricLabels, metricUnits, type MetricKind } from '@/lib/health/schema';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
 import { dateInTimezone } from '@/lib/nutrition/dates';
+import { CalorieBalanceWidget } from './CalorieBalanceWidget';
 
 const amount = (value: number | null | undefined, unit = '') =>
   value == null
@@ -241,10 +242,12 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
             <Paper withBorder p="md">
               <Stack gap="xs">
                 <Title order={3}>Calorie balance</Title>
-                <Text>
-                  Logged intake: {amount(selected.intake, 'kcal')} · Total burned:{' '}
-                  {amount(selected.burned, 'kcal')}
-                </Text>
+                <CalorieBalanceWidget
+                  intake={selected.intake}
+                  burned={selected.burned}
+                  balance={selected.balance}
+                  goal={data.goal}
+                />
                 {selected.burned === null && (
                   <Alert color="gray" title={`No total burn recorded for ${selected.date}`}>
                     <Stack gap="xs">
@@ -273,23 +276,11 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                     </Stack>
                   </Alert>
                 )}
-                <Text size="xl">
-                  {selected.balance === null
-                    ? 'Waiting for intake and total burn data'
-                    : `${amount(Math.abs(selected.balance), 'kcal')} ${selected.balance < 0 ? 'deficit' : selected.balance > 0 ? 'surplus' : 'balance'}`}
-                </Text>
-                <Text>
+                <Text size="sm" c="dimmed">
                   Daily goal:{' '}
                   {describeGoal(data.goal.calorieBalance?.toString() ?? null, data.goal.semantics)}{' '}
-                  {data.goal.calorieBalance !== null ? 'kcal' : ''} · Difference from goal:{' '}
-                  {amount(selected.differenceFromGoal, 'kcal')}
+                  {data.goal.calorieBalance !== null ? 'kcal' : ''}
                 </Text>
-                {selected.goalEvaluation && (
-                  <Text c={selected.goalEvaluation.color}>
-                    {goalStatusLabels[selected.goalEvaluation.status]} · provisional comparison of
-                    recorded data
-                  </Text>
-                )}
                 <Text size="sm" c="dimmed">
                   Based on recorded data; missing food or delayed sensor updates make the balance
                   incomplete. Total burn includes basal metabolism. An unfinished day is not a final

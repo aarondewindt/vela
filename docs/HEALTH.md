@@ -23,6 +23,21 @@ incomplete records are explicitly provisional. Nutrition entries stay authoritat
 and edits/deletions are reflected on the next query. Health never changes Nutrition
 goals or food records.
 
+The compact calorie balance widget (#24, part of #107) shows the observed signed
+balance once inside a Mantine semicircular gauge, beside larger consumed/burned
+totals. A configured range goal is green and the rest of the arc is gray; the
+marker represents current balance. The preferred target starts at the top and
+the range occupies 20% of the default span. The scale translates before expanding
+and preserves 5% margins around the balance and both range endpoints. Ranges
+without an explicit preferred target retain the service's lower-bound fallback.
+Missing balance or invalid/non-range goals use a neutral arc without a marker;
+recorded intake/burn totals remain visible independently. Existing source dates
+and provisional-data notices still apply. This widget does not project burn (#12)
+or calculate remaining food budgets (#108).
+The main Dashboard also reuses this widget for today's date in the user's timezone,
+with the existing Health history API, a 30-second refresh and links to Health and
+its goal settings. Missing current-day readings never fall back to historical burn.
+
 ## Connection setup
 
 1. Configure these server-only variables in the environment used by both Next.js

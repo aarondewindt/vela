@@ -1,0 +1,37 @@
+.layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mantine-spacing-xl);
+  max-width: 560px;
+  padding-block: var(--mantine-spacing-xs);
+}
+
+.stats {
+  display: grid;
+  gap: var(--mantine-spacing-xs);
+}
+
+.amount {
+  font-size: 30px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: $mantine-breakpoint-xs) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    gap: var(--mantine-spacing-sm);
+  }
+
+  .stats {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--mantine-spacing-md);
+  }
+
+  .amount {
+    font-size: 26px;
+  }
+}
