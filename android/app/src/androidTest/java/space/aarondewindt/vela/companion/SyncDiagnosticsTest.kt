@@ -143,11 +143,35 @@ class SyncDiagnosticsTest {
                 JSONObject().put("version",1).put("id",UUID.randomUUID().toString()).put("receivedAt",Instant.now().toString())
             }
             val snapshot=uploader.snapshot(provider.source,provider.environment,"Granted",null)
+            val background = snapshot.getJSONObject("diagnostic").getJSONObject("background")
+            assertEquals(60, background.getInt("intervalMinutes"))
+            assertTrue(background.getBoolean("workAvailable"))
+            assertTrue(background.has("powerSaveMode"))
+            assertTrue(background.has("backgroundRestricted"))
             // Contract artifact contains synthetic observations only, for server-schema verification.
             context.filesDir.resolve("diagnostics-contract.json").writeText(snapshot.toString())
             assertTrue(uploader.upload(snapshot).contains("Debug logs sent"))
             try { DiagnosticUploader(context) { _,_,_,_ -> throw DeviceRequestFailure("Expired",401) }.upload(snapshot);fail("auth") } catch (_:DeviceRequestFailure) {}
             assertEquals(before,SyncHistory(context).read().first().toString())
+        } finally { DeviceCredentialStore(context).clear() }
+    }
+
+    @Test fun cancellationRetainsWorkManagerStopReasonWithoutPausingOrDroppingOutbox() = runBlocking {
+        val context = context(); pair(context)
+        val state = context.getSharedPreferences("health_sync", 0)
+        assertTrue(state.edit().putString("pending", "retained snapshot").commit())
+        try {
+            try {
+                HealthSync(context) { _, _, _, _ -> throw CancellationException("stopped") }
+                    .run(provider, trigger = "automatic", workId = UUID.randomUUID().toString(),
+                        retry = 1, workerStopReason = { 7 })
+                fail("Expected cancellation")
+            } catch (_: CancellationException) { }
+            val attempt = SyncHistory(context).read().first()
+            assertEquals("cancelled", attempt.getString("status"))
+            assertEquals(7, attempt.getInt("workStopReason"))
+            assertEquals("retained snapshot", state.getString("pending", null))
+            assertFalse(state.getBoolean("paused", false))
         } finally { DeviceCredentialStore(context).clear() }
     }
 }

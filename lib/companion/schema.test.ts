@@ -1,5 +1,47 @@
 import { attemptSchema, diagnosticUploadSchema, historyFilterSchema, redact } from './schema';
 import { attemptFixture, snapshotFixture } from './fixtures';
+it('accepts bounded scheduler diagnostics and stop reasons while retaining old clients', () => {
+  const background = {
+    intervalMinutes: 15,
+    workAvailable: true,
+    powerSaveMode: false,
+    batteryOptimizationIgnored: false,
+    backgroundRestricted: false,
+    interactive: false,
+    networkValidated: true,
+    batteryPercent: 39,
+    work: [
+      {
+        id: attemptFixture.id,
+        state: 'ENQUEUED',
+        runAttemptCount: 1,
+        generation: 7,
+        stopReason: -256,
+        nextScheduleAt: '2099-01-01T00:00:00Z',
+      },
+    ],
+  };
+  const snapshot = {
+    ...snapshotFixture,
+    diagnostic: { ...snapshotFixture.diagnostic, background },
+    attempts: [{ ...attemptFixture, workStopReason: 7 }],
+  };
+  expect(diagnosticUploadSchema.parse(snapshot).diagnostic.background).toEqual(background);
+  expect(diagnosticUploadSchema.safeParse(snapshotFixture).success).toBe(true);
+  for (const invalid of [
+    { intervalMinutes: 10 },
+    { batteryPercent: 101 },
+    { work: Array(6).fill(background.work[0]) },
+    { token: 'untrusted' },
+  ]) {
+    expect(
+      diagnosticUploadSchema.safeParse({
+        ...snapshot,
+        diagnostic: { ...snapshot.diagnostic, background: { ...background, ...invalid } },
+      }).success
+    ).toBe(false);
+  }
+});
 it('accepts an explicit report-unavailable snapshot even without readings or attempts', () => {
   expect(
     diagnosticUploadSchema.parse({ ...snapshotFixture, attempts: [] }).diagnostic.report

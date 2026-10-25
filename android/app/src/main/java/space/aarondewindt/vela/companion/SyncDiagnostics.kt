@@ -137,7 +137,7 @@ class SyncAttempt(private val history: SyncHistory, context: Context, trigger: S
 class DiagnosticUploader(private val context: Context,
     private val send: (suspend (String, String, JSONObject, String) -> JSONObject)? = null,
 ) {
-    fun snapshot(source: String, environment: String, permission: String, report: String?): JSONObject {
+    suspend fun snapshot(source: String, environment: String, permission: String, report: String?): JSONObject {
         val history = SyncHistory(context)
         history.recoverInterrupted()
         val state = context.getSharedPreferences("health_sync", Context.MODE_PRIVATE)
@@ -146,7 +146,8 @@ class DiagnosticUploader(private val context: Context,
             .put("diagnostic", JSONObject().put("source", source.take(300)).put("environment", environment.take(500))
                 .put("permission", permission.take(160)).put("report", report?.take(32000) ?: JSONObject.NULL)
                 .put("reportAvailable", report != null).put("pending", state.contains("pending"))
-                .put("paused", state.getBoolean("paused", false)).put("historyAvailable", !SyncHistory.storageFailed))
+                .put("paused", state.getBoolean("paused", false)).put("historyAvailable", !SyncHistory.storageFailed)
+                .put("background", backgroundSyncDiagnostics(context)))
             .put("attempts", JSONArray(history.read()))
         // Bound the encoded request as well as local storage; never delete local entries here.
         val attempts = snapshot.getJSONArray("attempts")

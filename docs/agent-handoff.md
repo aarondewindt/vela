@@ -3,7 +3,42 @@
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
-**Last updated:** 2026-10-24
+**Last updated:** 2026-10-25
+
+## Android automatic health sync investigation — 2026-10-25
+
+- The supplied `partial` automatic attempt actually uploaded 28 measurements:
+  HTTP 200, all receipts validated, outbox cleared; a read-only server audit check
+  corroborated `automatic` / `success`. Earlier paused state lacks evidence of
+  its original cause. Do not describe this as a demonstrated broken scheduler.
+- Fixed SDK availability failures permanently pausing automatic work; they now
+  use bounded retries and future periodic cycles. Permission/authorization still
+  require intervention. Fixed missing preference observation in the status card;
+  added eligibility/retry/stop details and explicit-upload scheduler/power/network
+  diagnostics. Backend fields are optional and strictly validated. See
+  [background sync investigation](ANDROID_BACKGROUND_SYNC.md#investigation-on-2026-10-25).
+- Normal APK 0.3.1 (4) installed with original signing key and data-preserving
+  update. Paired app was not launched; existing 15-minute work and credentials
+  remain intact. Isolated instrumentation uses a separate package and synthetic
+  credentials/SDK/HTTP. No server deployment or health-data repair was performed.
+- Real scheduled background execution verified: Android started the absent process
+  through SystemJobService at 00:30:46 Amsterdam with the screen off; WorkManager
+  SUCCESS at 00:30:50, 28 measurements / 28 acknowledged receipts / retry 0.
+  Server audit independently corroborated automatic / success / HTTP 200 for the
+  same attempt. Outbox cleared, paused false, next periodic cycle registered.
+  Start occurred approximately three minutes after eligibility; Samsung/Android
+  connectivity-job batching was enabled. This verifies one real closed-app cycle,
+  not all future device/battery conditions.
+- Validation: normal offline Android verification passed, 30 JVM tests, zero
+  lint errors (24 advisories / one hint), all 10 isolated device tests passed;
+  42 focused Jest tests, TypeScript, scoped lint/format and whitespace passed.
+  Next.js MCP diagnostics worked and reported no current errors. Browser UI
+  acceptance was unavailable; no web UI was changed. Host-only `local.properties`
+  SDK path still warns in the container; environment SDK discovery builds correctly.
+- Expanded debug uploads need the updated backend schema deployed/restarted before
+  use against an older runtime. Automatic health ingest remains compatible.
+  Unplugged deep Doze, reboot, long-duration operation and real credential/consent
+  revocation remain physical acceptance checks.
 
 ## Next.js DevTools MCP #106 — 2026-10-25
 

@@ -17,6 +17,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableIntStateOf
+import android.content.SharedPreferences
 import androidx.compose.ui.platform.LocalContext
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
@@ -31,11 +34,22 @@ fun ManualSyncCard(provider: HealthProvider, historicalDate: String, enabled: Bo
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("Sync calories, steps, sleep and BMR for today and the selected historical day. Missing values are skipped. Total includes active; SDK elapsed/projected semantics remain unverified.") }
     val preferences = remember { context.getSharedPreferences("health_sync", 0) }
+    var revision by remember { mutableIntStateOf(0) }
+    DisposableEffect(preferences) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> revision++ }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { preferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val status = remember(revision) { preferences.getString("status", "Background synchronization configured; Android controls timing.") }
+    val paused = remember(revision) { preferences.getBoolean("paused", false) }
+    val pending = remember(revision) { preferences.contains("pending") }
+    val lastSuccess = remember(revision) { preferences.getString("last_success", null) }
 
     var interval by remember { mutableStateOf(BackgroundSync.intervalMinutes(context)) }
     var intervalMenuOpen by remember { mutableStateOf(false) }
-    val work by remember { WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow("vela-health-periodic") }
+    val work by remember { WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(BackgroundSync.NAME) }
         .collectAsState(initial = emptyList())
+    val currentWork = work.firstOrNull { !it.state.isFinished }
     Card {
         Column {
             Text("Manual health sync")
@@ -56,9 +70,14 @@ fun ManualSyncCard(provider: HealthProvider, historicalDate: String, enabled: Bo
                 }
             }
             Text("Minimum interval is 15 minutes. Battery and network restrictions may delay sync.")
-            Text("Background work: ${work.firstOrNull()?.state ?: "not scheduled"}")
-            Text(preferences.getString("status", "Background synchronization configured; Android controls timing.") ?: "")
-            Text(if (preferences.contains("pending")) "Upload pending" else "No pending upload")
+            Text(if (paused) "Background synchronization paused" else "Background work: ${currentWork?.state ?: "not scheduled"}")
+            currentWork?.let {
+                if (it.nextScheduleTimeMillis != Long.MAX_VALUE) Text("Next eligible run: ${java.time.Instant.ofEpochMilli(it.nextScheduleTimeMillis)} (Android may delay it)")
+                Text("Current retry count: ${it.runAttemptCount}; last WorkManager stop reason: ${it.stopReason}")
+            }
+            Text("ENQUEUED means waiting for Android and constraints; it does not mean a sync failed.")
+            Text(status ?: "")
+            Text(if (pending) "Upload pending" else "No pending upload")
             Button(onClick = {
                 check(preferences.edit().putBoolean("paused", false).commit())
                 BackgroundSync.schedule(context)
@@ -75,7 +94,6 @@ fun ManualSyncCard(provider: HealthProvider, historicalDate: String, enabled: Bo
                 }
                 message = "Pending snapshot discarded. Sync now to read fresh values."
             } }) { Text("Discard pending snapshot") }
-            val lastSuccess = preferences.getString("last_success", null)
             lastSuccess?.let { Text("Last successful upload: $it") }
             Button(enabled = enabled && !busy, onClick = {
                 busy = true

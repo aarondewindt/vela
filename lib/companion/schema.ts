@@ -71,6 +71,7 @@ export const attemptSchema = z
     os: text(160),
     provider: text(300),
     workId: z.uuid().optional(),
+    workStopReason: z.number().int().min(-2147483648).max(2147483647).optional(),
     retry: z.number().int().min(0).max(100).optional(),
     stages: z.array(z.object({ name: text(80), at: instant }).strict()).max(100),
     queries: z.array(querySchema).max(150),
@@ -135,6 +136,34 @@ export const diagnosticUploadSchema = z
         pending: z.boolean(),
         paused: z.boolean(),
         historyAvailable: z.boolean(),
+        background: z
+          .object({
+            intervalMinutes: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]),
+            workAvailable: z.boolean(),
+            powerSaveMode: z.boolean(),
+            batteryOptimizationIgnored: z.boolean(),
+            backgroundRestricted: z.boolean(),
+            interactive: z.boolean(),
+            networkValidated: z.boolean(),
+            batteryPercent: z.number().int().min(0).max(100).optional(),
+            work: z
+              .array(
+                z
+                  .object({
+                    id: z.uuid(),
+                    state: z.enum(['ENQUEUED', 'RUNNING', 'BLOCKED']),
+                    runAttemptCount: z.number().int().min(0),
+                    generation: z.number().int().min(0),
+                    stopReason: z.number().int().min(-2147483648).max(2147483647),
+                    // A future eligibility time is expected, unlike observed event timestamps.
+                    nextScheduleAt: z.iso.datetime().optional(),
+                  })
+                  .strict()
+              )
+              .max(5),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .refine(

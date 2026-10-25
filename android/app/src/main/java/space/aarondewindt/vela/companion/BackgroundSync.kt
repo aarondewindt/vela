@@ -1,6 +1,7 @@
 package space.aarondewindt.vela.companion
 
 import android.content.Context
+import android.os.Build
 import androidx.work.*
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -14,6 +15,9 @@ fun retrySync(status: Int?, attempt: Int): Boolean = attempt < 4 &&
 val syncIntervalOptions = listOf(15, 30, 60, 120)
 fun validSyncInterval(minutes: Int): Int = minutes.takeIf { it in syncIntervalOptions } ?: 60
 
+fun requiresHealthIntervention(kind: HealthFailure.Kind): Boolean =
+    kind == HealthFailure.Kind.PERMISSION || kind == HealthFailure.Kind.AUTHORIZATION
+
 object BackgroundSync {
     fun intervalMinutes(context: Context): Int = validSyncInterval(
         context.getSharedPreferences("sync_settings", Context.MODE_PRIVATE).getInt("interval_minutes", 60))
@@ -25,7 +29,7 @@ object BackgroundSync {
         schedule(context)
     }
 
-    private const val NAME = "vela-health-periodic"
+    const val NAME = "vela-health-periodic"
     fun schedule(context: Context) {
         if (context.getSharedPreferences("health_sync", Context.MODE_PRIVATE).getBoolean("paused", false)) return
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.UPDATE,
@@ -47,7 +51,8 @@ class HealthSyncWorker(context: Context, parameters: WorkerParameters) : Corouti
         fun status(message: String) { check(state.edit().putString("status", message).commit()) }
         return try {
             status("Synchronization running")
-            val message = HealthSync(applicationContext).run(SamsungHealthProvider(applicationContext), trigger = "automatic", workId = id.toString(), retry = runAttemptCount)
+            val message = HealthSync(applicationContext).run(SamsungHealthProvider(applicationContext), trigger = "automatic", workId = id.toString(), retry = runAttemptCount,
+                workerStopReason = { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) stopReason else null })
             status(message)
             Result.success()
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -65,7 +70,9 @@ class HealthSyncWorker(context: Context, parameters: WorkerParameters) : Corouti
             if (retrySync(null, runAttemptCount)) Result.retry() else Result.failure()
         } catch (failure: HealthFailure) {
             status(failure.detail)
-            if (failure.kind == HealthFailure.Kind.QUERY) {
+            if (!requiresHealthIntervention(failure.kind)) {
+                // Platform updates/restarts and query failures must not permanently disable sync.
+                status("${failure.detail} ${if (retrySync(null, runAttemptCount)) "Retry pending." else "Retry limit reached; the next periodic sync remains scheduled."}")
                 if (retrySync(null, runAttemptCount)) Result.retry() else Result.failure()
             } else {
                 check(state.edit().putBoolean("paused", true).commit())

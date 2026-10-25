@@ -2,8 +2,15 @@ package space.aarondewindt.vela.companion
 
 import org.junit.Assert.*
 import org.junit.Test
+import space.aarondewindt.vela.companion.health.HealthFailure
 
 class BackgroundSyncTest {
+    @Test fun providerUnavailabilityRecoversWithoutManualResume() {
+        assertFalse(requiresHealthIntervention(HealthFailure.Kind.AVAILABILITY))
+        assertFalse(requiresHealthIntervention(HealthFailure.Kind.QUERY))
+        assertTrue(requiresHealthIntervention(HealthFailure.Kind.PERMISSION))
+        assertTrue(requiresHealthIntervention(HealthFailure.Kind.AUTHORIZATION))
+    }
     @Test fun unsupportedOrCorruptIntervalsFallBackToHourly() {
         listOf(-1, 0, 10, 14, 16, 1000).forEach { assertEquals(60, validSyncInterval(it)) }
         listOf(15, 30, 60, 120).forEach { assertEquals(it, validSyncInterval(it)) }

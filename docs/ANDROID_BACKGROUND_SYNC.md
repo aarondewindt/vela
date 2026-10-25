@@ -37,17 +37,39 @@ before reading fresh values. The backend's owner/device/metric/date identities,
 capture ordering and transactional ingestion make this replay idempotent. This
 is one coalesced outbox, not an unbounded historical queue.
 
-Network I/O errors, HTTP 408/429/5xx and SDK query failures get at most four retries
+Network I/O errors, HTTP 408/429/5xx and SDK query/availability failures get at most four retries
 per periodic cycle (five attempts), using WorkManager exponential backoff starting
 at one minute. Once exhausted, pending data remains for the next periodic cycle.
-Authentication, validation, permission, SDK availability/authorization and unexpected
+Samsung Health being temporarily unavailable must not permanently pause synchronization;
+missing/disabled/outdated installations still show the provider's repair instructions
+while later periodic runs can recover. Authentication, validation, permission, SDK authorization and unexpected
 storage/protocol failures pause automatic work and expose an actionable status.
 A paused worker does not upload; **Resume background sync** explicitly re-enables
 it after repair. **Pause background sync** cancels scheduled work. An HTTP operation
 already accepted by the server may finish while cancellation takes effect.
 
-The screen shows WorkManager state, pending upload, last successful upload and
-last worker outcome. After fixing invalid data/date/time or upgrading the app,
+The screen observes preference changes and shows live WorkManager state, next
+eligible run (not a deadline), retry count, last scheduler stop reason, pending
+upload, last successful upload and last worker outcome. `ENQUEUED` means waiting
+for timing/constraints, not failure. A diagnostic `partial` outcome can still have
+a completely acknowledged upload: missing source readings are skipped, including
+empty aggregates shortly after midnight. Check the ingest receipt and last-success
+time before classifying it as a transport failure.
+
+Explicit debug uploads additionally include a bounded scheduler snapshot with work
+ID/state/generation, retry count, next eligibility and previous stop reason, plus
+power saver, background restriction, battery percentage, battery-optimization
+exemption status and validated-network availability. These are observations at
+capture time, not proof of which constraint delayed an earlier execution. Samsung's
+Never auto sleeping setting is separate from Android's battery-optimization
+exemption; neither exemption is requested or changed by Vela. Cancelled worker
+attempts capture Android's stop reason on API 31+; older platforms omit it.
+WorkManager snapshot failure is explicit (`workAvailable: false`). Diagnostics
+remain local until **Send debug logs to Vela** is selected. Deploy the additive
+backend diagnostic schema before using the 0.3.1 client's expanded debug upload;
+older clients remain accepted. Health ingest itself uses the existing protocol.
+
+After fixing invalid data/date/time or upgrading the app,
 **Discard pending snapshot** removes the rejected local batch so **Sync now** can
 capture fresh values; it does not remove server measurements. Forgetting local
 credentials clears the outbox/status under the same lock and cancels scheduling.
@@ -56,6 +78,72 @@ Browser sign-out does not revoke the independent device token: revoke the device
 in Vela Settings or forget it locally to stop its access.
 
 ## Verification and phone acceptance
+
+### Investigation on 2026-10-25
+
+The initial report that automatic sync had never uploaded was contradicted by
+both the supplied diagnostic snapshot and a read-only check of Vela's ingestion
+audit. The 00:12 Amsterdam automatic attempt uploaded 28 measurements, received
+HTTP 200, validated every receipt and cleared the outbox. Its local `partial`
+status described missing source readings shortly after midnight, not failed
+delivery. Logcat also showed WorkManager `SUCCESS` after a cancelled first attempt
+and a successful retry. An earlier paused attempt was recorded, but the available
+history does not establish why it had originally been paused.
+
+ADB inspection found the existing unique periodic work at 900,000 ms, not reset
+on Activity creation, with connected-network/battery-not-low constraints and
+exponential backoff. The app was installed, not force-stopped/suspended, in the
+ACTIVE standby bucket, with background app-op allowed and battery saver off.
+The battery was approximately 39% and USB powered. The job's only unmet constraint
+at inspection was timing; connectivity had fluctuated earlier. No evidence
+established Samsung's Never auto sleeping setting as the cause of the report.
+After eligibility, `cmd jobscheduler get-job-state` returned `ready` while the
+process remained absent. The system dump had `Force batch connectivity jobs:
+true`, a Samsung connectivity batch-delay setting of 240,000 ms and general
+network batch-delay setting of 1,860,000 ms. These observations support Android
+batching as an explanation for a ready job waiting beyond 15 minutes; they are
+not execution deadlines, and no system scheduling settings were changed.
+
+Two code defects were addressed: the sync card did not subscribe to preference
+changes, so worker success/pause/outbox state could remain stale; and any SDK
+availability failure permanently set `paused`, requiring manual recovery even
+after Samsung Health became available again. The latter path is now retried with
+the existing budget and allowed to recover on later periodic cycles. This is a
+verified policy fix, not a claim that an availability failure caused the recorded
+00:12 cancellation. Stop-reason diagnostics were added to distinguish future
+cancellations.
+
+Verification: `./android/scripts/verify.sh --offline` passed (30 JVM tests,
+debug APK, lint with zero errors / 24 advisory warnings / one hint, instrumentation
+APK). `./android/scripts/verify.sh --offline -PvelaIsolatedDeviceTests=true
+:app:connectedDebugAndroidTest` passed all 10 tests on the SM-S731B / Android 16.
+Those tests use synthetic provider/HTTP boundaries in a separate package; they
+cover manual/outbox recovery, cancellation retention, diagnostic snapshots and
+live status updates, without touching real pairing. The new UI test initially
+failed behind the device lock screen; matching the existing test's Activity
+visibility setup resolved it. Four focused Jest suites passed 42 tests across
+diagnostic schema/HTTP and health ingestion/HTTP, and TypeScript, scoped lint,
+format and whitespace checks passed. Next.js MCP confirmed the project, routes,
+log path and no current configuration/session errors. An authenticated web
+browser check was unavailable; no web UI was changed.
+
+The 0.3.1 (4) APK was installed with `adb install -r --no-streaming`, preserving
+pairing/data and the existing job. No launch, sync button, forced job execution,
+exemption, scheduler override or foreground service was used for the background
+observation. The process was absent before eligibility. With the screen still off,
+Android started it through `SystemJobService` at **00:30:46 Amsterdam time** and
+WorkManager logged **SUCCESS at 00:30:50**. The automatic attempt reported 0.3.1 (4),
+retry 0, 28 readings and 28 acknowledged receipts; local `partial` again represented
+missing source readings. The outbox was empty, `paused` remained false and
+`last_success` advanced. Vela's server audit independently recorded that same
+attempt as automatic / success / HTTP 200 / count 28 at 22:30:50 UTC on October 24.
+The next periodic job remained registered for eligibility approximately 15 minutes
+later. The observed start was about three minutes after the 00:27:39 eligibility,
+consistent with opportunistic Android batching.
+
+This verifies one real scheduled background cycle with the updated APK, Samsung
+SDK and backend, including process startup without opening the app. Physical reboot, unplugged deep Doze, long-duration battery-saver
+operation and real permission/token revocation remain separate acceptance tests.
 
 JVM tests cover retry classification/budget, seven-day reconciliation without
 repeated today queries, cancellation, permission loss, missing readings and existing

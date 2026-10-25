@@ -4,6 +4,34 @@ Experimental personal planning and nutrition tracking. See [daily-use deployment
 
 The native [Android Companion](android/README.md) has a separate Kotlin/Compose project and Ubuntu host build/device workflow. VS Code/Codex can continue editing in the existing devcontainer; the Next.js/Yarn workflow is unchanged.
 
+## Database migrations
+
+Run these commands from the repository root using Yarn 4. Prisma reads `prisma.config.ts`, which loads `.env` and uses `DATABASE_URL` to select the database. Check that it points to the intended environment before applying migrations.
+
+Check whether the selected database has pending migrations:
+
+```bash
+yarn prisma migrate status
+```
+
+If it reports that the database is up to date, no existing migrations need applying. Changes to API validation alone do not require a database migration.
+
+To apply existing pending migrations, including in production:
+
+```bash
+yarn prisma migrate deploy
+yarn prisma generate
+```
+
+After changing `prisma/schema.prisma`, create and apply a new migration on your development database:
+
+```bash
+yarn prisma migrate dev --name describe_the_change
+yarn prisma generate
+```
+
+Commit the schema changes and generated SQL migration under `prisma/migrations/`. Use `migrate deploy` to apply those committed migrations in production; `migrate dev` is for development only. Prisma 7 requires explicitly running `prisma generate` to refresh the client. Restart the development server, or rebuild and restart the production app, after updating the database/client.
+
 # Mantine Next.js template
 
 This is a template for [Next.js](https://nextjs.org/) app router + [Mantine](https://mantine.dev/).

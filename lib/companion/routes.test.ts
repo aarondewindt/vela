@@ -26,6 +26,29 @@ it('requires the existing device credential and forwards only authenticated iden
   expect(requireDevice).toHaveBeenCalledWith(expect.any(Headers), ['health:write']);
   expect(saveDiagnostics).toHaveBeenCalledWith('alice', 'phone', snapshotFixture);
 });
+it('preserves scheduler observations and cancellation reasons through the HTTP boundary', async () => {
+  (requireDevice as jest.Mock).mockResolvedValue({ userId: 'alice', credentialId: 'phone' });
+  (saveDiagnostics as jest.Mock).mockResolvedValue({ version: 1, id: 'snapshot' });
+  const snapshot = {
+    ...snapshotFixture,
+    diagnostic: {
+      ...snapshotFixture.diagnostic,
+      background: {
+        intervalMinutes: 15,
+        workAvailable: false,
+        powerSaveMode: false,
+        batteryOptimizationIgnored: false,
+        backgroundRestricted: false,
+        interactive: false,
+        networkValidated: true,
+        work: [],
+      },
+    },
+    attempts: [{ ...snapshotFixture.attempts[0], status: 'cancelled', workStopReason: 7 }],
+  };
+  expect((await POST(request(JSON.stringify(snapshot)))).status).toBe(200);
+  expect(saveDiagnostics).toHaveBeenCalledWith('alice', 'phone', snapshot);
+});
 it.each(['UNAUTHORIZED', 'FORBIDDEN'] as const)(
   'rejects %s before reading or saving diagnostics',
   async (code) => {

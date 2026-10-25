@@ -24,7 +24,8 @@ class HealthSync(context: Context,
     private val app = context.applicationContext
     private val state = app.getSharedPreferences("health_sync", Context.MODE_PRIVATE)
     suspend fun run(provider: HealthProvider, historicalDay: LocalDate? = null,
-        trigger: String = "manual", workId: String? = null, retry: Int? = null): String {
+        trigger: String = "manual", workId: String? = null, retry: Int? = null,
+        workerStopReason: (() -> Int?)? = null): String {
         require(trigger in setOf("manual", "automatic"))
         val attempt = SyncAttempt(SyncHistory(app), app, trigger, provider.source, workId, retry)
         var outcome = "failed"
@@ -169,6 +170,7 @@ class HealthSync(context: Context,
                 "Uploaded ${measurements.size} measurements. Missing values skipped."
             }
         } catch (failure: CancellationException) {
+            workerStopReason?.invoke()?.let { attempt.data.put("workStopReason", it) }
             attempt.finish("cancelled", failure)
             throw failure
         } catch (failure: Exception) {
