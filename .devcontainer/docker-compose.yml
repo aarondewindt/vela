@@ -6,6 +6,8 @@ services:
     env_file:
       - ../vela.env
     environment:
+      # Workspace bind mount survives container replacement; created privately by the app.
+      VELA_ATTACHMENT_STORAGE_DIR: /workspaces/vela/.local/attachments
       VELA_ANDROID_DEBUG_KEYSTORE: /run/vela-android/debug.keystore
     volumes:
       - ..:/workspaces/vela:cached

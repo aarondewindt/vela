@@ -1,6 +1,16 @@
 /** @jest-environment node */
 
 jest.mock('server-only', () => ({}));
+// Exercise the middleware for both operations; the opt-in smoke test uses the real SDK.
+jest.mock('ai', () => ({
+  wrapLanguageModel: ({ model, middleware }: any) => ({
+    ...model,
+    doGenerate: async (params: any) =>
+      model.doGenerate(await middleware.transformParams({ params, type: 'generate', model })),
+    doStream: async (params: any) =>
+      model.doStream(await middleware.transformParams({ params, type: 'stream', model })),
+  }),
+}));
 jest.mock('ollama-ai-provider-v2', () => ({ createOllama: jest.fn() }));
 
 import { createOllama } from 'ollama-ai-provider-v2';
@@ -14,8 +24,16 @@ import {
 
 const originalBaseURL = process.env.OLLAMA_BASE_URL;
 const originalFetch = global.fetch;
+const originalOverrides = process.env.AI_MODEL_CAPABILITY_OVERRIDES;
 const fetchMock = jest.fn();
-const chatModel = { modelId: 'chat:latest' };
+const chatModel = {
+  specificationVersion: 'v3',
+  provider: 'ollama',
+  modelId: 'chat:latest',
+  supportedUrls: {},
+  doGenerate: jest.fn(),
+  doStream: jest.fn(),
+};
 const embeddingModel = { modelId: 'vectors:latest' };
 const provider = {
   languageModel: jest.fn(() => chatModel),
@@ -53,6 +71,7 @@ function installedModels(...names: string[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  delete process.env.AI_MODEL_CAPABILITY_OVERRIDES;
   fetchMock.mockReset();
   global.fetch = fetchMock;
   process.env.OLLAMA_BASE_URL = 'http://ollama.test:11434';
@@ -61,6 +80,11 @@ beforeEach(() => {
 
 afterAll(() => {
   global.fetch = originalFetch;
+  if (originalOverrides === undefined) {
+    delete process.env.AI_MODEL_CAPABILITY_OVERRIDES;
+  } else {
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = originalOverrides;
+  }
   if (originalBaseURL === undefined) {
     delete process.env.OLLAMA_BASE_URL;
   } else {
@@ -203,7 +227,9 @@ describe('discoverModels', () => {
     fetchMock
       .mockResolvedValueOnce(installedModels('chat:latest'))
       .mockResolvedValueOnce(jsonResponse({ details: { family: 'llama' } }));
-    await expect(discoverModels()).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESPONSE' });
+    await expect(discoverModels()).resolves.toEqual([
+      { provider: 'ollama', id: 'chat:latest', capabilities: [] },
+    ]);
   });
 
   it('handles a model being removed between listing and inspection', async () => {
@@ -236,9 +262,9 @@ describe('model resolution', () => {
     fetchMock
       .mockResolvedValueOnce(installedModels('chat:latest'))
       .mockResolvedValueOnce(jsonResponse({ capabilities: ['completion'] }));
-    await expect(resolveChatModel({ provider: 'ollama', modelId: 'chat:latest' })).resolves.toBe(
-      chatModel
-    );
+    await expect(
+      resolveChatModel({ provider: 'ollama', modelId: 'chat:latest' })
+    ).resolves.toMatchObject({ modelId: chatModel.modelId });
     expect(provider.languageModel).toHaveBeenCalledWith('chat:latest');
     expect(createOllama).toHaveBeenCalledWith({
       baseURL: 'http://ollama.test:11434/api',
@@ -293,5 +319,134 @@ describe('model resolution', () => {
     expect(signal.aborted).toBe(false);
     controller.abort();
     expect(signal.aborted).toBe(true);
+  });
+});
+
+describe('capability overrides and input guards', () => {
+  async function resolve(capabilities: string[] | undefined) {
+    fetchMock
+      .mockResolvedValueOnce(installedModels('chat:latest'))
+      .mockResolvedValueOnce(jsonResponse({ capabilities }));
+    return resolveChatModel({ provider: 'ollama', modelId: 'chat:latest' });
+  }
+  const imagePrompt = {
+    prompt: [
+      {
+        role: 'user' as const,
+        content: [
+          { type: 'text' as const, text: 'Lees deze Nederlandse verpakking.' },
+          {
+            type: 'file' as const,
+            mediaType: 'image/jpeg',
+            data: { type: 'data' as const, data: new Uint8Array([1, 2]) },
+          },
+          {
+            type: 'file' as const,
+            mediaType: 'image/png',
+            data: { type: 'data' as const, data: new Uint8Array([3, 4]) },
+          },
+        ],
+      },
+    ],
+  };
+  it.each(['doGenerate', 'doStream'] as const)(
+    'rejects images before provider %s',
+    async (method) => {
+      const model = await resolve(['completion']);
+      await expect(model[method](imagePrompt)).rejects.toMatchObject({
+        code: 'MODEL_NOT_SUPPORTED',
+        message: expect.stringContaining('image inputs'),
+      });
+      expect(chatModel[method]).not.toHaveBeenCalled();
+    }
+  );
+  it.each(['doGenerate', 'doStream'] as const)(
+    'preserves text and multiple images for %s',
+    async (method) => {
+      const model = await resolve(['completion', 'vision']);
+      await model[method](imagePrompt);
+      expect(chatModel[method]).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [
+            {
+              role: 'user',
+              content: [
+                imagePrompt.prompt[0].content[0],
+                { type: 'file', mediaType: 'image/jpeg', data: { type: 'data', data: 'AQI=' } },
+                { type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AwQ=' } },
+              ],
+            },
+          ],
+        })
+      );
+      expect(imagePrompt.prompt[0].content[1].data?.data).toEqual(new Uint8Array([1, 2]));
+    }
+  );
+  it('still accepts text-only generation', async () => {
+    const model = await resolve(['completion']);
+    const options = {
+      prompt: [{ role: 'user' as const, content: [{ type: 'text' as const, text: 'Hallo' }] }],
+    };
+    await model.doGenerate(options);
+    expect(chatModel.doGenerate).toHaveBeenCalled();
+  });
+  it('rejects images in history even when the latest user message is text-only', async () => {
+    const model = await resolve(['completion']);
+    await expect(
+      model.doGenerate({
+        prompt: [
+          ...imagePrompt.prompt,
+          { role: 'assistant', content: [{ type: 'text', text: 'Earlier reply' }] },
+          { role: 'user', content: [{ type: 'text', text: 'Correct the name' }] },
+        ],
+      })
+    ).rejects.toMatchObject({ code: 'MODEL_NOT_SUPPORTED' });
+    expect(chatModel.doGenerate).not.toHaveBeenCalled();
+  });
+  it('allows an explicit override for missing metadata', async () => {
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = JSON.stringify([
+      { provider: 'ollama', modelId: 'chat:latest', capabilities: { chat: true, vision: true } },
+    ]);
+    const model = await resolve(undefined);
+    await model.doGenerate(imagePrompt);
+    expect(chatModel.doGenerate).toHaveBeenCalled();
+  });
+  it('can disable reported vision support', async () => {
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = JSON.stringify([
+      { provider: 'ollama', modelId: 'chat:latest', capabilities: { vision: false } },
+    ]);
+    const model = await resolve(['completion', 'vision']);
+    await expect(model.doGenerate(imagePrompt)).rejects.toMatchObject({
+      code: 'MODEL_NOT_SUPPORTED',
+    });
+  });
+  it('matches overrides by exact model tag', async () => {
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = JSON.stringify([
+      { provider: 'ollama', modelId: 'chat:other', capabilities: { vision: true } },
+    ]);
+    const model = await resolve(['completion']);
+    await expect(model.doGenerate(imagePrompt)).rejects.toMatchObject({
+      code: 'MODEL_NOT_SUPPORTED',
+    });
+  });
+  it('rejects unknown capability metadata at resolution', async () => {
+    await expect(resolve(['future-capability'])).rejects.toMatchObject({
+      code: 'MODEL_NOT_SUPPORTED',
+    });
+  });
+  it.each([
+    'not-json',
+    '{}',
+    '[{"provider":"ollama","modelId":"chat:latest","capabilities":{"vision":"yes"}}]',
+    '[{"provider":"ollama","modelId":"chat:latest","capabilities":{"typo":true}}]',
+  ])('rejects invalid overrides safely: %s', async (raw) => {
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = raw;
+    await expect(resolve(['completion'])).rejects.toMatchObject({ code: 'CONFIGURATION_ERROR' });
+    expect(provider.languageModel).not.toHaveBeenCalled();
+  });
+  it('rejects duplicate override entries', async () => {
+    const entry = { provider: 'ollama', modelId: 'chat:latest', capabilities: { vision: true } };
+    process.env.AI_MODEL_CAPABILITY_OVERRIDES = JSON.stringify([entry, entry]);
+    await expect(resolve(['completion'])).rejects.toMatchObject({ code: 'CONFIGURATION_ERROR' });
   });
 });

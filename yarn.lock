@@ -11787,6 +11787,7 @@ __metadata:
     react-dom: "npm:19.2.7"
     recharts: "npm:^3.9.2"
     server-only: "npm:0.0.1"
+    sharp: "npm:^0.34.5"
     storybook: "npm:^10.0.0"
     stylelint: "npm:^17.0.0"
     stylelint-config-standard-scss: "npm:^17.0.0"

@@ -1,16 +1,14 @@
 import 'server-only';
 
 import { createOllama } from 'ollama-ai-provider-v2';
+import { wrapLanguageModel } from 'ai';
 import { z } from 'zod';
 import { AiError } from './errors';
-
-export type AiModelSelection = { provider: 'ollama'; modelId: string };
-export type AiModelCapability = 'chat' | 'embedding' | 'vision' | 'thinking';
-export type AiModel = {
-  provider: 'ollama';
-  id: string;
-  capabilities: AiModelCapability[];
-};
+import type { AiModel, AiModelCapability, AiModelSelection } from './capabilities';
+import { applyCapabilityOverrides } from './capability-overrides';
+import { guardModelInputs } from './input-guard';
+import { ollamaImageInputMiddleware } from './ollama-input';
+export type { AiModel, AiModelCapability, AiModelSelection } from './capabilities';
 
 const discoveryTimeoutMs = 10_000;
 const inferenceTimeoutMs = 120_000;
@@ -18,7 +16,7 @@ const discoveryBatchSize = 4;
 const modelsSchema = z.object({
   models: z.array(z.object({ name: z.string().min(1), digest: z.string().optional() })),
 });
-const modelInfoSchema = z.object({ capabilities: z.array(z.string()) });
+const modelInfoSchema = z.object({ capabilities: z.array(z.string()).optional() });
 
 function getBaseURL(): string {
   const value = process.env.OLLAMA_BASE_URL?.trim();
@@ -125,7 +123,8 @@ async function request<T>(
 }
 
 async function describeModel(baseURL: string, id: string, signal?: AbortSignal): Promise<AiModel> {
-  const { capabilities } = await request(baseURL, 'show', modelInfoSchema, id, signal);
+  const info = await request(baseURL, 'show', modelInfoSchema, id, signal);
+  const capabilities = info.capabilities ?? [];
   const supported: AiModelCapability[] = [];
   if (capabilities.includes('completion')) {
     supported.push('chat');
@@ -139,7 +138,7 @@ async function describeModel(baseURL: string, id: string, signal?: AbortSignal):
   if (capabilities.includes('thinking')) {
     supported.push('thinking');
   }
-  return { provider: 'ollama', id, capabilities: supported };
+  return applyCapabilityOverrides({ provider: 'ollama', id, capabilities: supported });
 }
 
 /** Discover installed models and their reported capabilities without loading model weights. */
@@ -188,7 +187,7 @@ async function resolveModel(
     baseURL,
     fetch: (input, init) => fetchOllama(input, init, inferenceTimeoutMs),
   });
-  return { provider, digest: installed.digest };
+  return { provider, digest: installed.digest, metadata: model };
 }
 
 /** Validate an exact installed selection and all required capabilities without inference. */
@@ -200,8 +199,12 @@ export async function validateModelSelection(
 }
 
 export async function resolveChatModel(selection: AiModelSelection, signal?: AbortSignal) {
-  const { provider } = await resolveModel(selection, 'chat', signal);
-  return provider.languageModel(selection.modelId);
+  const { provider, metadata } = await resolveModel(selection, 'chat', signal);
+  const model = wrapLanguageModel({
+    model: provider.languageModel(selection.modelId),
+    middleware: ollamaImageInputMiddleware,
+  });
+  return guardModelInputs(model, metadata);
 }
 
 export async function resolveEmbeddingModel(selection: AiModelSelection) {

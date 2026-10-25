@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "attachments:prune": "tsx --conditions=react-server scripts/attachments-prune.ts",
     "companion:prune": "tsx --conditions=react-server scripts/companion-prune.ts",
     "dev": "next dev --hostname 0.0.0.0",
     "build": "next build",
@@ -73,6 +74,7 @@
     "react-dom": "19.2.7",
     "recharts": "^3.9.2",
     "server-only": "0.0.1",
+    "sharp": "^0.34.5",
     "superjson": "^2.2.6",
     "tsx": "^4.23.15",
     "zod": "^4.6.5",

@@ -20,6 +20,8 @@ Next.js pages and Mantine components
 
 ## Code map
 
+- `lib/storage/` defines private file storage and its configurable local filesystem backend. `lib/attachments/` owns validated, owner-scoped images and retryable upload/deletion lifecycle; authenticated binary `/api/attachments` routes expose upload/retrieval/deletion. Prisma stores only metadata, while original files live on persistent storage outside public directories. Future saved consumers must retain IDs transactionally. See [attachment storage](ATTACHMENTS.md) for configuration, cleanup and the #114 contract.
+
 - `app/` contains App Router pages, layouts and API route handlers. `app/client_layout.tsx` installs the tRPC provider and application shell; `app/api/trpc/[trpc]/route.ts` dispatches tRPC requests. Better Auth is exposed through `app/api/auth/[...all]/route.ts` and configured in `lib/auth.ts`.
 - `components/` contains feature and shared UI, including `TodayView`, `TasksView`, `ApplicationShell` and settings components. Mantine's shared theme is in `theme.ts`; component styles are colocated CSS modules and global styles are in `app/globals.css`.
 - `lib/trpc/` contains the client, provider, context and root router. Feature routers and services live under `lib/planner/`, `lib/settings/` and `lib/dev-tools/`. Keep transport procedures small and reusable behavior in services.

@@ -51,13 +51,70 @@ const embeddingModel = await resolveEmbeddingModel({
 // Pass embeddingModel to the AI SDK from the consuming application service.
 ```
 
-Discovery uses `GET /api/tags` and `POST /api/show`, with at most four concurrent inspections. It reads model metadata without generating text or loading model weights. Ollama's `completion` capability maps to `chat`, and `embedding` maps to `embedding`; `vision` and `thinking` metadata are also preserved. Unknown capabilities are not guessed from model names; models with neither supported capability remain discoverable with an empty capability list. Servers that omit capability metadata return an explicit error.
+Discovery uses `GET /api/tags` and `POST /api/show`, with at most four concurrent inspections. It reads model metadata without generating text or loading model weights. Ollama's `completion` capability maps to `chat`, and `embedding` maps to `embedding`; `vision` and `thinking` metadata are also preserved. Unknown capabilities are not guessed from model names; models with neither supported capability remain discoverable with an empty capability list. Servers that omit capability metadata leave the model discoverable with an empty capability list. Unknown capabilities grant no input support; malformed metadata and provider/network failures remain explicit errors.
+
+Chat models are wrapped with a shared input guard for both generation and streaming. Every user message in the supplied context is checked, including restored history; image parts require both `chat` and `vision`. Text-only or unknown models fail with `AiError(MODEL_NOT_SUPPORTED)` before provider inference. Streaming consumers receive this error through the SDK error callback/stream. `modelInputSupport` in `lib/ai/capabilities.ts` is a client-safe helper returning separate `text` and `image` booleans from the same metadata. Future attachment UI should use it for availability; the server guard remains authoritative.
 
 Both resolvers check the exact installed model ID (including its tag) and requested capability before constructing an AI SDK model. They inspect only the selected model. Discovery and resolution read fresh metadata without Next.js fetch caching. A future provider can be added behind the same entry point without importing AI Dev code; no provider registry or agent framework is needed yet.
 
 Metadata requests have a 10-second deadline; inference requests have a 120-second deadline and preserve caller cancellation. Discovery calls do not retry automatically. AI SDK callers own inference retry policy and overall operation deadlines. HTTP and network failures, invalid responses, configuration errors and invalid model selections throw `AiError` with a stable `code`. Provider response bodies and raw network errors are not included in these messages. SDK inference responses retain the SDK's own error handling.
 
 API adapters must authenticate callers, validate input and map errors to their transport's error types. Future AI tools must delegate state changes to Vela's deterministic application services.
+
+## Multimodal capability overrides and verification (#112)
+
+Automatic Ollama `/api/show` metadata is authoritative by default. When metadata is
+missing or incorrect, set server-only `AI_MODEL_CAPABILITY_OVERRIDES` to a JSON
+array, for example:
+
+```json
+[{"provider":"ollama","modelId":"my-local-model:latest","capabilities":{"chat":true,"vision":true}}]
+```
+
+Overrides patch individual capabilities; `false` explicitly disables a reported
+capability. Matching requires the exact provider and model ID including tag.
+Unspecified capabilities retain their discovered value. Invalid JSON, unknown
+keys/types and duplicate model entries produce `CONFIGURATION_ERROR`, without
+exposing the configuration value. Overrides never bypass installed-model checks
+or provider failures. They are operator assertions about model support: confirm
+support before enabling vision. Environment changes require restarting the app.
+No model-name heuristics, fallback model selection or metadata caching are added.
+
+The installed `ollama-ai-provider-v2@4.0.1` unwraps image bytes before calling a
+provider-utils helper that expects tagged file data. `ollama-input.ts` normalizes
+inline image bytes to base64 on its supported path, without changing ordering or
+persisting base64. This is an adapter-local workaround; reassess it when upgrading
+the provider. Both real SDK generation and streaming were checked with synthetic
+images and a mocked HTTP transport, asserting two images reach Ollama and text-only
+models make no inference request. This proves transport compatibility, not label
+recognition quality.
+
+For a repeatable live check, take **two JPEG photographs of the same Dutch
+packaged supermarket product**: front/name and back/nutrition table. Keep them
+outside public directories. With `OLLAMA_BASE_URL` and any overrides exported,
+run:
+
+```sh
+yarn tsx --conditions=react-server scripts/verify-vision.ts \
+  '<installed-vision-model:tag>' '<installed-text-only-model:tag>' \
+  /private/path/front.jpg /private/path/nutrition.jpg
+```
+
+This uses the shared resolver and real AI SDK, rejects the text-only request,
+then submits text and both photos together through generation and streaming.
+Compare each answer with the photographs: product identity, energy, per-100 basis
+and units should be readable and correct; unreadable values should be unknown.
+The command writes no application data; output contains model label readings.
+No photographs were supplied for #112, so live photographic recognition remains
+an explicit acceptance check. Fixture-based extraction accuracy belongs to #116.
+
+AI Dev HTTP schemas and the existing composer remain text-only until #114/#115;
+there is no new upload or chat endpoint. For #113, store private owned attachment
+references and original bytes behind configurable persistent storage. Do not
+persist provider base64 or couple storage to model selection. #114 should resolve
+authorized image bytes from those references and pass the **whole** message context
+to the guarded model, so switching to a text-only model cannot bypass history
+checks. #115 can use `modelInputSupport` without importing server-only modules.
 
 ## AI Dev chat
 
