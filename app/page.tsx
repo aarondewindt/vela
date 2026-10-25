@@ -22,15 +22,16 @@ export default async function HomePage() {
     <Container size="lg" py="xl">
       <Stack gap="lg">
         <Title order={1}>Dashboard</Title>
+        <DashboardCalorieBalance
+          key={`health-${session.user.id}`}
+          date={dateInTimezone(timezone)}
+        />
         <DashboardNutrition key={session.user.id} date={dateInTimezone(timezone)} />
         <DashboardHealthSummaries
           key={`summaries-${session.user.id}`}
           date={dateInTimezone(timezone)}
         />
-        <DashboardCalorieBalance
-          key={`health-${session.user.id}`}
-          date={dateInTimezone(timezone)}
-        />
+        
       </Stack>
     </Container>
   );

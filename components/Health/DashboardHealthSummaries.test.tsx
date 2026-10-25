@@ -1,4 +1,5 @@
 jest.mock('@/lib/trpc/client', () => ({ trpc: { health: { history: { useQuery: jest.fn() } } } }));
+import userEvent from '@testing-library/user-event';
 import { screen } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
@@ -7,7 +8,7 @@ import { DashboardHealthSummaries } from './DashboardHealthSummaries';
 const query = trpc.health.history.useQuery as jest.Mock;
 beforeEach(() => query.mockReset());
 
-it('shows dated latest body readings and sleep with goals, without detailed charts', () => {
+it('keeps details hidden until each reading info button is clicked', async () => {
   query.mockReturnValue({
     isFetchedAfterMount: true,
     data: {
@@ -30,16 +31,22 @@ it('shows dated latest body readings and sleep with goals, without detailed char
       ],
     },
   });
-  const { container } = render(<DashboardHealthSummaries date="2026-10-25" />);
+  render(<DashboardHealthSummaries date="2026-10-25" />);
   expect(screen.getByText('80 kg')).toBeInTheDocument();
   expect(screen.getByText('20 %')).toBeInTheDocument();
   expect(screen.getByText('7.5 hours')).toBeInTheDocument();
-  expect(screen.getAllByText(/2026-09-01 · Latest known reading/)).toHaveLength(2);
-  expect(
-    screen.getByText(/2026-10-24 · Latest known reading · Samsung Health/)
-  ).toBeInTheDocument();
-  expect(screen.getByText(/Goal:.*8.*hours/)).toBeInTheDocument();
-  expect(container.querySelector('svg')).toBeNull();
+  expect(screen.queryByText(/Latest known reading/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Goal:/)).not.toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Weight details' }));
+  expect(screen.getByText(/2026-09-01 · Latest known reading · Home Assistant/)).toBeVisible();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: 'Body fat details' }));
+  expect(screen.getByText(/2026-09-01 · Latest known reading · Manual reading/)).toBeVisible();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: 'Sleep details' }));
+  expect(screen.getByText(/2026-10-24 · Latest known reading · Samsung Health/)).toBeVisible();
+  expect(screen.getByText(/Goal:.*8.*hours/)).toBeVisible();
   expect(query).toHaveBeenCalledWith(
     { endDate: '2026-10-25', days: 7 },
     { retry: false, refetchInterval: 30000, refetchOnMount: 'always' }
