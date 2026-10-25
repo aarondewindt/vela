@@ -5,7 +5,9 @@ import android.content.ContextWrapper
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.IOException
 import java.time.Instant
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.json.JSONArray
@@ -14,6 +16,60 @@ import org.junit.Test
 import space.aarondewindt.vela.companion.health.*
 
 class HealthSyncRecoveryTest {
+    @Test fun aPassCrossingMidnightUsesOneCaptureForCaloriesAndAdditionalMetrics() = runBlocking {
+        val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
+            override fun getApplicationContext(): Context = this
+            override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences("midnight_test_$name", mode)
+        }
+        val zone = ZoneId.systemDefault()
+        val date = LocalDate.parse("2026-10-24")
+        var time = date.plusDays(1).atStartOfDay(zone).toInstant().minusSeconds(1)
+        val clock = object : Clock() {
+            override fun getZone() = zone
+            override fun withZone(zone: ZoneId): Clock = Clock.fixed(time, zone)
+            override fun instant() = time
+        }
+        val expectedEnd = time
+        val calories = mutableListOf<CalorieWindow>()
+        var additional = emptyList<CalorieWindow>()
+        val provider = object : HealthProvider {
+            override val source = "synthetic"
+            override val environment = "test"
+            override suspend fun hasReadPermission() = true
+            override suspend fun requestReadPermission() = true
+            override fun resolveAvailability() = Unit
+            override suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading {
+                calories += window
+                time = date.plusDays(1).atStartOfDay(zone).toInstant().plusSeconds(1)
+                return MetricReading(window, metric, time, time, listOf(AggregateRow(10f, window.startInstant, window.endInstant)))
+            }
+            override suspend fun readAdditionalMeasurements(windows: List<CalorieWindow>): List<CalorieUpload> {
+                additional = windows
+                return emptyList()
+            }
+        }
+        val credentials = DeviceCredentialStore(context)
+        val preferences = context.getSharedPreferences("health_sync", 0)
+        credentials.save("https://example.com", "synthetic-test-only")
+        try {
+            HealthSync(context, clock) { _, path, body, _ ->
+                if (path == "/api/health/ingest") {
+                    val rows = checkNotNull(body).getJSONArray("measurements")
+                    JSONObject().put("version", 1).put("results", JSONArray((0 until rows.length()).map { i ->
+                        val row = rows.getJSONObject(i)
+                        JSONObject().put("metric", row.getString("metric")).put("date", row.getString("date")).put("status", "unchanged")
+                    }))
+                } else JSONObject()
+            }.run(provider, date.minusDays(1))
+            assertEquals(calories.distinct(), additional)
+            assertEquals(setOf(date, date.minusDays(1)), additional.map { it.date }.toSet())
+            assertEquals(expectedEnd, additional.single { it.date == date }.endInstant)
+        } finally {
+            credentials.clear()
+            check(preferences.edit().clear().commit())
+        }
+    }
+
     @Test fun interruptedUploadIsReplayedByteForByteAfterRecreation() = runBlocking {
         val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().targetContext) {
             override fun getApplicationContext(): Context = this

@@ -103,6 +103,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
   });
   const data = valid && !history.error ? history.data : undefined;
   const selected = data?.days.at(-1);
+  const latestBurn = data?.days.findLast((day) => day.burned !== null);
   const chart =
     data?.days.map((day) => ({
       date: day.date.slice(5),
@@ -244,6 +245,34 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                   Logged intake: {amount(selected.intake, 'kcal')} · Total burned:{' '}
                   {amount(selected.burned, 'kcal')}
                 </Text>
+                {selected.burned === null && (
+                  <Alert color="gray" title={`No total burn recorded for ${selected.date}`}>
+                    <Stack gap="xs">
+                      <Text size="sm">
+                        A successful Companion sync can contain readings for earlier dates while
+                        Samsung Health has no reading for this date. Vela keeps daily burn missing
+                        until a reading arrives.
+                      </Text>
+                      {latestBurn && (
+                        <>
+                          <Text size="sm">
+                            Latest total in this period: {amount(latestBurn.burned, 'kcal')} on{' '}
+                            {latestBurn.date}
+                            {latestBurn.metrics.TOTAL_CALORIES?.source === 'samsung_health'
+                              ? ' · Samsung Health'
+                              : latestBurn.metrics.TOTAL_CALORIES?.source === 'manual'
+                                ? ' · Manual reading'
+                                : ' · Home Assistant'}
+                            . This value belongs to that date.
+                          </Text>
+                          <Button variant="subtle" onClick={() => setDate(latestBurn.date)}>
+                            View {latestBurn.date}
+                          </Button>
+                        </>
+                      )}
+                    </Stack>
+                  </Alert>
+                )}
                 <Text size="xl">
                   {selected.balance === null
                     ? 'Waiting for intake and total burn data'

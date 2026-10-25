@@ -96,8 +96,7 @@ class SamsungHealthProvider(private val context: Context) : HealthProvider {
             sleep.dataList.singleOrNull()?.value?.let { duration ->
                 uploads += dailyMetricUpload(window, "SLEEP", duration.toMillis() / 3600000.0, "hours", "sdk_sleep_date_total")
             }
-            readBmr(window.endExclusive.atZone(window.zone).toInstant(), window.zone,
-                window.start.atZone(window.zone).toInstant(), trace)?.let { uploads += it }
+            readBmr(window.endInstant, window.zone, window.startInstant, trace)?.let { uploads += it }
         }
         // BMR can be measured infrequently. Preserve its actual date and carry forward in Vela.
         val zone = windows.firstOrNull()?.zone

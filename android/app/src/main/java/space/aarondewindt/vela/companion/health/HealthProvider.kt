@@ -25,8 +25,15 @@ data class CalorieWindow(
     val start: LocalDateTime,
     val endExclusive: LocalDateTime,
     val zone: ZoneId,
+    // LocalTimeFilter cannot encode an overlap offset. Keep the captured instant
+    // separately: resolving a repeated local time again chooses the earlier offset.
+    val endInstant: Instant = endExclusive.atZone(zone).toInstant(),
 ) {
-    init { require(endExclusive > start) { "A query must have a positive local time range." } }
+    val startInstant: Instant get() = start.atZone(zone).toInstant()
+    init {
+        require(endExclusive > start && endInstant > startInstant) { "A query must have a positive time range." }
+        require(endInstant.atZone(zone).toLocalDateTime() == endExclusive) { "Query end must match its captured instant." }
+    }
 }
 
 /** Use calendar boundaries, never midnight + 24 hours (DST days can be 23/25h). */
@@ -36,10 +43,18 @@ fun calorieWindows(now: Instant, zone: ZoneId, historicalDay: LocalDate): List<C
     require(historicalDay < today) { "Historical date must be before today in the phone time zone." }
     val start = today.atStartOfDay()
     return buildList {
-        if (localNow > start) add(CalorieWindow("Today to refresh time", today, start, localNow, zone))
+        if (localNow > start) add(CalorieWindow("Today to refresh time", today, start, localNow, zone, now))
         add(CalorieWindow("Today full calendar day (projection diagnostic)", today, start, today.plusDays(1).atStartOfDay(), zone))
         add(CalorieWindow("Completed historical day", historicalDay, historicalDay.atStartOfDay(), historicalDay.plusDays(1).atStartOfDay(), zone))
     }
+}
+
+/** One capture for the whole pass; select elapsed ranges by instants, not wall-clock ordering. */
+fun syncCalorieWindows(now: Instant, zone: ZoneId, historicalDays: List<LocalDate>): List<CalorieWindow> {
+    require(historicalDays.size in 1..31)
+    return historicalDays.flatMap { calorieWindows(now, zone, it) }
+        .distinctBy { it.date to it.endInstant }
+        .filter { it.endInstant <= now }
 }
 
 data class AggregateRow(val valueKcal: Float?, val start: Instant, val endExclusive: Instant)
@@ -77,7 +92,7 @@ class HealthFailure(
 fun diagnosticReport(source: String, environment: String, readings: List<MetricReading>): String = buildString {
     appendLine("Vela calorie diagnostic — $source")
     appendLine(environment)
-    appendLine("Permission: ACTIVITY_SUMMARY READ granted at refresh; source filter: Samsung Health platform")
+    appendLine("Permission: activity summary, steps, sleep and body composition READ granted at refresh; source filter: Samsung Health platform")
     appendLine("Units: kcal. Total already includes activity; never add active. Semantics UNVERIFIED.")
     appendLine("LocalTimeFilter uses local wall times. UTC query bounds below are phone-zone interpretations.")
     appendLine("Aggregate boundaries are NOT measurement/last-sync/last-modified timestamps; SDK does not expose those here.")
@@ -86,7 +101,11 @@ fun diagnosticReport(source: String, environment: String, readings: List<MetricR
         appendLine("\n${w.label}: ${w.date} [${w.zone}]")
         appendLine("${reading.metric}: ${reading.valueKcal?.toString() ?: "unavailable"} kcal")
         appendLine("Query local [${w.start}, ${w.endExclusive})")
-        appendLine("Derived UTC [${w.start.atZone(w.zone).toInstant()}, ${w.endExclusive.atZone(w.zone).toInstant()})")
+        appendLine("Phone-zone UTC [${w.startInstant}, ${w.endInstant})")
+        appendLine("Offsets: start ${w.startInstant.atZone(w.zone).offset}; end ${w.endInstant.atZone(w.zone).offset}")
+        if (w.zone.rules.getValidOffsets(w.endExclusive).size > 1) {
+            appendLine("Repeated local query end: SDK LocalTimeFilter has no offset; capture UTC above retains the actual occurrence.")
+        }
         appendLine("Request: ${reading.requestedAt}; response: ${reading.receivedAt}")
         reading.diagnostic?.let { appendLine(it) }
         reading.rows.forEachIndexed { index, row ->

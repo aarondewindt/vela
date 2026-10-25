@@ -42,6 +42,59 @@ class CalorieDiagnosticsTest {
         assertEquals(LocalDate.parse("2026-10-24"), windows.first().date)
     }
 
+    @Test fun repeatedHourRetainsBothActualCaptureInstantsInUploadsAndReport() {
+        val first = Instant.parse("2026-10-25T00:30:00Z")
+        val second = Instant.parse("2026-10-25T01:30:00Z")
+        val day = LocalDate.parse("2026-10-24")
+        val windows = listOf(first, second).map { calorieWindows(it, zone, day).first() }
+        assertEquals(windows[0].endExclusive, windows[1].endExclusive)
+        assertEquals(first, windows[0].endInstant)
+        assertEquals(second, windows[1].endInstant)
+        assertEquals(3600L, Duration.between(windows[0].endInstant, windows[1].endInstant).seconds)
+        listOf(first, second).zip(windows).forEach { (capture, window) ->
+            val reading = MetricReading(window, CalorieMetric.TOTAL_CALORIES_BURNED, capture, capture,
+                listOf(AggregateRow(100f, window.startInstant, capture)))
+            assertEquals(capture.toString(), calorieUpload(reading)!!.periodEnd)
+            assertEquals(capture.toString(), dailyMetricUpload(window, "STEPS", 10.0, "steps", "sdk_steps_total", capture).periodEnd)
+            val report = diagnosticReport("test", "test", listOf(reading))
+            assertTrue(report.contains("Phone-zone UTC [${window.startInstant}, $capture)"))
+            assertTrue(report.contains("end ${capture.atZone(zone).offset}"))
+            assertTrue(report.contains("Repeated local query end"))
+        }
+    }
+
+    @Test fun elapsedSyncRangesStayCorrectAcrossBothDstChangesAndMidnightRollover() {
+        val captures = listOf(
+            "2026-03-29T00:30:00Z", "2026-03-29T01:30:00Z",
+            "2026-10-25T00:30:00Z", "2026-10-25T01:30:00Z",
+            "2026-10-24T21:59:59Z", "2026-10-24T22:00:00Z", "2026-10-24T22:00:01Z"
+        ).map(Instant::parse)
+        for (capture in captures) {
+            val today = capture.atZone(zone).toLocalDate()
+            val previousDays = (1L..7L).map(today::minusDays)
+            val ranges = syncCalorieWindows(capture, zone, previousDays)
+            assertTrue(ranges.all { it.endInstant <= capture })
+            assertEquals(ranges.size, ranges.map { it.date }.distinct().size)
+            assertEquals(previousDays.toSet(), ranges.filter { it.date < today }.map { it.date }.toSet())
+            val elapsed = ranges.singleOrNull { it.date == today }
+            if (capture == today.atStartOfDay(zone).toInstant()) assertNull(elapsed)
+            else {
+                assertEquals(capture, elapsed!!.endInstant)
+                assertEquals(today.atStartOfDay(zone).toInstant(), elapsed.startInstant)
+            }
+        }
+    }
+
+    @Test fun syncAfterMidnightIncludesTheCompletedDstDayAsTwentyFiveHours() {
+        val capture = Instant.parse("2026-10-25T23:00:00Z")
+        val day = LocalDate.parse("2026-10-25")
+        val ranges = syncCalorieWindows(capture, zone, listOf(day))
+        assertEquals(1, ranges.size)
+        assertEquals(25L, Duration.between(ranges.single().startInstant, ranges.single().endInstant).toHours())
+        assertEquals("2026-10-24T22:00:00Z", ranges.single().startInstant.toString())
+        assertEquals(capture, ranges.single().endInstant)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun historicalDateMustBeCompletedInSelectedZone() {
         calorieWindows(now, zone, LocalDate.parse("2026-10-24"))
@@ -116,6 +169,24 @@ class CalorieDiagnosticsTest {
         assertEquals(300.0, uploads[1].value, 0.0)
         assertEquals(now.toString(), uploads[0].periodEnd)
         assertEquals("2026-10-23", uploads[2].date)
+    }
+
+    @Test fun successfulEmptyTodayQueriesKeepHistoricalSyncWorkingWithoutUsingFullDayDiagnostics() = runBlocking {
+        val capture = Instant.parse("2026-10-25T00:30:00Z")
+        val day = LocalDate.parse("2026-10-24")
+        val calls = mutableListOf<CalorieWindow>()
+        val provider = object : HealthProvider by FakeProvider() {
+            override suspend fun readCalories(window: CalorieWindow, metric: CalorieMetric): MetricReading {
+                calls += window
+                val rows = if (window.date == day) listOf(AggregateRow(100f, window.startInstant, window.endInstant)) else emptyList()
+                return MetricReading(window, metric, capture, capture, rows)
+            }
+        }
+        val uploads = ManualSync(provider, Clock.fixed(capture, zone)).read(day, zone)
+        assertEquals(4, calls.size)
+        assertEquals(2, uploads.size)
+        assertTrue(uploads.all { it.date == day.toString() })
+        assertTrue(calls.all { it.endInstant <= capture })
     }
 
     @Test fun manualSyncRejectsPermissionLossAndQueryFailures() = runBlocking {

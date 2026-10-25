@@ -16,7 +16,7 @@ fun calorieUpload(reading: MetricReading): CalorieUpload? {
     val w = reading.window
     return CalorieUpload(if (reading.metric == CalorieMetric.TOTAL_CALORIES_BURNED) "TOTAL_CALORIES" else "ACTIVE_CALORIES",
         value.toDouble(), w.date.toString(), w.zone.id, reading.receivedAt.toString(),
-        w.start.atZone(w.zone).toInstant().toString(), w.endExclusive.atZone(w.zone).toInstant().toString())
+        w.startInstant.toString(), w.endInstant.toString())
 }
 
 class ManualSync(private val provider: HealthProvider, private val clock: Clock = Clock.systemUTC()) {
@@ -25,11 +25,7 @@ class ManualSync(private val provider: HealthProvider, private val clock: Clock 
     }
 
     suspend fun readDays(historicalDays: List<LocalDate>, zone: ZoneId): List<CalorieUpload> {
-        require(historicalDays.size in 1..31)
-        val now = clock.instant()
-        val windows = historicalDays.flatMap { calorieWindows(now, zone, it) }
-            .distinctBy { it.date to it.endExclusive }
-            .filter { it.endExclusive <= now.atZone(zone).toLocalDateTime() }
+        val windows = syncCalorieWindows(clock.instant(), zone, historicalDays)
         fun denied(): Nothing = throw HealthFailure(HealthFailure.Kind.PERMISSION,
             "Grant Samsung Health activity summary READ access before syncing.")
         if (!provider.hasReadPermission()) denied()
@@ -48,7 +44,7 @@ fun dailyMetricUpload(w: CalorieWindow, metric: String, value: Double, unit: Str
         (metric == "STEPS" && value <= 200000 && value % 1.0 == 0.0 && unit == "steps" && kind == "sdk_steps_total" ||
          metric == "SLEEP" && value <= 24 && unit == "hours" && kind == "sdk_sleep_date_total"))
     return CalorieUpload(metric, value, w.date.toString(), w.zone.id, capturedAt.toString(),
-        w.start.atZone(w.zone).toInstant().toString(), w.endExclusive.atZone(w.zone).toInstant().toString(), unit, kind)
+        w.startInstant.toString(), w.endInstant.toString(), unit, kind)
 }
 
 fun bmrUpload(value: Int, measuredAt: java.time.Instant, modifiedAt: java.time.Instant?, id: String,

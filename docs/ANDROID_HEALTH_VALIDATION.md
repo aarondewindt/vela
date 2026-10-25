@@ -5,6 +5,11 @@ pairing, manual uploads and background sync (#90/#91); pause background sync whe
 performing diagnostics-only comparisons. Samsung Health writes remain unsupported. **The user accepted #89 for closure on 2026-10-24 after successful permission
 granting and satisfactory readings on the Galaxy S25 FE.**
 
+For the later October 25 SDK/Today comparison, exact DST ranges, independently
+verified grants and Companion 0.3.2 date fixes, see
+[the SDK/DST investigation](ANDROID_DST_INVESTIGATION.md). Successful empty results
+must be distinguished from typed permission, authorization and query errors.
+
 ## SDK setup (Ubuntu host)
 
 Checked against Samsung's official documentation on 2026-10-24:

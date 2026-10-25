@@ -81,6 +81,9 @@ intentionally changes the previous manual-total override policy: manual entries
 now fill missing Samsung days instead of overriding Samsung. Historical HA rows
 are retained and remain labeled fallbacks for dates without Samsung data. Sleep,
 steps and burn never carry across missing dates; body metrics and BMR do.
+For the three body metrics, **HA → manual → other retained sources** is the
+same-date priority. Carry-forward first chooses the latest measurement date, then
+applies that date's source priority. Manual and historical rows are preserved.
 
 HA settings now expose only weight/body-fat/lean-mass mapping controls. The server
 rejects other new mappings, filters retained legacy mappings out of diagnostics,
@@ -170,3 +173,59 @@ No #12 prediction, #94 communication, heart-rate or unrelated Health Connect wor
 
 No additional integrations, live phone claims, deployment or issue closure were
 performed. Stop here for user review of the source matrix and real incoming data.
+
+## Read-only investigation of missing today burn (2026-10-25)
+
+This later verification supersedes the earlier local migration/deployment status
+above. The running Next.js development server identified `/workspaces/vela` on
+port 3000 (Next.js 16.2.9); Prisma CLI, Client and adapter are 7.9.1, and the
+generated metric enum includes all eight kinds. All repository migrations were
+applied, including `20261024120000_companion_source_matrix` and both diagnostic
+migrations. No migration or health-data repair was necessary. Read-only ADB
+package inspection confirmed Companion **0.3.1 (4)** on the Galaxy; older stored
+diagnostic reports identify their original 0.3.0 upload version separately.
+
+The latest inspected automatic attempt queried October 25 at about 02:17 in
+`Europe/Amsterdam`. Samsung returned **zero rows** for today's total/active
+calories, steps and sleep. The Companion omitted these missing readings and sent
+28 historical/daily/BMR measurements. The matching server audit contained
+successful per-measurement receipts, and SQL confirmed persisted rows with the
+same owner, source, calendar dates, rounded values and capture/query metadata.
+An incoming request or successful batch therefore did not imply a reading for
+October 25. Why the SDK had no current-day rows is not established by this trace;
+Vela must not substitute a projected/full-day diagnostic or a previous day's burn.
+
+The existing `healthService.history()` returned Samsung daily readings through
+October 24 and missing daily metrics on October 25. Body composition came from HA;
+the actual older Samsung BMR point carried forward with its original date and
+provenance. The Health router uses the authenticated owner and delegates to that
+service; the view selects the period's final date. Its query refreshes every 30
+seconds, and manual writes invalidate history. No separate cache or store caused
+the missing total. Calorie balance used only the selected Samsung total.
+
+Health now explains a missing selected-day total, shows a dated latest total
+within the displayed period, and offers a button to inspect that measurement date.
+It retains unknown today burn/balance. HA
+same-date priority is now explicit for body metrics, matching the required matrix.
+Regression coverage exercises all eight source selections through ingestion,
+PostgreSQL and tRPC, competing newer sources, owner isolation, preserved rows,
+BMR carry-forward/absence, missing today burn and the UI's recorded-date action.
+All database test writes use an isolated randomly named schema, not real records.
+
+Verification: 101 focused Health/Companion/HA Jest tests passed, plus nine isolated
+PostgreSQL tests covering the API/audit and Health suites (using the documented
+Prisma transform option). TypeScript, changed-file Oxlint/format and whitespace
+checks passed. A read-only call through the real Health tRPC caller matched the
+accepted Samsung total to its persisted row and returned missing today burn.
+Both affected routes were visited in an isolated browser; they required sign-in,
+so authenticated browser comparison remains unverified. The changed rendering and
+date-button behavior are covered by component tests. Next.js runtime diagnostics
+reported no current errors after those visits; a historical pg deprecation warning
+remains in the development log. No production build/restart, new SDK query, or
+manual health-data mutation was performed.
+
+The subsequent [SDK/DST investigation](ANDROID_DST_INVESTIGATION.md) directly
+verified all four grants and Samsung's Today display. The same elapsed queries
+began returning today's calories and steps after Samsung Health was opened;
+separate overlap-offset and cross-midnight capture defects were fixed in
+Companion 0.3.2 (5), preserving the existing pipeline and source matrix.

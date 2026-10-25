@@ -88,7 +88,7 @@ export const healthService = {
         ORDER BY "date", metric,
           CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP', 'BMR') THEN
             CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
-          ELSE 0 END DESC,
+          ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
           "observedAt" DESC, "receivedAt" DESC, id DESC)
         UNION ALL
         (SELECT DISTINCT ON (metric) * FROM health_metrics
@@ -97,7 +97,7 @@ export const healthService = {
         ORDER BY metric, "date" DESC,
           CASE WHEN metric = 'BMR' THEN
             CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
-          ELSE 0 END DESC,
+          ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
           "observedAt" DESC, "receivedAt" DESC, id DESC)
       `),
       prisma.healthGoal.findUnique({ where: { userId } }),

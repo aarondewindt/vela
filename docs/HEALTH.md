@@ -126,8 +126,19 @@ of HA update-date grouping; full sleep-stage/session export is not implemented.
 A user timezone should match the timezone used for daily totals on the source phone.
 Changing Vela's timezone affects future imports after the worker reloads; existing
 dates are retained. No missing day is reconstructed from a later cumulative total.
-The view shows daily latest measurements, not every intraday sample. For Android-designated metrics, Samsung has priority over manual and legacy HA
-readings. Body measurements retain their existing latest-reading selection.
+The view shows one selected reading per day, not every intraday sample. For
+Android-designated metrics, Samsung has priority over manual and legacy HA
+readings. For weight, body fat and lean mass, Home Assistant has priority over
+manual and other retained sources on the same measurement date. Within a source,
+the latest observation wins. Carry-forward uses the most recent measurement date.
+All historical and manual rows remain stored.
+
+A successful Companion upload may contain historical measurements while the SDK
+returns no reading for today. Health keeps the selected date's burn and balance
+missing, explains the date gap, and offers a button to the latest recorded burn in
+the displayed period. That earlier reading is dated and never used as today's
+burn. Companion Dev Tools allow inspection of accepted receipts and dates;
+an HTTP request alone does not establish that a particular metric/date was stored.
 
 The connector currently reads data only. Home Assistant commands into Vela and Vela
 service calls that control Home Assistant remain future work over explicit service

@@ -5,6 +5,60 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-25
 
+## Samsung SDK/DST follow-up #92 — 2026-10-25
+
+- Fresh on-device SDK calls verified all four READ grants. Samsung Today displayed
+  activity data while the preceding partial SDK calorie query was empty. After
+  opening Samsung Health, the same query strategy returned today's calories and
+  steps before any production query-code change. Source refresh/delay is supported;
+  its internal trigger is unproven. Do not attribute this to daily permission
+  expiry or to the later fallback. All these observations preceded the fallback.
+- Fixed loss of captured UTC offset during the repeated hour and separate date
+  captures across midnight. A pass now shares one capture, and upload metadata/
+  BMR ranges retain its actual instant. SDK local-time endpoint ambiguity is
+  explicitly reported; no hardcoded offset, projection fallback or new sync path.
+- Installed normal Companion 0.3.2 (5) with original key and data-preserving update.
+  Pairing, empty outbox, unpaused state and existing status were retained. No manual
+  health upload/repair, permission change, license acceptance or timezone change.
+  Developer switch view was gated by Samsung's notice and cancelled; effective
+  access was verified through SDK grants/successful reads instead.
+- Validation: 34 JVM tests, zero lint errors (20 warnings/one hint), debug/test APK
+  builds; 11 isolated synthetic phone tests passed, opt-in live test skipped by
+  default. Explicit original-package live probes succeeded before/after update.
+  Sleep Today is unavailable in Samsung UI/SDK; no current BMR point was returned.
+  Private query evidence stays in ignored `.local/diagnostics/issue92-dst/`.
+- The next natural automatic cycle ran at `00:48:42Z` on 0.3.2, succeeded with
+  31 measurements / HTTP 200, and created today's total, active and steps rows.
+  Read-only DB/audit comparison and the real Health tRPC caller matched those
+  values. Today's burn is now available; sleep stays missing and BMR carried.
+  No job was forced and no manual upload or record repair was used.
+- See [SDK/DST report](ANDROID_DST_INVESTIGATION.md) for exact query ranges,
+  reproducible opt-in probe and limitations. Keep #92 open for real repeated-hour
+  SDK behavior, broader calorie semantics and long-duration developer-mode checks.
+
+## Health missing total burn #92 — 2026-10-25
+
+- Read-only DB/audit/phone trace established that the successful automatic batch
+  stored 28 measurements, but Samsung returned zero current-day SDK rows. Stored
+  daily data ended October 24; Health opened October 25. The matching persisted
+  total passed through the real Health tRPC caller correctly. No ingestion repair
+  was needed, and all migrations (including source matrix) were already applied.
+- Working-tree fix explains missing selected-day burn and offers the latest dated
+  total in the displayed period with a button to view that date. Today remains
+  unknown until supplied. HA now has explicit same-date priority for all three
+  body metrics; Samsung priority for all five companion metrics is retained.
+  Manual/history rows, provenance, BMR carry-forward and total-only balance remain.
+- Validation: 101 focused Jest tests and nine isolated PostgreSQL API/audit/Health
+  tests passed; typecheck, changed-file lint/format and whitespace passed. Phone
+  package is 0.3.1 (4); local Next is 16.2.9 and Prisma packages are 7.9.1. Browser
+  visited Health and Companion Dev Tools but was unauthenticated; signed-in UI
+  comparison remains. Next runtime reported no current errors. No real health
+  records, phone state or production deployment were changed. See
+  [source matrix investigation](ANDROID_SOURCE_MATRIX.md#read-only-investigation-of-missing-today-burn-2026-10-25).
+- Keep #92 open for the remaining Samsung semantic/physical acceptance checks.
+  Why Samsung returned no current-day rows is unproven; do not insert earlier-day
+  totals, active calories, BMR or projections to fill that gap.
+
 ## Android automatic health sync investigation — 2026-10-25
 
 - The supplied `partial` automatic attempt actually uploaded 28 measurements:

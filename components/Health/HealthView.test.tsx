@@ -12,7 +12,7 @@ jest.mock('@/lib/trpc/client', () => ({
   },
 }));
 import { LineChart } from '@mantine/charts';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { trpc } from '@/lib/trpc/client';
 import { HealthView } from './HealthView';
@@ -59,6 +59,8 @@ it('shows missing data and links to the single Health settings editor', () => {
     '/settings/health'
   );
   expect(screen.queryByRole('button', { name: 'Save goal' })).not.toBeInTheDocument();
+  expect(screen.getByText('No total burn recorded for 2026-01-10')).toBeInTheDocument();
+  expect(screen.queryByText(/Latest total in this period/)).not.toBeInTheDocument();
 });
 
 it('labels carried readings and offers deletion only on their original measurement date', () => {
@@ -172,4 +174,72 @@ it('displays Samsung steps sleep active burn and real BMR with distinct units an
   expect(screen.getAllByText('400 kcal')).toHaveLength(2);
   expect(screen.getByText(/imported BMR point/)).toBeInTheDocument();
   expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
+});
+
+it('explains a missing selected-day burn after historical sync and opens the recorded date', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  const today = { ...data.days[0], date: '2026-10-25' };
+  const metrics = { ...today.metrics };
+  for (const [metric, value] of [
+    ['WEIGHT', 80],
+    ['BODY_FAT', 20],
+    ['LEAN_MASS', 64],
+    ['TOTAL_CALORIES', 2400],
+    ['ACTIVE_CALORIES', 400],
+    ['STEPS', 9000],
+    ['SLEEP', 8],
+    ['BMR', 1900],
+  ] as const) {
+    metrics[metric] = {
+      id: metric,
+      value,
+      measurementDate: metric === 'BMR' ? '2026-05-30' : '2026-10-24',
+      carriedForward: metric === 'BMR',
+      observedAt: new Date('2026-10-25T00:17:00Z'),
+      source: ['WEIGHT', 'BODY_FAT', 'LEAN_MASS'].includes(metric)
+        ? 'home_assistant'
+        : 'samsung_health',
+      timestampBasis: 'sdk_query_capture',
+    };
+  }
+  const yesterday = {
+    ...today,
+    date: '2026-10-24',
+    metrics,
+    burned: 2400,
+    intake: 2000,
+    balance: -400,
+  };
+  data.days = [yesterday, today];
+  query.mockReturnValue({ data });
+  render(<HealthView initialDate="2026-10-25" timezone="Europe/Amsterdam" />);
+  expect(screen.getByText(/Total burned: Not recorded/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Latest total in this period: 2,400 kcal on 2026-10-24 · Samsung Health/)
+  ).toBeInTheDocument();
+  expect(screen.getByText('Waiting for intake and total burn data')).toBeInTheDocument();
+  query.mockReturnValue({ data: { ...data, days: [yesterday] } });
+  fireEvent.click(screen.getByRole('button', { name: 'View 2026-10-24' }));
+  expect(query).toHaveBeenLastCalledWith(
+    { endDate: '2026-10-24', days: 7 },
+    { enabled: true, refetchInterval: 30000 }
+  );
+  expect(screen.getByText(/Total burned: 2,400 kcal/)).toBeInTheDocument();
+  expect(screen.getByText('400 kcal deficit')).toBeInTheDocument();
+  expect(screen.queryByText(/No total burn recorded/)).not.toBeInTheDocument();
+  expect(screen.getAllByText('Carried forward from 2026-05-30')).toHaveLength(2);
+  expect(screen.getAllByText(/Home Assistant · sensor state time/)).toHaveLength(3);
+  expect(screen.getAllByText(/Samsung Health ·/)).toHaveLength(5);
+  expect(screen.queryByRole('button', { name: 'Delete manual reading' })).not.toBeInTheDocument();
+});
+
+it('renders an observed zero as recorded burn without a missing-date notice', () => {
+  const query = trpc.health.history.useQuery as jest.Mock;
+  const data = query.getMockImplementation()!().data;
+  data.days[0].burned = 0;
+  query.mockReturnValue({ data });
+  render(<HealthView initialDate="2026-01-10" timezone="Europe/Amsterdam" />);
+  expect(screen.getByText(/Total burned: 0 kcal/)).toBeInTheDocument();
+  expect(screen.queryByText(/No total burn recorded/)).not.toBeInTheDocument();
 });

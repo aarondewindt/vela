@@ -85,7 +85,7 @@ from web checks. See
 [Android setup](../android/README.md) and [calorie validation](ANDROID_HEALTH_VALIDATION.md)
 for the licensed SDK setup, signing/developer-mode limits, deployment and tests.
 
-Manual sync (#90) uses `/api/health/ingest` and `lib/health/ingestion.ts` to authenticate scoped device uploads, validate bounded versioned snapshots and upsert the existing Health records. Total/active calories remain separate; manual calorie overrides take priority, then Samsung Health, then HA. Query interval/timezone and unverified calorie semantics persist as metadata. See [Android manual sync](ANDROID_MANUAL_SYNC.md).
+Manual sync (#90) uses `/api/health/ingest` and `lib/health/ingestion.ts` to authenticate scoped device uploads, validate bounded versioned snapshots and upsert the existing Health records. Total/active calories remain separate. The #92 source matrix selects Samsung Health before manual and legacy HA for companion metrics, and HA before manual for body metrics on the same date. Query interval/timezone and unverified calorie semantics persist as metadata. See [Android source matrix](ANDROID_SOURCE_MATRIX.md).
 
 ## Daily meal requirements
 

@@ -2,6 +2,7 @@ package space.aarondewindt.vela.companion
 
 import android.content.Context
 import java.time.Instant
+import java.time.Clock
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import space.aarondewindt.vela.companion.health.CalorieMetric
@@ -15,10 +16,11 @@ import org.json.JSONArray
 import org.json.JSONObject
 import space.aarondewindt.vela.companion.health.HealthProvider
 import space.aarondewindt.vela.companion.health.ManualSync
-import space.aarondewindt.vela.companion.health.calorieWindows
+import space.aarondewindt.vela.companion.health.syncCalorieWindows
 
 /** Shared by manual and background work. One process, one upload; the durable outbox precedes HTTP. */
 class HealthSync(context: Context,
+    private val clock: Clock = Clock.systemUTC(),
     private val send: (suspend (String, String, JSONObject?, String) -> JSONObject)? = null,
 ) {
     private val app = context.applicationContext
@@ -90,9 +92,11 @@ class HealthSync(context: Context,
                     check(state.edit().remove("pending").putString("last_success", Instant.now().toString()).commit())
                 }
                 uploadPending(true)
+                val capturedAt = clock.instant()
                 val zone = ZoneId.systemDefault()
-                val today = LocalDate.now(zone)
+                val today = capturedAt.atZone(zone).toLocalDate()
                 val days = historicalDay?.let { listOf(it) } ?: (1L..7L).map { today.minusDays(it) }
+                val windows = syncCalorieWindows(capturedAt, zone, days)
                 attempt.data.put("dateFrom", days.min().toString()).put("dateTo", today.toString())
                 attempt.stage("sdk_calories")
                 var missing = false
@@ -120,11 +124,7 @@ class HealthSync(context: Context,
                         }
                     }
                 }
-                val calories = ManualSync(observedProvider).readDays(days, zone)
-                val now = Instant.now()
-                val windows = days.flatMap { calorieWindows(now, zone, it) }
-                    .filter { it.endExclusive <= now.atZone(zone).toLocalDateTime() }
-                    .distinctBy { it.date }
+                val calories = ManualSync(observedProvider, Clock.fixed(capturedAt, zone)).readDays(days, zone)
                 attempt.stage("sdk_additional_steps_sleep_bmr")
                 val additionalQueries = mutableMapOf<String, JSONObject>()
                 val measurements = calories + provider.readAdditionalMeasurements(windows) { q ->

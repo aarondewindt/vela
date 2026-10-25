@@ -1,5 +1,7 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
+jest.mock('superjson', () => ({ serialize: (v: unknown) => v, deserialize: (v: unknown) => v }));
 jest.mock('@/lib/prisma', () => {
   const { PrismaClient } = jest.requireActual('@/generated/prisma/client');
   const { PrismaPg } = jest.requireActual('@prisma/adapter-pg');
@@ -19,6 +21,8 @@ import { readFileSync } from 'node:fs';
 import { prisma } from '@/lib/prisma';
 import { ingestHealth } from './ingestion';
 import { healthService } from './service';
+import { healthRouter } from './router';
+import type { MetricKind } from './schema';
 import { nutritionHistory } from '@/lib/nutrition/history';
 const { testSchema } = jest.requireMock('@/lib/prisma');
 const suite = process.env.VELA_HEALTH_DB_TESTS === '1' ? describe : describe.skip;
@@ -249,5 +253,153 @@ suite('health uploads on PostgreSQL', () => {
     const carried = (await healthService.history('alice', { endDate: '2025-11-07', days: 7 }))
       .days[0].metrics.BMR;
     expect(carried).toMatchObject({ value: 1700, carriedForward: true, source: 'samsung_health' });
+  });
+
+  it('returns the complete source matrix through tRPC and keeps today missing after a successful historical sync', async () => {
+    const base = {
+      date: '2026-10-24',
+      timezone: 'Europe/Amsterdam',
+      observedAt: '2026-10-24T22:30:00Z',
+      periodStart: '2026-10-23T22:00:00Z',
+      periodEnd: '2026-10-24T22:00:00Z',
+    };
+    const measurements = [
+      {
+        ...base,
+        metric: 'TOTAL_CALORIES',
+        value: 2400,
+        unit: 'kcal',
+        measurementKind: 'sdk_aggregate_semantics_unverified',
+      },
+      {
+        ...base,
+        metric: 'ACTIVE_CALORIES',
+        value: 400,
+        unit: 'kcal',
+        measurementKind: 'sdk_aggregate_semantics_unverified',
+      },
+      { ...base, metric: 'STEPS', value: 9000, unit: 'steps', measurementKind: 'sdk_steps_total' },
+      {
+        ...base,
+        metric: 'SLEEP',
+        value: 8,
+        unit: 'hours',
+        measurementKind: 'sdk_sleep_date_total',
+      },
+      {
+        ...base,
+        metric: 'BMR',
+        value: 1900,
+        unit: 'kcal/day',
+        measurementKind: 'sdk_bmr_point',
+        date: '2026-05-30',
+        periodStart: '2026-05-30T08:00:00Z',
+        periodEnd: '2026-05-30T08:00:00Z',
+        sourceObservedAt: '2026-05-30T08:00:00Z',
+        upstreamId: 'matrix-bmr',
+      },
+    ];
+    const receipt = await ingestHealth('alice', 'matrix-phone', {
+      version: 1,
+      source: 'samsung_health',
+      measurements,
+    });
+    expect(receipt.results).toHaveLength(5);
+    expect(receipt.results.every((r) => r.status === 'created')).toBe(true);
+    const body = { WEIGHT: 80, BODY_FAT: 20, LEAN_MASS: 64 } as const;
+    for (const [metric, value] of Object.entries(body)) {
+      for (const source of ['home_assistant', 'manual', 'samsung_health']) {
+        await prisma.healthMetric.create({
+          data: {
+            userId: 'alice',
+            metric: metric as keyof typeof body,
+            value: source === 'home_assistant' ? value : value + 1,
+            date: new Date(base.date),
+            observedAt: new Date(
+              source === 'home_assistant' ? base.observedAt : '2026-10-25T00:00:00Z'
+            ),
+            source,
+            sourceKey: `matrix:${source}:${metric}`,
+            timestampBasis: 'sensor_state',
+          },
+        });
+      }
+    }
+    for (const m of measurements) {
+      for (const source of ['manual', 'home_assistant']) {
+        await prisma.healthMetric.create({
+          data: {
+            userId: 'alice',
+            metric: m.metric as MetricKind,
+            value: m.value + 1,
+            date: new Date(m.date),
+            observedAt: new Date('2026-10-25T00:00:00Z'),
+            source,
+            sourceKey: `matrix:${source}:${m.metric}`,
+            timestampBasis: 'user_date',
+          },
+        });
+      }
+    }
+    await ingestHealth('bob', 'matrix-phone', {
+      version: 1,
+      source: 'samsung_health',
+      measurements: [{ ...measurements[0], value: 9999 }],
+    });
+    const count = await prisma.healthMetric.count();
+    const caller = healthRouter.createCaller({ userId: 'alice' });
+    (nutritionHistory.get as jest.Mock).mockResolvedValue({
+      startDate: '2026-10-19',
+      days: [
+        { date: '2026-10-24', nutrients: { calories: '2000' } },
+        { date: '2026-10-25', nutrients: null },
+      ],
+    });
+    const { days } = await caller.history({ endDate: '2026-10-25', days: 7 });
+    for (const [metric, value] of Object.entries(body)) {
+      expect(days[0].metrics[metric as keyof typeof body]).toMatchObject({
+        value,
+        source: 'home_assistant',
+      });
+    }
+    for (const m of measurements) {
+      expect(days[0].metrics[m.metric as MetricKind]).toMatchObject({
+        value: m.value,
+        source: 'samsung_health',
+      });
+    }
+    expect(days[0]).toMatchObject({ burned: 2400, balance: -400 });
+    expect(days[1]).toMatchObject({ burned: null, balance: null });
+    for (const metric of ['TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP'] as const) {
+      expect(days[1].metrics[metric]).toBeNull();
+    }
+    expect(days[1].metrics.BMR).toMatchObject({
+      value: 1900,
+      source: 'samsung_health',
+      measurementDate: '2026-05-30',
+      carriedForward: true,
+    });
+    // The same priority applies to body measurements carried from before the window.
+    (nutritionHistory.get as jest.Mock).mockResolvedValue({
+      startDate: '2026-10-25',
+      days: [{ date: '2026-10-25', nutrients: null }],
+    });
+    const carried = (await caller.history({ endDate: '2026-10-31', days: 7 })).days[0];
+    for (const [metric, value] of Object.entries(body)) {
+      expect(carried.metrics[metric as keyof typeof body]).toMatchObject({
+        value,
+        source: 'home_assistant',
+        carriedForward: true,
+      });
+    }
+    // Owner isolation and genuinely absent BMR; no calculated point or extra health rows.
+    const other = (
+      await healthRouter.createCaller({ userId: 'bob' }).history({ endDate: '2026-10-31', days: 7 })
+    ).days[0];
+    expect(other.metrics.BMR).toBeNull();
+    expect(await prisma.healthMetric.count()).toBe(count);
+    await expect(
+      healthRouter.createCaller({ userId: null }).history({ endDate: '2026-10-25', days: 7 })
+    ).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
   });
 });
