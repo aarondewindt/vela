@@ -288,3 +288,10 @@ summaries at 1440/390/320px. The account and its data were removed afterward.
 Next.js runtime diagnostics returned no current errors after exercising the pages.
 Full-repository `yarn lint` remains blocked by 28 existing errors in unrelated
 auth, shell, editor and Planner files; no Health/range/chart lint errors remain.
+
+## Historical exports (#109)
+
+CLI-only Withings and Samsung Health backfills, dataset inventory, duplicate and
+overwrite rules, dry-run results and unresolved calorie/sleep semantics are in
+[Historical Health imports](HEALTH_HISTORICAL_IMPORT.md). Real imports have not yet
+been performed; issue #109 remains open pending import and verification.

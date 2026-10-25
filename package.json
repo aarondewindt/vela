@@ -25,7 +25,9 @@
     "storybook:build": "storybook build",
     "public:build": "node scripts/public-server.mjs build",
     "public:start": "node scripts/public-server.mjs start",
-    "db:backup": "node scripts/database-backup.mjs"
+    "db:backup": "node scripts/database-backup.mjs",
+    "health:import:withings": "tsx --conditions=react-server scripts/health-import-withings.ts",
+    "health:import:samsung": "tsx --conditions=react-server scripts/health-import-samsung.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "4.0.146",
