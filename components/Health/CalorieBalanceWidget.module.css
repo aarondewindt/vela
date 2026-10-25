@@ -12,6 +12,10 @@
   margin-bottom: calc(-1 * var(--mantine-spacing-xl));
 }
 
+.balances {
+  transform: translateY(calc(-1 * var(--mantine-spacing-md)));
+}
+
 .stats {
   display: grid;
   width: 100%;
@@ -21,6 +25,11 @@
 }
 
 .amount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 6px;
   font-size: 30px;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;

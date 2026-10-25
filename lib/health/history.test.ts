@@ -3,11 +3,14 @@ jest.mock('server-only', () => ({}));
 jest.mock('@/lib/prisma', () => ({ prisma: { $queryRaw: jest.fn() } }));
 jest.mock('@/lib/nutrition/history', () => ({ readNutritionHistoryRecords: jest.fn() }));
 jest.mock('@/lib/settings/service', () => ({ settingsService: { getPreferences: jest.fn() } }));
-jest.mock('./persistence', () => ({ readHealthMetrics: jest.fn() }));
+jest.mock('./persistence', () => ({
+  readHealthMetrics: jest.fn(),
+  readCalorieCaptures: jest.fn(),
+}));
 import { prisma } from '@/lib/prisma';
 import { readNutritionHistoryRecords } from '@/lib/nutrition/history';
 import { settingsService } from '@/lib/settings/service';
-import { readHealthMetrics } from './persistence';
+import { readCalorieCaptures, readHealthMetrics } from './persistence';
 import { healthChartHistory } from './history';
 
 beforeEach(() => {
@@ -15,6 +18,7 @@ beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date('2026-10-25T00:30:00Z'));
   (settingsService.getPreferences as jest.Mock).mockResolvedValue({ timezone: 'Europe/Amsterdam' });
   (readHealthMetrics as jest.Mock).mockResolvedValue([]);
+  (readCalorieCaptures as jest.Mock).mockResolvedValue([]);
   (readNutritionHistoryRecords as jest.Mock).mockResolvedValue([]);
   (prisma.$queryRaw as jest.Mock).mockResolvedValue([{ date: null }]);
 });
@@ -59,4 +63,48 @@ it('uses fixed historical ranges without scanning for an all-time start', async 
   await healthChartHistory('alice', { endDate: '2026-10-25', range: '10d' });
   expect(prisma.$queryRaw).not.toHaveBeenCalled();
   expect(readHealthMetrics).toHaveBeenCalledWith('alice', '2026-10-16', '2026-10-25');
+});
+
+it('exposes genuine captures and the shared DST-aware baseline alongside historical bars', async () => {
+  jest.setSystemTime(new Date('2026-10-25T14:00:00Z'));
+  const total = {
+    date: new Date('2026-10-25'),
+    metric: 'TOTAL_CALORIES',
+    value: 1400,
+    source: 'samsung_health',
+    observedAt: new Date('2026-10-25T12:01:00Z'),
+    metadata: {
+      measurementKind: 'sdk_aggregate_semantics_unverified',
+      timezone: 'Europe/Amsterdam',
+      credentialId: 'phone',
+      periodStart: '2026-10-24T22:00:00Z',
+      periodEnd: '2026-10-25T12:00:00Z',
+    },
+  };
+  const active = { ...total, metric: 'ACTIVE_CALORIES', value: 300 };
+  const bmr = {
+    ...total,
+    date: new Date('2026-10-20'),
+    metric: 'BMR',
+    value: 1800,
+    metadata: { measurementKind: 'sdk_bmr_point', sourceObservedAt: '2026-10-20T10:00:00Z' },
+  };
+  (readHealthMetrics as jest.Mock).mockResolvedValue([total, active, bmr]);
+  (readCalorieCaptures as jest.Mock).mockResolvedValue([total, active]);
+  const result = await healthChartHistory('alice', { endDate: '2026-10-25', range: '10d' });
+  expect(result.todayBurn.projection).toMatchObject({ projectedTotal: 2192, observedTotal: 1400 });
+  expect(result.todayBurn.points).toHaveLength(2);
+  expect(result.todayBurn.points[0]).toMatchObject({
+    total: 1400,
+    active: 300,
+    resting: 1100,
+    projected: 1400,
+  });
+  expect(result.points.at(-1)).toMatchObject({
+    total: 1400,
+    active: 300,
+    resting: 1100,
+    unsplit: null,
+  });
+  expect(readCalorieCaptures).toHaveBeenCalledWith('alice', '2026-10-25');
 });

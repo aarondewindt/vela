@@ -3,6 +3,7 @@ import 'server-only';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { projectCalorieBurn } from './calorie-projection';
 import { diaryDate } from '@/lib/nutrition/dates';
 import { nutritionHistory } from '@/lib/nutrition/history';
 import { historyInputSchema } from '@/lib/nutrition/reuse-schema';
@@ -82,9 +83,10 @@ export const healthService = {
   },
   async history(userId: string, input: z.infer<typeof historyInputSchema>) {
     const nutrition = await nutritionHistory.get(userId, input);
-    const [records, goal] = await Promise.all([
+    const [records, goal, { timezone }] = await Promise.all([
       readHealthMetrics(userId, nutrition.startDate, input.endDate),
       prisma.healthGoal.findUnique({ where: { userId } }),
+      settingsService.getPreferences(userId),
     ]);
     const recordsByDate = new Map<string, typeof records>();
     for (const record of records) {
@@ -152,6 +154,12 @@ export const healthService = {
         const burned = metrics.TOTAL_CALORIES?.value ?? null;
         return {
           date: day.date,
+          ...projectCalorieBurn({
+            date: day.date,
+            timezone,
+            total: metrics.TOTAL_CALORIES ? { ...metrics.TOTAL_CALORIES, date: day.date } : null,
+            bmr: metrics.BMR ? { ...metrics.BMR, date: metrics.BMR.measurementDate } : null,
+          }),
           metrics,
           intake,
           burned,

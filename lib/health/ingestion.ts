@@ -126,7 +126,11 @@ export async function ingestHealth(userId: string, credentialId: string, input: 
     await db.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`health-upload:${userId}`}, 0))::text`;
     const results = [];
     for (const m of upload.measurements) {
-      const sourceKey = `device:${credentialId}:${upload.source}:${m.metric}:${m.date}`;
+      // #110: retain real cumulative captures; corrections at the same cutoff replace that point.
+      const suffix = ['TOTAL_CALORIES', 'ACTIVE_CALORIES'].includes(m.metric)
+        ? `:${new Date(m.periodEnd).toISOString()}`
+        : '';
+      const sourceKey = `device:${credentialId}:${upload.source}:${m.metric}:${m.date}${suffix}`;
       const where = { userId_sourceKey: { userId, sourceKey } };
       const existing = await db.healthMetric.findUnique({ where });
       const metadata = {

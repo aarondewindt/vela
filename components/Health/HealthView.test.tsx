@@ -111,10 +111,10 @@ it('uses one persisted range for all eight charts and preserves it through the l
   expect(JSON.parse(localStorage.getItem('health-history')!).state.range).toBe('all');
   expect(screen.getAllByRole('radio', { name: 'Today' })).toHaveLength(1);
   fireEvent.click(screen.getByRole('radio', { name: 'Today' }));
-  expect(screen.getByText('10-minute data unavailable')).toBeInTheDocument();
+  expect(screen.getByText('Samsung calorie captures unavailable')).toBeInTheDocument();
   expect(screen.getAllByRole('heading', { name: 'Calorie balance' })).toHaveLength(2);
   fireEvent.click(screen.getByRole('radio', { name: 'History' }));
-  expect(screen.queryByText('10-minute data unavailable')).not.toBeInTheDocument();
+  expect(screen.queryByText('Samsung calorie captures unavailable')).not.toBeInTheDocument();
   expect(useHealthHistoryStore.getState().range).toBe('all');
   const calls = (LineChart as unknown as jest.Mock).mock.calls.slice(-6);
   const bars = (BarChart as unknown as jest.Mock).mock.calls.slice(-2);

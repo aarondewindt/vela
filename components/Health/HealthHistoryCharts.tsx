@@ -1,14 +1,16 @@
 'use client';
 
+import { TodayBurnChart } from './TodayBurnChart';
+import type { CalorieTimeline } from '@/lib/health/calorie-timeline';
 import { useState } from 'react';
-import { Alert, Paper, SegmentedControl, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Paper, SegmentedControl, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import { BarChart, LineChart } from '@mantine/charts';
 import { goalChartReferences } from '@/lib/goals/chart-references';
 import type { GoalOptions } from '@/lib/goals/semantics';
 import type { MetricGoals } from '@/lib/health/schema';
 import type { aggregateHealthHistory, HistoryField } from '@/lib/health/history-aggregation';
 
-type History = ReturnType<typeof aggregateHealthHistory>;
+type History = ReturnType<typeof aggregateHealthHistory> & { todayBurn?: CalorieTimeline };
 type Point = History['points'][number];
 type Goal = { calorieBalance: number | null; semantics?: GoalOptions; metricGoals?: MetricGoals };
 const format = (value: number | null) =>
@@ -84,8 +86,6 @@ function HistoryTooltip({
 export function HealthHistoryCharts({
   history,
   goal,
-  today,
-  timezone,
 }: {
   history: History;
   goal: Goal;
@@ -174,18 +174,14 @@ export function HealthHistoryCharts({
               ]}
             />
             {burnView === 'today' ? (
-              <Alert color="gray" title="10-minute data unavailable">
-                {today} · {timezone}. The companion imports midnight-to-query calorie totals, not
-                10-minute measurements. SDK capture times are sync times; delayed Samsung updates
-                cannot establish individual intervals. No interval values are inferred from these
-                totals.
-              </Alert>
+              <TodayBurnChart timeline={history.todayBurn} />
             ) : (
               <>
                 <Text size="xs" c="dimmed">
                   {grouping} recorded sums in kcal. Active + resting = total only for compatible,
-                  verified data. Orange bars show unsplit totals: current Samsung calorie semantics
-                  are unverified; manual and legacy totals do not establish a compatible split.
+                  verified data. Orange bars show unsplit totals when corresponding active readings
+                  are missing, incompatible or invalid. Manual and legacy totals do not establish a
+                  compatible split.
                 </Text>
                 <BarChart
                   h={220}

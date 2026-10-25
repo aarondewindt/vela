@@ -28,7 +28,7 @@ it('keeps measured zero distinct from missing and never treats active calories a
   expect(points[2]).toMatchObject({ total: null, balance: null, provisional: true });
 });
 
-it('does not decompose unverified, mismatched, missing or invalid readings', () => {
+it('decomposes known SDK intervals and rejects mismatched, missing or invalid readings', () => {
   expect(splitCalories(2400, 400, true)).toEqual({ active: 400, resting: 2000 });
   expect(splitCalories(0, 0, true)).toEqual({ active: 0, resting: 0 });
   for (const [total, active, compatible] of [
@@ -53,9 +53,9 @@ it('does not decompose unverified, mismatched, missing or invalid readings', () 
   ];
   expect(aggregate(records)[0]).toMatchObject({
     total: 2400,
-    unsplit: 2400,
-    resting: null,
-    active: null,
+    unsplit: null,
+    resting: 2000,
+    active: 400,
   });
   const verified = { ...metadata, calorieSemantics: 'elapsed_expenditure' };
   expect(aggregate(records.map((r) => ({ ...r, metadata: verified })))[0]).toMatchObject({

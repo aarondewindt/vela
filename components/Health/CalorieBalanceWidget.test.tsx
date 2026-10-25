@@ -3,7 +3,7 @@ jest.mock('@/components/VelaGaugeChart/VelaGaugeChart', () => ({
 }));
 
 import { VelaGaugeChart } from '@/components/VelaGaugeChart/VelaGaugeChart';
-import { screen } from '@testing-library/react';
+import { screen, fireEvent, waitFor } from '@testing-library/react';
 import { render } from '@/test-utils';
 import { CalorieBalanceWidget } from './CalorieBalanceWidget';
 
@@ -78,4 +78,82 @@ it('uses the existing lower-bound preferred fallback for a range without a prefe
     />
   );
   expect(gauge.mock.calls[0][0].markers[0].value).toBe(50);
+});
+
+it('retains the current center and marker while adding a blue baseline marker', async () => {
+  const projection = {
+    derivation: 'observed_total_plus_remaining_bmr' as const,
+    version: 'bmr-baseline-v1' as const,
+    observedTotal: 2100,
+    projectedTotal: 3000,
+    cutoff: '2026-01-01T12:00:00Z',
+    capturedAt: '2026-01-01T12:01:00Z',
+    dayEnd: '2026-01-02T00:00:00Z',
+    timezone: 'UTC',
+    remainingDayFraction: 0.5,
+    bmr: 1800,
+    bmrObservedAt: '2025-12-30T12:00:00Z',
+    ageMinutes: 1,
+    assumptions: 'BMR only',
+  };
+  render(
+    <CalorieBalanceWidget
+      intake={1800.49}
+      burned={2100.59}
+      balance={-300.59}
+      goal={goal}
+      projection={projection}
+    />
+  );
+  expect(screen.getByText('−301 kcal')).toBeInTheDocument();
+  expect(screen.getByText('1,800')).toBeInTheDocument();
+  expect(screen.getByText('2,101')).toBeInTheDocument();
+  expect(screen.getByLabelText('Baseline projected balance')).toHaveTextContent('−1,200 kcal');
+  expect(screen.queryByText(/Blue ·|No further food|Current:/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Surplus|Deficit|Balanced/)).not.toBeInTheDocument();
+  expect(gauge.mock.calls[0][0].markers).toEqual([
+    expect.objectContaining({ id: 'current', label: 'Current balance' }),
+    expect.objectContaining({
+      id: 'projected',
+      label: 'Baseline projected balance',
+      color: 'blue.5',
+    }),
+  ]);
+  expect(gauge.mock.calls[0][0]['aria-valuenow']).toBe(-300.59);
+  fireEvent.click(screen.getByRole('button', { name: 'Baseline projected balance' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent(
+    'Preferred (−200 kcal): Eat 1,000 kcal'
+  );
+});
+
+it('shows the burn capture time in a tooltip even when projection is unavailable', async () => {
+  render(
+    <CalorieBalanceWidget
+      intake={1800}
+      burned={2100}
+      balance={-300}
+      goal={goal}
+      burnedUpdatedAt={new Date('2026-01-01T12:01:00Z')}
+    />
+  );
+  fireEvent.focus(screen.getByText('2,100'));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Last updated:');
+  expect(screen.getByRole('tooltip')).toHaveTextContent('1 Jan 2026');
+});
+
+it('shows eat/burn differences for all three targets on click and dismisses outside', async () => {
+  render(<CalorieBalanceWidget intake={1800} burned={2100} balance={-300} goal={goal} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Current balance' }));
+  const tooltip = await screen.findByRole('tooltip');
+  expect(tooltip).toHaveTextContent('Minimum (−500 kcal): Burn 200 kcal');
+  expect(tooltip).toHaveTextContent('Preferred (−200 kcal): Eat 100 kcal');
+  expect(tooltip).toHaveTextContent('Maximum (−100 kcal): Eat 200 kcal');
+  fireEvent.mouseDown(document.body);
+  await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
+});
+
+it('labels an exact preferred balance as at target and supports keyboard focus', async () => {
+  render(<CalorieBalanceWidget intake={1800} burned={2000} balance={-200} goal={goal} />);
+  fireEvent.focus(screen.getByRole('button', { name: 'Current balance' }));
+  expect(await screen.findByRole('tooltip')).toHaveTextContent('Preferred (−200 kcal): At target');
 });

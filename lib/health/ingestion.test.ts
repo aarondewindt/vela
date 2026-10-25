@@ -34,7 +34,7 @@ it('accepts a DST-short calendar day and keeps total and active separate', async
         userId: 'alice',
         source: 'samsung_health',
         value: 2400,
-        sourceKey: 'device:phone:samsung_health:TOTAL_CALORIES:2026-03-29',
+        sourceKey: 'device:phone:samsung_health:TOTAL_CALORIES:2026-03-29:2026-03-29T22:00:00.000Z',
       }),
     })
   );

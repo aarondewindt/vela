@@ -17,7 +17,10 @@ import { settingsService } from '@/lib/settings/service';
 import { prisma } from '@/lib/prisma';
 import { nutritionHistory } from '@/lib/nutrition/history';
 import { healthService } from './service';
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  (settingsService.getPreferences as jest.Mock).mockResolvedValue({ timezone: 'Europe/Amsterdam' });
+});
 it('combines owner nutrition snapshots and burn totals without filling missing days', async () => {
   (nutritionHistory.get as jest.Mock).mockResolvedValue({
     startDate: '2026-01-01',
@@ -277,4 +280,51 @@ it('saves owner metric goals with version fencing and preserves them for older c
   expect((prisma.healthGoal.updateMany as jest.Mock).mock.calls.at(-1)[0].data.metricGoals).toEqual(
     {}
   );
+});
+
+it('returns the same DST baseline to the Health and dashboard balance widget', async () => {
+  jest.useFakeTimers().setSystemTime(new Date('2026-10-25T14:00:00Z'));
+  try {
+    (nutritionHistory.get as jest.Mock).mockResolvedValue({
+      startDate: '2026-10-25',
+      days: [{ date: '2026-10-25', nutrients: { calories: '1800' } }],
+    });
+    (prisma.healthGoal.findUnique as jest.Mock).mockResolvedValue(null);
+    (prisma.$queryRaw as jest.Mock).mockResolvedValue([
+      {
+        id: 'total',
+        metric: 'TOTAL_CALORIES',
+        value: 1400,
+        date: new Date('2026-10-25'),
+        observedAt: new Date('2026-10-25T12:01:00Z'),
+        source: 'samsung_health',
+        metadata: {
+          measurementKind: 'sdk_aggregate_semantics_unverified',
+          timezone: 'Europe/Amsterdam',
+          credentialId: 'phone',
+          periodStart: '2026-10-24T22:00:00Z',
+          periodEnd: '2026-10-25T12:00:00Z',
+        },
+      },
+      {
+        id: 'bmr',
+        metric: 'BMR',
+        value: 1800,
+        date: new Date('2026-10-20'),
+        observedAt: new Date('2026-10-20T10:01:00Z'),
+        source: 'samsung_health',
+        metadata: { measurementKind: 'sdk_bmr_point', sourceObservedAt: '2026-10-20T10:00:00Z' },
+      },
+    ]);
+    const day = (await healthService.history('alice', { endDate: '2026-10-25', days: 7 })).days[0];
+    expect(day).toMatchObject({
+      burned: 1400,
+      intake: 1800,
+      balance: 400,
+      projection: { observedTotal: 1400, projectedTotal: 2192 },
+    });
+    expect(day.intake! - day.projection!.projectedTotal).toBe(-392);
+  } finally {
+    jest.useRealTimers();
+  }
 });

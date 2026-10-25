@@ -1,5 +1,8 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/settings/service', () => ({
+  settingsService: { getPreferences: jest.fn(async () => ({ timezone: 'Europe/Amsterdam' })) },
+}));
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
 jest.mock('superjson', () => ({ serialize: (v: unknown) => v, deserialize: (v: unknown) => v }));
 jest.mock('@/lib/prisma', () => {
@@ -21,6 +24,7 @@ import { readFileSync } from 'node:fs';
 import { prisma } from '@/lib/prisma';
 import { ingestHealth } from './ingestion';
 import { healthService } from './service';
+import { readCalorieCaptures, readHealthMetrics } from './persistence';
 import { healthRouter } from './router';
 import type { MetricKind } from './schema';
 import { nutritionHistory } from '@/lib/nutrition/history';
@@ -138,6 +142,36 @@ suite('health uploads on PostgreSQL', () => {
     expect(
       (await healthService.history('alice', { endDate: '2026-03-29', days: 7 })).days[0].burned
     ).toBe(2300);
+  });
+  it('retains sparse cutoffs and selects latest cutoff despite delayed older captures', async () => {
+    const make = (end: string, observedAt: string, value: number) => ({
+      version: 1,
+      source: 'samsung_health',
+      measurements: [
+        {
+          metric: 'TOTAL_CALORIES',
+          value,
+          unit: 'kcal',
+          date: '2026-09-20',
+          timezone: 'Europe/Amsterdam',
+          periodStart: '2026-09-19T22:00:00Z',
+          periodEnd: end,
+          observedAt,
+          measurementKind: 'sdk_aggregate_semantics_unverified',
+        },
+      ],
+    });
+    await ingestHealth('alice', 'phone', make('2026-09-20T08:00:00Z', '2026-09-20T08:01:00Z', 800));
+    await ingestHealth(
+      'alice',
+      'phone',
+      make('2026-09-20T12:00:00Z', '2026-09-20T12:01:00Z', 1200)
+    );
+    await ingestHealth('alice', 'phone', make('2026-09-20T08:00:00Z', '2026-09-20T13:01:00Z', 750));
+    expect(await readCalorieCaptures('alice', '2026-09-20')).toHaveLength(2);
+    const daily = await readHealthMetrics('alice', '2026-09-20', '2026-09-20');
+    expect(Number(daily.find((r) => r.metric === 'TOTAL_CALORIES')!.value)).toBe(1200);
+    expect(await readCalorieCaptures('bob', '2026-09-20')).toHaveLength(0);
   });
   it('stores the expanded matrix idempotently and retains BMR across missing days without adding it to burn', async () => {
     const base = {

@@ -205,7 +205,7 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                                     ? 'Samsung Health · sleep-date duration'
                                     : metric === 'STEPS'
                                       ? 'Samsung Health · daily step total'
-                                      : 'Samsung Health · SDK query capture · calorie semantics unverified'
+                                      : 'Samsung Health · interval aggregate · SDK query capture'
                                 : 'Home Assistant · sensor state time'}{' '}
                             · {record.observedAt.toLocaleString()}
                             {record.metadata &&
@@ -246,6 +246,8 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
               <Stack gap="xs">
                 <Title order={3}>Calorie balance</Title>
                 <CalorieBalanceWidget
+                  projection={selected?.projection}
+                  burnedUpdatedAt={selected?.metrics.TOTAL_CALORIES?.observedAt}
                   intake={selected.intake}
                   burned={selected.burned}
                   balance={selected.balance}
@@ -327,8 +329,8 @@ export function HealthView({ initialDate, timezone }: { initialDate: string; tim
                 <Table.Caption>
                   Latest known body composition and BMR (carried values labeled). Sleep uses Samsung
                   sleep dates, including overnight sessions; steps and burn are date-specific.
-                  Legacy HA readings retain sensor update-date semantics. BMR is never added to
-                  burn.
+                  Legacy HA readings retain sensor update-date semantics. BMR baseline projections
+                  are labeled separately from recorded burn.
                 </Table.Caption>
                 <Table.Thead>
                   <Table.Tr>

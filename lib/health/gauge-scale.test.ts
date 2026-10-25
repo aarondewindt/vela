@@ -94,3 +94,16 @@ it.each([
 ])('rejects unavailable, invalid, degenerate or overflowing inputs: %j', (override) => {
   expect(scale({ ...goal, balance: 0, ...override } as GaugeScaleInput)).toBeNull();
 });
+
+it.each([
+  [-300, -4000],
+  [3000, -8000],
+  [-300, 0],
+])('includes both markers with 5%% margins (%s, %s)', (balance, projectedBalance) => {
+  const result = scale({ ...goal, balance, projectedBalance })!;
+  for (const value of [goal.goalMin, goal.goalMax, balance, projectedBalance]) {
+    expect((value - result.min) / result.span).toBeGreaterThanOrEqual(0.05 - 1e-12);
+    expect((value - result.min) / result.span).toBeLessThanOrEqual(0.95 + 1e-12);
+  }
+  expect(result.projectedTarget).toBeCloseTo(((projectedBalance - result.min) / result.span) * 100);
+});

@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { dateInTimezone, diaryDate } from '@/lib/nutrition/dates';
 import { readNutritionHistoryRecords } from '@/lib/nutrition/history';
 import { settingsService } from '@/lib/settings/service';
-import { readHealthMetrics } from './persistence';
+import { calorieTimeline } from './calorie-timeline';
+import { readCalorieCaptures, readHealthMetrics } from './persistence';
 import { healthRangeStart, healthChartInputSchema } from './history-range';
 import { aggregateHealthHistory } from './history-aggregation';
 import type { z } from 'zod';
@@ -31,14 +32,30 @@ export async function healthChartHistory(
     `);
     startDate = first?.date?.toISOString().slice(0, 10) ?? endDate;
   }
-  const [records, nutrition] = await Promise.all([
+  const [records, nutrition, captures, current] = await Promise.all([
     readHealthMetrics(userId, startDate, endDate),
     readNutritionHistoryRecords(userId, startDate, endDate),
+    readCalorieCaptures(userId, today),
+    readHealthMetrics(userId, today, today),
   ]);
   return {
     startDate,
     endDate,
     timezone,
+    todayBurn: calorieTimeline(
+      today,
+      timezone,
+      captures.map((r) => ({
+        ...r,
+        value: Number(r.value),
+        date: r.date.toISOString().slice(0, 10),
+      })),
+      current.map((r) => ({
+        ...r,
+        value: Number(r.value),
+        date: r.date.toISOString().slice(0, 10),
+      }))
+    ),
     ...aggregateHealthHistory(
       startDate,
       endDate,

@@ -13,6 +13,8 @@ export function readHealthMetrics(userId: string, startDate: string, endDate: st
           CASE WHEN metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES', 'STEPS', 'SLEEP', 'BMR') THEN
             CASE source WHEN 'samsung_health' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END
           ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
+          CASE WHEN source = 'samsung_health' AND metric IN ('TOTAL_CALORIES', 'ACTIVE_CALORIES')
+            THEN (metadata->>'periodEnd')::timestamptz END DESC NULLS LAST,
           "observedAt" DESC, "receivedAt" DESC, id DESC)
         UNION ALL
         (SELECT DISTINCT ON (metric) * FROM health_metrics
@@ -24,4 +26,17 @@ export function readHealthMetrics(userId: string, startDate: string, endDate: st
           ELSE CASE source WHEN 'home_assistant' THEN 2 WHEN 'manual' THEN 1 ELSE 0 END END DESC,
           "observedAt" DESC, "receivedAt" DESC, id DESC)
       `);
+}
+
+/** Real SDK captures only; daily summaries continue to use readHealthMetrics. */
+export function readCalorieCaptures(userId: string, date: string) {
+  return prisma.healthMetric.findMany({
+    where: {
+      userId,
+      date: diaryDate(date),
+      source: 'samsung_health',
+      metric: { in: ['TOTAL_CALORIES', 'ACTIVE_CALORIES'] },
+    },
+    orderBy: [{ observedAt: 'asc' }, { receivedAt: 'asc' }, { id: 'asc' }],
+  });
 }

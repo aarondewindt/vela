@@ -39,6 +39,8 @@ export function DashboardCalorieBalance({ date }: { date: string }) {
         {current && (
           <Box w="100%" maw={560}>
             <CalorieBalanceWidget
+              projection={selected?.projection}
+              burnedUpdatedAt={selected?.metrics.TOTAL_CALORIES?.observedAt}
               intake={selected?.intake ?? null}
               burned={selected?.burned ?? null}
               balance={selected?.balance ?? null}

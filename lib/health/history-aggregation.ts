@@ -1,3 +1,4 @@
+import { compatibleCalories } from './calorie-projection';
 import { historyBuckets } from './history-range';
 import { calorieBalance } from './normalization';
 import { validMetricValue, type MetricKind } from './schema';
@@ -33,28 +34,6 @@ export function splitCalories(total: number | null, active: number | null, compa
     return null;
   }
   return { active, resting: total - active };
-}
-
-function compatibleCalories(total: HistoryRecord, active?: HistoryRecord) {
-  if (!active || total.source !== active.source) {
-    return false;
-  }
-  const t = total.metadata as Record<string, unknown> | null;
-  const a = active.metadata as Record<string, unknown> | null;
-  // No current Samsung/manual/legacy source establishes elapsed expenditure semantics.
-  // A future verified adapter must explicitly supply this classification, same interval and origin.
-  return (
-    t?.calorieSemantics === 'elapsed_expenditure' &&
-    a?.calorieSemantics === 'elapsed_expenditure' &&
-    typeof t.periodStart === 'string' &&
-    t.periodStart === a.periodStart &&
-    typeof t.periodEnd === 'string' &&
-    t.periodEnd === a.periodEnd &&
-    typeof t.timezone === 'string' &&
-    t.timezone === a.timezone &&
-    typeof t.credentialId === 'string' &&
-    t.credentialId === a.credentialId
-  );
 }
 
 function completeBurn(record: HistoryRecord) {

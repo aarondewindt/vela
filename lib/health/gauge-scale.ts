@@ -3,6 +3,7 @@ export interface GaugeScaleInput {
   goalMax: number | null;
   goalPreferred: number | null;
   balance: number | null;
+  projectedBalance?: number | null;
 }
 
 /** Issue #24: preserve the default span by translating before expanding it. */
@@ -11,6 +12,7 @@ export function calorieBalanceGaugeScale({
   goalMax,
   goalPreferred,
   balance,
+  projectedBalance,
 }: GaugeScaleInput) {
   if (
     goalMin === null ||
@@ -27,8 +29,16 @@ export function calorieBalanceGaugeScale({
 
   const defaultSpan = (goalMax - goalMin) / 0.2;
   const defaultMin = goalPreferred - defaultSpan / 2;
-  const requiredMin = Math.min(goalMin, balance);
-  const requiredMax = Math.max(goalMax, balance);
+  const requiredMin = Math.min(
+    goalMin,
+    balance,
+    Number.isFinite(projectedBalance) ? projectedBalance! : balance
+  );
+  const requiredMax = Math.max(
+    goalMax,
+    balance,
+    Number.isFinite(projectedBalance) ? projectedBalance! : balance
+  );
   const span = Math.max(defaultSpan, (requiredMax - requiredMin) / 0.9);
   const lowestMin = requiredMax - 0.95 * span;
   const highestMin = requiredMin - 0.05 * span;
@@ -47,5 +57,6 @@ export function calorieBalanceGaugeScale({
     goalStart: position(goalMin),
     goalEnd: position(goalMax),
     target: position(balance),
+    projectedTarget: Number.isFinite(projectedBalance) ? position(projectedBalance!) : null,
   };
 }

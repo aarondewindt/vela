@@ -165,3 +165,9 @@ shared sync execution into bounded private preferences separate from its durable
 outbox; optional IDs/headers do not change measurement identity or receipt handling.
 See [Companion diagnostics](COMPANION_DIAGNOSTICS.md) for visibility limits, bounds,
 migrations, maintenance, verification and signing-safe phone testing.
+
+Calorie projection Phase 1 (#110) retains real SDK calorie captures by cutoff in
+`HealthMetric` while daily queries select one authoritative total. A shared pure
+BMR baseline service supplies Today observed lines plus a dotted projection and
+the balance gauge's second marker. See [calorie projection](CALORIE_PROJECTION.md)
+for source semantics, DST behavior, timestamp limits and correction handling.

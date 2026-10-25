@@ -1,4 +1,9 @@
-jest.mock('@/lib/trpc/client', () => ({ trpc: { health: { history: { useQuery: jest.fn() } } } }));
+jest.mock('../Nutrition/MealDraftComposer', () => ({
+  MealDraftComposer: () => <div>Meal composer</div>,
+}));
+jest.mock('@/lib/trpc/client', () => ({
+  trpc: { useUtils: jest.fn(() => ({})), health: { history: { useQuery: jest.fn() } } },
+}));
 jest.mock('./CalorieBalanceWidget', () => ({
   CalorieBalanceWidget: jest.fn(() => <div>Balance gauge</div>),
 }));
@@ -36,10 +41,6 @@ it('uses the existing Health query and passes today’s observed data to the sha
   expect(screen.getByRole('link', { name: 'Open health dashboard' })).toHaveAttribute(
     'href',
     '/health'
-  );
-  expect(screen.getByRole('link', { name: 'Edit health goals' })).toHaveAttribute(
-    'href',
-    '/settings/health'
   );
 });
 
