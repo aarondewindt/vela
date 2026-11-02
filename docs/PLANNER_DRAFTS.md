@@ -12,7 +12,7 @@ Existing DailyPlan/DailyBlock/PlanningProposal rows are retained by the additive
 `20261102220000_planner_working_drafts` migration. A legacy current DailyPlan whose
 status is DRAFT is treated conservatively as the current base, never discarded.
 
-Protected `plannerDraft` procedures expose read, begin, apply, undo, redo, refresh,
+Protected `plannerDraft` procedures expose read, begin, applyChanges, undo, redo, refresh,
 accept and cancel. Mutation inputs include draft identity, expected version and a
 stable UUID request ID. The first apply can use null identity/version zero: it
 copies current intended state (or an empty schedule) and applies the initiating
@@ -68,7 +68,7 @@ ambiguous legacy current base rather than deleting data to repair it.
 
 ## Validation and remaining integration
 
-Focused state tests cover manual intent, net-empty edits, history protection,
+Focused state and authenticated router tests cover manual intent, net-empty edits, history protection,
 progress rejection and DST. Opt-in real PostgreSQL tests create an isolated schema,
 apply all migrations, exercise create/edit/history/retries/races/acceptance/staleness
 and inject a late transactional failure to verify rollback:
@@ -77,7 +77,12 @@ and inject a late transactional failure to verify rollback:
 NODE_OPTIONS=--experimental-vm-modules VELA_PLANNER_DRAFT_DB_TESTS=1 yarn jest --runInBand lib/planner/drafts/database.test.ts
 ```
 
-The working draft API is an implementation foundation. Legacy Today handlers,
-generation/chat entry points and proposal controls still require migration to it
-before the new product workflow can be considered available. Do not close #119 or
-claim #120/live Ollama acceptance based on service tests alone.
+The Today workspace, manual handlers, shared generator/review and conversational
+tools now use this API. Legacy manual routes stage drafts; legacy proposal acceptance
+is disabled so an old client cannot bypass whole-draft acceptance. Old data remains
+stored. Draft-only task references travel in the snapshot adapter without fake or
+premature occurrences. The adapter also counts their allocated effort, avoiding
+duplicate allocation during regeneration. Chat-directed placements retain AI origin
+with an explicit user-intent override; manual origin, override and lock stay distinct.
+
+See [workspace workflow](PLANNER_WORKSPACE.md) and [verification evidence](PLANNER_DRAFT_VERIFICATION.md).

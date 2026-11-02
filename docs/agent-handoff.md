@@ -2,26 +2,45 @@
 
 This Git-tracked checkpoint records significant unfinished work between agents; it is not chat history. Keep credentials and private user content out of it.
 
-**Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
-**Last updated:** 2026-10-25
+**Status:** November 2 Planner redesign implemented locally across persistent drafts,
+dual DayViews and concise draft-editing chat. #119/#59/#37/#73/#120 stay open for
+broader acceptance. PR #96 is already merged; it is not the continuation branch.
+**Last updated:** 2026-11-02
 
-## Persistent Planner redesign — 2026-11-02 (in progress)
+## Persistent Planner redesign — 2026-11-02
 
-- PR #96 is merged (`21157704`), and its code is on current master. November 2
-  issue requirements supersede its proposal-card workflow. Read #119, #59, #37,
-  #73, #120 and #18 before continuing.
-- Additive draft models/migration and protected plannerDraft API implemented;
-  complete snapshots, 100-revision undo/redo, durable idempotency receipts,
-  optimistic versions, input conflicts, conservative refresh and atomic new-plan
-  promotion reuse existing proposal validation. No application DB migration yet.
-- Nine focused state tests and five real isolated PostgreSQL lifecycle/concurrency/
-  rollback tests pass. DB tests need NODE_OPTIONS=--experimental-vm-modules and
-  access to local PostgreSQL; default sandbox cannot connect.
-- Still integrating generation, manual UI and chat. Existing legacy handlers are
-  present and must be moved before calling the feature usable. Do not close issues.
-  See [draft architecture](PLANNER_DRAFTS.md) for invariants and test command.
-- Next DevTools discovered port 3000 and verified project/routes/logs. Error tool
-  currently reports no connected browser session, not a clean visited page.
+- Additive migration `20261102220000_planner_working_drafts` is applied locally;
+  generated Prisma is current. No production deployment or existing data rewrite.
+- Date-scoped draft/revision/receipt models, optimistic/idempotent mutations,
+  100-snapshot undo/redo, input conflicts, conservative refresh and atomic new-plan
+  promotion reuse existing validation. Existing occurrences/progress/check-ins and
+  old accepted versions stay intact. Past drafts cannot activate.
+- Today uses existing candidate tasks plus active/draft DayViews. First edit creates
+  the draft and applies the action; manual/category edits and generation stage there.
+  Accept/Cancel/Undo/Redo and Review are calendar-owned. Legacy manual APIs also
+  stage drafts; legacy proposal acceptance is blocked. Old conversations/proposals
+  remain stored; the old conversation page redirects to Today.
+- Shared scheduler/review/instruction services are adapted, not duplicated. Normal
+  regeneration preserves manual intent; explicit rebuild excludes protected work.
+  Chat supports one atomic scheduling batch per instruction and short canonical
+  success/failure replies. Models stay independently configured.
+- Live qwen3:8b conversation + qwen3:14b scheduler passed actual persisted generation,
+  question, edit, and conversation deletion. Found/fixed draft-only task identity
+  loss and misleading model success after failure. Repeated selected/omitted keys
+  caused a strict live failure; strengthened the existing prompt/correction without
+  loosening validation or adding retries. See the verification report for limits.
+- Real desktop drag/drop/move/pointer resize, active-copy draft, undo/redo/reload,
+  accept and cancel passed using synthetic data. Initial 1280px smoke also passed.
+  Ten isolated PostgreSQL tests pass; full Jest passed 199 suites/1,694 tests with
+  41 opt-in skips; subsequent 257 focused tests and TypeScript/build pass.
+- Original port 3000 retained a stale failed tRPC router module during development;
+  the reserved `apply` name was fixed to `applyChanges`. A separate 3002 server
+  verified current source with empty visited-page DevTools errors. Its temporary
+  config was restored; original port 3000 now returns 200 for the draft API.
+- Reusable opt-in browser/live-model runners create and clean up synthetic owners.
+  Read [verification](PLANNER_DRAFT_VERIFICATION.md), [architecture](PLANNER_DRAFTS.md)
+  and [workflow](PLANNER_WORKSPACE.md). #120's broader interruption/multi-tab/recurring
+  combinations and extended daily-use acceptance remain; do not close issues yet.
 
 ## Packaged product extraction #116 — 2026-10-25
 
