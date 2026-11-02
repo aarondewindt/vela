@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1100" viewBox="0 0 1100 1100">
+<rect width="1100" height="1100" fill="white"/>
+<g fill="black" font-family="sans-serif" font-size="37">
+<text x="50" y="90" font-size="48" font-weight="bold">Voedingswaarde</text>
+<text x="660" y="160">per 100 ml</text>
+<text x="50" y="245">Energie</text><text x="660" y="245">197 kJ / 47 kcal</text>
+<text x="50" y="330">Vetten</text><text x="660" y="330">1,5 g</text>
+<text x="50" y="415">waarvan verzadigd</text><text x="660" y="415">1,0 g</text>
+<text x="50" y="500">Koolhydraten</text><text x="660" y="500">4,7 g</text>
+<text x="50" y="585">waarvan suikers</text><text x="660" y="585">4,7 g</text>
+<text x="50" y="670">Eiwitten</text><text x="660" y="670">3,5 g</text>
+<text x="50" y="755">Zout</text><text x="660" y="755">0,1 g</text>
+<text x="50" y="900">Ingrediënten: MELK</text>
+<text x="50" y="1030" font-size="24">SYNTHETIC TEST LABEL — fiber is intentionally absent</text>
+</g></svg>

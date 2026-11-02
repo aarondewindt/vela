@@ -161,7 +161,8 @@ export async function discoverModels(): Promise<AiModel[]> {
 async function resolveModel(
   selection: AiModelSelection,
   capability: AiModelCapability | AiModelCapability[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  timeoutMs = inferenceTimeoutMs
 ) {
   if (selection.provider !== 'ollama') {
     throw new AiError('PROVIDER_NOT_SUPPORTED', 'The selected AI provider is not supported.');
@@ -185,7 +186,7 @@ async function resolveModel(
 
   const provider = createOllama({
     baseURL,
-    fetch: (input, init) => fetchOllama(input, init, inferenceTimeoutMs),
+    fetch: (input, init) => fetchOllama(input, init, timeoutMs),
   });
   return { provider, digest: installed.digest, metadata: model };
 }
@@ -193,13 +194,21 @@ async function resolveModel(
 /** Validate an exact installed selection and all required capabilities without inference. */
 export async function validateModelSelection(
   selection: AiModelSelection,
-  capabilities: AiModelCapability[]
+  capabilities: AiModelCapability[],
+  signal?: AbortSignal
 ) {
-  await resolveModel(selection, capabilities);
+  await resolveModel(selection, capabilities, signal);
 }
 
-export async function resolveChatModel(selection: AiModelSelection, signal?: AbortSignal) {
-  const { provider, metadata } = await resolveModel(selection, 'chat', signal);
+export async function resolveChatModel(
+  selection: AiModelSelection,
+  signal?: AbortSignal,
+  timeoutMs = inferenceTimeoutMs
+) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 480_000) {
+    throw new AiError('CONFIGURATION_ERROR', 'The inference timeout is invalid.');
+  }
+  const { provider, metadata } = await resolveModel(selection, 'chat', signal, timeoutMs);
   const model = wrapLanguageModel({
     model: provider.languageModel(selection.modelId),
     middleware: ollamaImageInputMiddleware,

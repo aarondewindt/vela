@@ -49,3 +49,33 @@ it.each([
 ])('rejects incompatible or cyclic settings: %j', (value) => {
   expect(updateModelSettingSchema.safeParse(value).success).toBe(false);
 });
+
+it('provides independent Nutrition stage defaults and preserves explicit/profile precedence', () => {
+  expect(resolveModelSetting({ default: base }, 'nutrition.productImport').selection?.modelId).toBe(
+    'gemma3:12b'
+  );
+  expect(
+    resolveModelSetting({ default: base }, 'nutrition.productInterpretation').selection?.modelId
+  ).toBe('qwen3:8b');
+  expect(
+    resolveModelSetting({ visionLanguage: other }, 'nutrition.productImport').selection
+  ).toEqual(other);
+  expect(
+    resolveModelSetting({ balanced: other }, 'nutrition.productInterpretation').selection
+  ).toEqual(other);
+  expect(
+    resolveModelSetting(
+      { default: base, 'nutrition.productInterpretation': { profile: 'default' } },
+      'nutrition.productInterpretation'
+    ).selection
+  ).toEqual(base);
+  expect(
+    resolveModelSetting({ 'nutrition.productImport': other }, 'nutrition.productImport').selection
+  ).toEqual(other);
+  expect(
+    resolveModelSetting(
+      { 'nutrition.productInterpretation': { profile: 'visionLanguage' } },
+      'nutrition.productInterpretation'
+    ).selection
+  ).toBeNull();
+});

@@ -36,6 +36,8 @@ it.each([
   ['default', ['chat']],
   ['embeddings', ['embedding']],
   ['visionLanguage', ['chat', 'vision']],
+  ['nutrition.productImport', ['chat', 'vision']],
+  ['nutrition.productInterpretation', ['chat']],
 ])('validates %s capabilities before persisting', async (key, capabilities) => {
   await modelSettingsService.update('owner', { key, value: selection });
   expect(validateModelSelection).toHaveBeenCalledWith(selection, capabilities);

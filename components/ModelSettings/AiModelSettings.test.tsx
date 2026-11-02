@@ -82,3 +82,14 @@ it('keeps an unavailable configured model visible and hides cached settings befo
   expect(screen.getByRole('combobox', { name: 'Default LLM' })).toBeDisabled();
   expect(screen.getByRole('combobox', { name: 'Default LLM' })).toHaveValue('Not configured');
 });
+
+it('hides deferred packaging extraction settings', () => {
+  render(<AiModelSettings />);
+  expect(
+    screen.queryByRole('combobox', { name: 'Nutrition · Vision transcription' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('combobox', { name: 'Nutrition · Text interpretation' })
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole('combobox', { name: 'Default LLM' })).toBeInTheDocument();
+});

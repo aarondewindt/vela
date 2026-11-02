@@ -1,5 +1,5 @@
 import 'server-only';
-import { generateText, Output } from 'ai';
+import { generateText, Output, type ModelMessage } from 'ai';
 import type { z } from 'zod';
 import { resolveChatModel, type AiModelSelection } from './ollama';
 import { AiError } from './errors';
@@ -11,45 +11,77 @@ export async function generateStructured<T>({
   schema,
   system,
   prompt,
+  messages,
   signal,
   onDiagnostics,
+  timeoutMs = 120_000,
+  maxOutputTokens = 4096,
 }: {
   selection: AiModelSelection;
   schema: z.ZodType<T>;
   system: string;
   prompt: string;
+  messages?: ModelMessage[];
   signal?: AbortSignal;
   onDiagnostics?: (details: GenerationDiagnostics) => void;
+  timeoutMs?: number;
+  maxOutputTokens?: number;
 }): Promise<T> {
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > 480_000 ||
+    !Number.isInteger(maxOutputTokens) ||
+    maxOutputTokens < 1 ||
+    maxOutputTokens > 32_768
+  ) {
+    throw new AiError('CONFIGURATION_ERROR', 'The structured-generation budget is invalid.');
+  }
   const deadline = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(120_000)])
-    : AbortSignal.timeout(120_000);
+    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
   const started = Date.now();
   const details: GenerationDiagnostics = {
     ...selection,
     startedAt: new Date(started).toISOString(),
     durationMs: 0,
-    maxOutputTokens: 4096,
-    timeoutMs: 120_000,
+    maxOutputTokens,
+    timeoutMs,
   };
   try {
-    if (!prompt.trim() || system.length + prompt.length > 64_000) {
+    const contextLength = messages
+      ? messages.reduce(
+          (total, message) =>
+            total +
+            (typeof message.content === 'string'
+              ? message.content.length
+              : message.content.reduce(
+                  (sum, part) => sum + (part.type === 'text' ? part.text.length : 0),
+                  0
+                )),
+          0
+        )
+      : prompt.length;
+    if ((!prompt.trim() && !messages?.length) || system.length + contextLength > 64_000) {
       throw new AiError(
         'INVALID_PROVIDER_RESPONSE',
         'The structured-generation context is empty or too large.'
       );
     }
-    const model = await resolveChatModel(selection, deadline);
+    const model =
+      timeoutMs === 120_000
+        ? await resolveChatModel(selection, deadline)
+        : await resolveChatModel(selection, deadline, timeoutMs);
     const result = await generateText({
       model,
       system,
-      prompt,
+      ...(messages ? { messages } : { prompt }),
       output: Output.object({ schema }),
-      maxOutputTokens: 4096,
+      maxOutputTokens,
       maxRetries: 0,
       temperature: 0,
       providerOptions: { ollama: { think: false } },
-      timeout: 120_000,
+      timeout: timeoutMs,
       abortSignal: deadline,
     });
     details.rawResponse = diagnosticText(result.text ?? '');

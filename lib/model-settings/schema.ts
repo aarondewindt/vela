@@ -29,6 +29,8 @@ export const modelFeatures = [
   'planner.planReview',
   'planner.taskReview',
   'nutrition.mealDraft',
+  'nutrition.productImport',
+  'nutrition.productInterpretation',
   'nutrition.recipeAutofill',
   'aiDev.chat',
   'aiDev.embeddings',
@@ -53,6 +55,16 @@ export const featureDefinitions = {
     profile: 'balanced',
     capability: 'chat',
   },
+  'nutrition.productImport': {
+    label: 'Nutrition · Vision transcription',
+    profile: 'visionLanguage',
+    capability: 'chat',
+  },
+  'nutrition.productInterpretation': {
+    label: 'Nutrition · Text interpretation',
+    profile: 'balanced',
+    capability: 'chat',
+  },
   'aiDev.chat': { label: 'AI Dev · Chat', profile: 'balanced', capability: 'chat' },
   'aiDev.embeddings': {
     label: 'AI Dev · Embeddings',
@@ -60,6 +72,20 @@ export const featureDefinitions = {
     capability: 'embedding',
   },
 } as const;
+/** Initial feature choices stay in settings, independent of reusable composer UI. */
+export const featureInitialSelections: Partial<Record<ModelFeature, ModelSelection>> = {
+  'nutrition.productImport': { provider: 'ollama', modelId: 'gemma3:12b' },
+  'nutrition.productInterpretation': { provider: 'ollama', modelId: 'qwen3:8b' },
+};
+
+export function requiredModelCapabilities(key: ModelSettingKey) {
+  return key === 'visionLanguage' || key === 'nutrition.productImport'
+    ? (['chat', 'vision'] as const)
+    : key === 'embeddings' || key === 'aiDev.embeddings'
+      ? (['embedding'] as const)
+      : (['chat'] as const);
+}
+
 export const settingKeys = ['default', ...modelProfiles, ...modelFeatures] as const;
 export type ModelSettingKey = (typeof settingKeys)[number];
 export const modelChoiceSchema = z.union([
@@ -111,6 +137,12 @@ export function resolveModelSetting(
   }
   const profile =
     choice && 'profile' in choice ? choice.profile : featureDefinitions[feature].profile;
+  // A deliberately selected profile always wins, including an unconfigured profile.
+  // Initial stage defaults outrank the broad default LLM, but preserve configured profiles.
+  const initial = featureInitialSelections[feature];
+  if (!choice && !settings[profile] && initial) {
+    return { selection: initial, source: `${featureDefinitions[feature].label} initial default` };
+  }
   return resolveProfileModel(settings, profile);
 }
 

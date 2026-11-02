@@ -14,6 +14,7 @@ import {
 } from '@mantine/core';
 import { IconCheck } from '@tabler/icons-react';
 import type { AiModel } from '@/lib/ai';
+import type { AiModelCapability } from '@/lib/ai/capabilities';
 import type { ModelSelection } from '@/lib/model-settings/schema';
 import type { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 import classes from './AiPromptComposer.module.css';
@@ -24,9 +25,38 @@ export type ModelPickerProps = {
   resolution: ReturnType<typeof useFeatureModel>;
   onChange: (selection: ModelSelection | null) => void;
   disabled?: boolean;
+  /** Every required capability must be present. Defaults to chat for legacy consumers. */
+  requiredCapabilities?: readonly AiModelCapability[];
+  label?: string;
+  describedBy?: string;
+  modelsLoading?: boolean;
 };
 
 const modelKey = (model: ModelSelection) => JSON.stringify([model.provider, model.modelId]);
+
+export function modelSelectionIssue({
+  models,
+  resolution,
+  requiredCapabilities = ['chat'],
+  modelsLoading,
+}: ModelPickerProps): string | null {
+  if (modelsLoading || resolution.loading || !resolution.selection) {
+    return null;
+  }
+  const selection = resolution.selection;
+  const model = models.find(
+    (item) => item.provider === selection.provider && item.id === selection.modelId
+  );
+  if (!model) {
+    return `${selection.modelId} is unavailable. Choose an installed model or update model settings.`;
+  }
+  const missing = requiredCapabilities.filter(
+    (capability) => !model.capabilities.includes(capability)
+  );
+  return missing.length
+    ? `${selection.modelId} is incompatible: requires ${missing.join(', ')} capability.`
+    : null;
+}
 
 export function ModelPicker({
   models,
@@ -34,6 +64,9 @@ export function ModelPicker({
   resolution,
   onChange,
   disabled,
+  requiredCapabilities = ['chat'],
+  label = 'Chat model',
+  describedBy,
 }: ModelPickerProps) {
   const [search, setSearch] = useState('');
   const combobox = useCombobox({
@@ -43,13 +76,23 @@ export function ModelPicker({
     },
     onDropdownOpen: () => combobox.focusSearchInput(),
   });
-  const chatModels = models.filter((model) => model.capabilities.includes('chat'));
+  const compatibleModels = models.filter((model) =>
+    requiredCapabilities.every((capability) => model.capabilities.includes(capability))
+  );
   const selectedAvailable =
-    !override ||
-    chatModels.some(
-      (model) => model.provider === override.provider && model.id === override.modelId
+    !resolution.selection ||
+    compatibleModels.some(
+      (model) =>
+        model.provider === resolution.selection?.provider &&
+        model.id === resolution.selection?.modelId
     );
-  const filtered = chatModels.filter((model) =>
+  const selectedInstalled = models.some(
+    (model) =>
+      model.provider === resolution.selection?.provider &&
+      model.id === resolution.selection?.modelId
+  );
+  const selectionStatus = selectedInstalled ? 'Incompatible' : 'Unavailable';
+  const filtered = compatibleModels.filter((model) =>
     `${model.provider} ${model.id}`.toLowerCase().includes(search.trim().toLowerCase())
   );
   const providers = [...new Set(filtered.map((model) => model.provider))];
@@ -64,7 +107,7 @@ export function ModelPicker({
         if (value === '__default__') {
           onChange(null);
         } else {
-          const model = chatModels.find(
+          const model = compatibleModels.find(
             (item) => modelKey({ provider: item.provider, modelId: item.id }) === value
           );
           if (model) {
@@ -81,7 +124,8 @@ export function ModelPicker({
           variant="subtle"
           size="compact-sm"
           className={classes.modelTrigger}
-          aria-label="Chat model"
+          aria-label={label}
+          aria-describedby={describedBy}
           disabled={disabled}
           rightSection={<Combobox.Chevron />}
           onClick={() => combobox.toggleDropdown()}
@@ -92,11 +136,11 @@ export function ModelPicker({
             {resolution.selection?.modelId ??
               (resolution.loading ? 'Loading model…' : 'Choose model')}
             {!override && resolution.selection && ' · Default'}
-            {!selectedAvailable && ' · Unavailable'}
+            {!selectedAvailable && ` · ${selectionStatus}`}
           </span>
         </Button>
       </Combobox.Target>
-      <Combobox.Dropdown>
+      <Combobox.Dropdown style={{ maxWidth: 'calc(100vw - 2rem)' }}>
         <Combobox.Search
           aria-label="Search models"
           placeholder="Search models…"
@@ -155,10 +199,12 @@ export function ModelPicker({
                   })}
               </Combobox.Group>
             ))}
-            {filtered.length === 0 && <Combobox.Empty>No matching chat models</Combobox.Empty>}
+            {filtered.length === 0 && (
+              <Combobox.Empty>No matching compatible models</Combobox.Empty>
+            )}
             {!selectedAvailable && override && (
               <Combobox.Option value="__unavailable__" disabled aria-disabled="true">
-                {override.modelId} · Unavailable
+                {override.modelId} · {selectionStatus}
               </Combobox.Option>
             )}
           </ScrollArea.Autosize>

@@ -91,15 +91,19 @@ export function ProductEditor({
           }
         : emptyProduct
   );
+  const [savedProduct, setSavedProduct] = useState<NutritionProduct | null>(null);
+  const [saveFailure, setSaveFailure] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<string[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const create = trpc.nutrition.createProduct.useMutation();
   const update = trpc.nutrition.updateProduct.useMutation();
   const autofill = trpc.nutrition.autofillRecipe.useMutation();
-  const busy = create.isPending || update.isPending || autofill.isPending;
+  const saving = create.isPending || update.isPending;
+  const busy = saving || autofill.isPending;
   const failure = create.error ?? update.error;
-  const change = (patch: Partial<ProductInput>) =>
+  const change = (patch: Partial<ProductInput>) => {
     setValue((current) => ({ ...current, ...patch }));
+  };
   const generateDetails = async () => {
     const parsed = recipeAutofillSchema.safeParse({
       name: value.name,
@@ -137,10 +141,11 @@ export function ProductEditor({
     setErrors([]);
     let saved: NutritionProduct;
     try {
-      if (product) {
+      const target = savedProduct ?? product;
+      if (target) {
         saved = await update.mutateAsync({
-          id: product.id,
-          version: product.version,
+          id: target.id,
+          version: target.version,
           product: parsed.data,
         });
       } else {
@@ -150,8 +155,16 @@ export function ProductEditor({
       // The mutation error is rendered below; keep the entered form intact.
       return;
     }
-    await onSaved(saved);
-    onClose();
+    setSavedProduct(saved);
+    try {
+      setSaveFailure(null);
+      await onSaved(saved);
+      onClose();
+    } catch {
+      setSaveFailure(
+        'Product saved, but finishing the save failed. Retry Save product to finish without creating a duplicate.'
+      );
+    }
   };
 
   return (
@@ -162,7 +175,8 @@ export function ProductEditor({
           onClose();
         }
       }}
-      closeOnClickOutside={!busy}
+      // Preserve entered fields when an outside tap closes a picker.
+      closeOnClickOutside={false}
       closeOnEscape={!busy}
       title={
         value.calculationMode === 'CALCULATED'
@@ -176,6 +190,11 @@ export function ProductEditor({
       closeButtonProps={{ 'aria-label': 'Close product editor' }}
       size="lg"
     >
+      {saveFailure && (
+        <Alert color="red" title="Finish saving">
+          {saveFailure}
+        </Alert>
+      )}
       <form onSubmit={(event) => void save(event)}>
         <Stack gap="lg">
           <TextInput
@@ -529,7 +548,16 @@ export function ProductEditor({
               {failure.message}
             </Alert>
           )}
-          <Group justify="flex-end">
+          <Group
+            justify="flex-end"
+            style={{
+              position: 'sticky',
+              bottom: 0,
+              background: 'var(--mantine-color-body)',
+              paddingBlock: 'var(--mantine-spacing-xs)',
+              zIndex: 2,
+            }}
+          >
             <Button variant="default" disabled={busy} onClick={onClose}>
               Cancel
             </Button>

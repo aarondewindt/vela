@@ -1,3 +1,4 @@
+import { productChatRouter } from './product-chat/router';
 import { autofillRecipe } from './recipe-autofill';
 import { recipeAutofillSchema } from './recipe-autofill-schema';
 import { TRPCError } from '@trpc/server';
@@ -88,6 +89,7 @@ async function call<T>(operation: () => Promise<T>) {
 }
 
 export const nutritionRouter = router({
+  productChat: productChatRouter,
   autofillRecipe: protectedProcedure
     .input(recipeAutofillSchema)
     .mutation(({ ctx, input, signal }) => call(() => autofillRecipe(ctx.userId, input, signal))),

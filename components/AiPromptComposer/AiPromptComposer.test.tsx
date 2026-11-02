@@ -3,7 +3,7 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@/test-utils';
 import type { ModelSelection } from '@/lib/model-settings/schema';
-import { AiPromptComposer } from './AiPromptComposer';
+import { AiPromptComposer, type ModelPickerStage } from './AiPromptComposer';
 import { ModelPicker, type ModelPickerProps } from './ModelPicker';
 
 const defaultModel: ModelSelection = { provider: 'ollama', modelId: 'qwen3:8b' };
@@ -159,4 +159,149 @@ it('allows empty guidance only when explicitly enabled', async () => {
   );
   await userEvent.setup().click(screen.getByRole('button', { name: 'Generate preview' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
+});
+
+const visionSelection: ModelSelection = { provider: 'ollama', modelId: 'gemma3:12b' };
+const stages = (onVision = jest.fn(), onText = jest.fn()): ModelPickerStage[] => [
+  {
+    ...props,
+    id: 'vision',
+    label: 'Read photographs',
+    help: 'Preserves the original printed evidence.',
+    requiredCapabilities: ['chat', 'vision'],
+    resolution: {
+      ...props.resolution,
+      selection: visionSelection,
+      defaultSelection: visionSelection,
+    },
+    onChange: onVision,
+  },
+  {
+    ...props,
+    id: 'interpret',
+    label: 'Interpret evidence',
+    requiredCapabilities: ['chat'],
+    onChange: onText,
+  },
+];
+
+it('supports independently controlled named pickers with stage-specific capabilities and help', async () => {
+  const user = userEvent.setup();
+  const onVision = jest.fn();
+  const onText = jest.fn();
+  render(
+    <AiPromptComposer
+      value="Read this"
+      onChange={jest.fn()}
+      onSubmit={jest.fn()}
+      modelPickers={stages(onVision, onText)}
+      imageStageId="vision"
+      allowImages
+    />
+  );
+  expect(
+    screen.getByRole('button', { name: 'Read photographs model' })
+  ).toHaveAccessibleDescription('Preserves the original printed evidence.');
+  expect(screen.getByRole('button', { name: 'Take photo' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+  await user.click(screen.getByRole('button', { name: 'Read photographs model' }));
+  expect(screen.queryByRole('option', { name: /qwen3/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: /embedding-only/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('option', { name: /gemma3:12b Default/ }));
+  expect(onVision).toHaveBeenCalledWith(visionSelection);
+  expect(onText).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Interpret evidence model' }));
+  await user.click(screen.getByRole('option', { name: 'qwen3:8b Default' }));
+  expect(onText).toHaveBeenCalledWith(defaultModel);
+  expect(onVision).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Read this');
+});
+
+it('retains inherited and explicit selections when controlled stages are restored or reordered', async () => {
+  const user = userEvent.setup();
+  const onVision = jest.fn();
+  const onText = jest.fn();
+  const restored = stages(onVision, onText);
+  restored[0].override = visionSelection;
+  const composer = (modelPickers: ModelPickerStage[]) => (
+    <AiPromptComposer
+      value="Correction"
+      onChange={jest.fn()}
+      onSubmit={jest.fn()}
+      modelPickers={modelPickers}
+    />
+  );
+  const { rerender } = render(composer(restored));
+  expect(screen.getByRole('button', { name: 'Read photographs model' })).toHaveTextContent(
+    'gemma3:12b'
+  );
+  expect(screen.getByRole('button', { name: 'Read photographs model' })).not.toHaveTextContent(
+    'Default'
+  );
+  expect(screen.getByRole('button', { name: 'Interpret evidence model' })).toHaveTextContent(
+    'Default'
+  );
+  rerender(<>{composer([...restored].reverse())}</>);
+  await user.click(screen.getByRole('button', { name: 'Read photographs model' }));
+  await user.click(screen.getByRole('option', { name: /Use default/ }));
+  expect(onVision).toHaveBeenCalledWith(null);
+  expect(onText).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['missing-model', /missing-model is unavailable/, 'Unavailable'],
+  ['qwen3:8b', /qwen3:8b is incompatible: requires vision/, 'Incompatible'],
+])(
+  'keeps an unsupported %s stage visible with a clear error and blocks submission',
+  async (modelId, error, status) => {
+    const user = userEvent.setup();
+    const modelPickers = stages();
+    const override: ModelSelection = { provider: 'ollama', modelId };
+    modelPickers[0] = {
+      ...modelPickers[0],
+      override,
+      resolution: { ...props.resolution, selection: override },
+    };
+    render(
+      <AiPromptComposer
+        value="Keep this"
+        onChange={jest.fn()}
+        onSubmit={jest.fn()}
+        modelPickers={modelPickers}
+      />
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(error);
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Read photographs model' }));
+    expect(screen.getByRole('option', { name: `${modelId} · ${status}` })).toHaveAttribute(
+      'aria-disabled',
+      'true'
+    );
+    expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('Keep this');
+  }
+);
+
+it('validates inherited selections too and supports more than two configurable stages', () => {
+  const modelPickers = stages();
+  modelPickers.push({
+    ...props,
+    id: 'final',
+    label: 'Final review',
+    requiredCapabilities: ['chat'],
+  });
+  modelPickers[1].resolution = {
+    ...props.resolution,
+    selection: { provider: 'ollama', modelId: 'not-installed' },
+  };
+  render(
+    <AiPromptComposer
+      value="Hello"
+      onChange={jest.fn()}
+      onSubmit={jest.fn()}
+      modelPickers={modelPickers}
+    />
+  );
+  expect(screen.getByRole('group', { name: 'Final review' })).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent('not-installed is unavailable');
+  expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
 });

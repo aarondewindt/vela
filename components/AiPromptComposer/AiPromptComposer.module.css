@@ -41,6 +41,10 @@
   flex-shrink: 0;
 }
 
+.footer:not([data-with-model]) {
+  justify-content: flex-end;
+}
+
 @container (max-width: 22rem) {
   .inputWrapper[data-with-bottom-section] {
     --input-bottom-section-height: calc(4.5rem * var(--mantine-scale));
@@ -50,7 +54,7 @@
     flex-wrap: wrap;
   }
 
-  .footer > :first-child {
+  .footer[data-with-model] > :first-child {
     flex-basis: 100%;
     justify-content: flex-start;
   }
@@ -58,4 +62,30 @@
   .footer > :last-child {
     margin-inline-start: auto;
   }
+}
+
+.composer[data-dragging] {
+  outline: 2px dashed var(--mantine-primary-color-filled);
+  outline-offset: 4px;
+}
+
+.imagePreview {
+  width: 9rem;
+  max-width: 100%;
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--mantine-spacing-sm);
+  min-width: 0;
+}
+
+.stage {
+  min-width: 0;
+}
+
+.stage .modelTrigger {
+  min-height: 2.75rem;
+  justify-content: flex-start;
 }

@@ -10,6 +10,7 @@ import {
   modelProfiles,
   profileLabels,
   resolveProfileModel,
+  requiredModelCapabilities,
   type ModelChoice,
   type ModelSettingKey,
 } from '@/lib/model-settings/schema';
@@ -44,7 +45,7 @@ export function AiModelSettings() {
   const current = query.isFetchedAfterMount && !query.error ? query.data : undefined;
   const picker = (key: ModelSettingKey, label: string, feature = false) => {
     const value = current?.settings[key];
-    const capability = key === 'embeddings' || key === 'aiDev.embeddings' ? 'embedding' : 'chat';
+    const capabilities = requiredModelCapabilities(key);
     const data = [
       {
         value: '__inherit__',
@@ -62,10 +63,8 @@ export function AiModelSettings() {
           }))
         : []),
       ...(models.data ?? [])
-        .filter(
-          (model) =>
-            model.capabilities.includes(capability) &&
-            (key !== 'visionLanguage' || model.capabilities.includes('vision'))
+        .filter((model) =>
+          capabilities.every((capability) => model.capabilities.includes(capability))
         )
         .map((model) => ({ value: `model:${model.id}`, label: model.id })),
     ];
@@ -145,14 +144,21 @@ export function AiModelSettings() {
           {modelProfiles.map((profile) => picker(profile, profileLabels[profile]))}
           <Text size="xs" c="dimmed">
             Profiles choose models. Thinking mode follows each feature’s policy; meal interpretation
-            keeps thinking disabled. Vision language is ready for future image features.
+            keeps thinking disabled. Vision language supports photograph transcription.
           </Text>
         </Stack>
       </Paper>
       <Paper withBorder p="md">
         <Stack>
           <Title order={4}>Features</Title>
-          {modelFeatures.map((feature) => picker(feature, featureDefinitions[feature].label, true))}
+          {modelFeatures
+            // Packaging-photo extraction is deferred; retain persisted preferences for a future retry.
+            .filter(
+              (feature) =>
+                feature !== 'nutrition.productImport' &&
+                feature !== 'nutrition.productInterpretation'
+            )
+            .map((feature) => picker(feature, featureDefinitions[feature].label, true))}
         </Stack>
       </Paper>
     </Stack>

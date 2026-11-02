@@ -5,6 +5,33 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-25
 
+## Packaged product extraction #116 — 2026-10-25
+
+- #116 is updated and closed on GitHub. Implemented in the working tree on top
+  of the existing #112–#115 changes.
+  Protected `nutrition.productChat.extract` delegates to `extractProduct` and the
+  shared persisted `completeTurn` lifecycle. All authoritative history images are
+  owner-authorized again, sent together and reused on text-only corrections.
+- `ProductSuggestion` carries a partial existing ProductInput patch, raw label
+  evidence, normalized per-100 nutrients/provenance and warnings. Decimal
+  conversions and conflict handling are deterministic. Unknown/uncertain values
+  are withheld, sodium stays separate from salt, and no Product writes occur.
+  Variant/ingredients use description; package quantity uses a named serving.
+- Direct AI SDK schema-constrained vision output passed with installed
+  `gemma3:12b` against synthetic front/back SVG fixtures rendered to PNG. A second
+  live turn reused both photos and corrected brand/package size while retaining
+  per-100-ml protein and missing fiber. This is synthetic evidence, not a claim of
+  reliable OCR on arbitrary photographs. No provider fallback or repair loop.
+- #117 should consume `nutrition.productChat.extract` / persisted
+  `data-productSuggestion` and selectively apply fields after review, then save
+  separately. See [API, normalization and limits](PRODUCT_EXTRACTION.md).
+  No ProductEditor integration, commit, push or deployment in this turn.
+- Full Jest: 188 suites / 1,557 tests passed; four opt-in suites / 16 tests
+  skipped. TypeScript, scoped lint/format and whitespace pass. Repository lint still fails
+  in untouched auth, Planner and UI files. Next runtime errors are empty; browser
+  smoke visited Nutrition without page errors and extraction returned 401 without
+  authentication. Authenticated editor acceptance remains #117.
+
 ## Samsung SDK/DST follow-up #92 — 2026-10-25
 
 - Fresh on-device SDK calls verified all four READ grants. Samsung Today displayed
@@ -1161,3 +1188,180 @@ Full Jest: 154 suites, 1,239 tests passed; five opt-in tests skipped. TypeScript
 scoped lint/format and whitespace passed. This verifies one synthetic model case;
 actual authenticated chat/UI acceptance and general guidance compliance remain
 unverified. No deployment, user schedule edits or commits in this turn.
+
+## Vision ProductEditor integration — #117 — 2026-10-25
+
+Implemented in the shared working tree, preserving the pre-existing #114–#116
+changes. ProductImport composes the existing photo composer, persisted history,
+model selection and extraction mutation above the manual ProductEditor. Review
+uses selectable patches, current/proposed values, evidence/warnings, explicit
+replacement confirmation for manual/previously applied edits and a single
+nutrition/reference group. Apply and Save remain separate. Draft selection
+supports recovery; existing products restore associated images/conversations.
+Post-save linking failures retain Product identity/version to avoid duplicate
+creation on retry. Shared composer awaits submissions and retains uploads on
+explicit failure. No #117 API/schema/migration changes.
+
+See [reviewed packaging import](PRODUCT_IMPORT_UI.md) for lifecycle limits and
+physical-phone acceptance. Unsaved form edits/unsent uploads are local, server
+drafts survive closing, and interrupted post-save linking can leave a recoverable
+unlinked conversation. No deployment or commit performed.
+
+Validation: 190 Jest suites / 1,567 tests pass; four opt-in suites / 16 tests
+skipped. Typecheck, scoped Oxlint/format, repository Stylelint and production build
+pass. Broad lint retains unrelated auth/Planner/UI failures; build reports storage
+file-tracing warnings. Live authenticated browser with synthetic packaging and
+actual uploads/Ollama/PostgreSQL verified mobile two-photo review/apply/save,
+desktop reopening, text-only follow-up using retained images, rejection/reload and
+no horizontal overflow/runtime errors. Browser checks used 375/1280 px, not physical
+camera hardware. Synthetic users/products/conversations/sessions and uploaded files
+were removed. Physical phone/glare/keyboard/real-packaging accuracy remain manual
+checks; synthetic inference does not establish label-reading accuracy.
+
+GitHub #117 and parent #19 were updated with implementation/validation/manual-phone
+limits and closed. Parent checklist marks implementation complete. #114/#115
+remain open on GitHub despite being described as implemented in the supplied
+request; their issue states were left untouched under the #117-only scope.
+
+## Real phone-photo extraction correction — 2026-10-25
+
+User-supplied front/back JPEGs exposed EXIF orientation=6. Original sideways pixels
+produced misaligned/hallucinated rows; clarified prompts alone still failed. Added
+server-only `prepareModelImage` to shared authorized model-message reconstruction:
+physically apply rotation/mirroring for inference, preserve original stored bytes,
+pass upright files unchanged, JPEG quality95/4:4:4 or lossless PNG for derivatives.
+Diagnostic extraction CLI uses the same preparation. No schema/API/database writes.
+
+Extraction prompt now distinguishes physical per-100/per-serving columns from RI
+percentages, preserves printed precision and discourages row/ingredient guessing.
+Serving normalization propagates printed half-step rounding into per-100 units;
+contradictory per-100 values remain strict. Shared product-suggestion model context
+contains only explicitly unverified prior proposed fields: old OCR tables/warnings
+remain saved/reviewable but no longer anchor re-extraction. User messages/photos
+remain in authoritative history.
+
+With these changes, original user photos produced all five Product nutrients
+matching the label, both fresh and in a simulated text-only follow-up containing
+the prior incorrect extraction context. No existing user conversation/product was
+modified, and no suggestions were applied. Ingredient spelling still needs human
+review; this diagnostic is not a general accuracy guarantee. Temporary diagnostic
+photo copies/results were removed, leaving original attachments intact.
+
+Validation: 52 focused tests passed before the final context adjustment; subsequent
+46 focused tests passed with it. Typecheck, changed-file Oxlint/format and whitespace
+checks pass. Full-suite final results are recorded below. No public deployment.
+
+Final full run: 192 suites / 1,580 tests pass; four opt-in suites / 16 tests skipped.
+Next.js runtime diagnostics show no current configuration/session errors.
+
+## Physical-heading extraction contract — 2026-10-25
+
+User's subsequent fresh import still withheld all nutrients. Read-only inspection
+showed correct numeric transcription but a per-25-g column mislabeled per100. Do
+not infer from the prior standalone successes that the UI was verified: it was not.
+
+Implemented inference-only `columnExtractionSchema`: nutrition first, fixed row
+keys, required nonempty columns, copied physical reference quantities instead of
+model basis classifications. Application code derives bases and accepts exact
+numeric or `per 100 g`/`per 25 ml` headings with consistent physical units. Ambiguous
+headings and genuine conflicts remain withheld. Explicit RI/%DV evidence uses an
+additive canonical `referenceIntake` basis and `%` units, excluded from nutrient
+quantities/uncertainty propagation; unknown physical columns still fail closed.
+Old saved suggestions remain readable and unchanged. Package counts are explicitly
+excluded from weight extraction. CLI shares the same inference contract. See
+PRODUCT_EXTRACTION.md for scope and evidence; no database migration/public deployment.
+
+Actual running ProductEditor/HTTP checks (375 px, real original JPEGs, local model,
+synthetic authenticated account): two fresh conversations and a text-only follow-up
+all returned 599 kcal, 23 g protein, 18.5 g carbohydrates, 46.4 g fat, 7.8 g fiber
+per 100 g. A separate read-only replay of the user's exact failed conversation
+history also matched all five. No manual form fields changed, no Products were
+saved, no browser/runtime errors. Synthetic user/conversations/uploads and diagnostic
+copies were cleaned up; original user records/attachments were preserved. These
+four checks are regression evidence, not a general model accuracy guarantee.
+
+68 focused tests passed. Typecheck, scoped Oxlint/format and whitespace checks pass;
+final full-suite results follow below.
+
+Final full run: 192 suites / 1,593 tests passed; four opt-in suites / 16 tests skipped.
+
+## Named chocolate servings and honest OCR limits — 2026-10-27
+
+New user-provided chocolate photos exposed `referenceQuantity.value="blokje"` with
+`4,2 g` left in a free-form note. Its unusable secondary column previously poisoned
+all usable per-100 values. The normalizer now accepts complete named physical
+headings such as `blokje (4,2 g)`, preserves decimal precision, and excludes an
+unresolved secondary column with an explicit warning when there is an independently
+usable per-100 observation. It never infers a portion size from a note/package/count.
+Serving-only conversions with unresolved additional references, real comparable
+conflicts, explicit uncertain values, and incompatible g/ml references still fail
+closed. Fractional physical serving sizes now propagate their printed half-step
+rounding through cross-check arithmetic; integral references retain their defined
+value. Warnings now distinguish actual conflicting normalized numbers, uncertain
+readings and incompatible units instead of a blanket ambiguous-evidence message.
+
+This is not an OCR accuracy fix. Actual model output misread the logo as Ch and
+confused protein/fiber rows. The real ProductEditor/HTTP browser run with the same
+photos returned 524 kcal / 59 g carbohydrate / 29 g fat per 100 g, while withholding
+protein/fiber conflicts. An explicit correction using the readable label's AH brand,
+5.3 g protein and 2.8 g fiber yielded all correct Product nutrients and brand AH.
+Form remained unchanged; no Products were saved; browser/runtime errors were absent.
+Original user data/photos were never altered. Synthetic user/conversations/uploads
+and temporary diagnostic copies/results were removed. Public deployment not performed.
+
+Validation: 192 suites / 1,602 tests pass; four opt-in suites / 16 tests skipped.
+Typecheck, scoped Oxlint/format and whitespace checks pass. Documented policy and
+remaining model limitations in PRODUCT_EXTRACTION.md. Preserve the user's unrelated
+.gitignore modification and all earlier staged/unstaged feature work.
+
+## Two-stage extraction #118 / composer #115 — deferred 2026-10-28
+
+Deferred at the user's request. Removed packaging-photo import from the normal
+ProductEditor and hid its two feature model settings. Manual products, recipes and
+existing AI features remain available. AiPromptComposer retains both the legacy
+single-picker API and independent `modelPickers`, including image-stage validation.
+Historical ProductEditor/import integration tests are explicitly skipped while that
+integration is withdrawn; composer, evidence and backend tests remain active.
+
+The experimental backend, dormant import components, stage preferences, snapshots,
+source evidence and checkpoints are retained. The additive local migration
+`20261027120000_product_extraction_stages` remains applied; do not roll back or
+remove existing user conversations, products or attachments. See
+AI_EXTRACTION_PIPELINES.md, PRODUCT_EXTRACTION.md and PRODUCT_IMPORT_UI.md for details.
+Source IDs are assigned by TypeScript from compact ordered transcription. Source,
+column, unit and reference constraints and explicit physical-reference corrections
+are validated deterministically. These checks do not establish OCR accuracy.
+
+Real-photo checks remain mixed: one nutmix ProductEditor apply/save/reload flow
+passed with independent model overrides, restored photos and preserved manual edits;
+calories required manual review. Cookie and chocolate editor runs failed vision
+schema validation. A separate cookie retry passed the schema, showing variability;
+earlier chocolate output confused nutrient rows. Do not claim general acceptance
+or add more product-specific prompt patches without revisiting the approach.
+
+Before withdrawal: 198 Jest suites / 1,705 tests passed, 16 opt-in tests skipped;
+typecheck, scoped lint/format, Stylelint and production build passed. Broad lint and
+format checks have unrelated baseline failures. Isolated PostgreSQL verification
+and a real single-model AI Dev browser turn passed. No deployment or commit made.
+Temporary worktrees were removed. Final UI withdrawal checks and fixture cleanup
+are recorded below when completed. Preserve unrelated staged/unstaged work.
+
+Withdrawal verification: 37 focused composer/settings/manual-product/recipe tests
+passed, along with typecheck and changed-file formatting. Scoped Oxlint has only
+the intentional disabled historical import-integration suite warning. Browser
+checks at 375/1280 px confirmed no import controls or horizontal overflow; extraction
+settings are hidden and AI Dev retains its single picker. No browser page errors.
+Next.js metadata confirmed this project; its post-check diagnostics had no connected
+browser session, so they did not provide additional runtime evidence.
+
+Brief status comments posted to GitHub #118, #115, #19 and #117; issue states retained.
+The disposable verification account, its records and uploaded copies were removed.
+Original photo SHA256 hashes and non-fixture account/product/conversation counts
+matched before and after cleanup. Private task diagnostics were removed. Existing
+user data, additive migration and unrelated working-tree changes are preserved.
+
+Final withdrawal full-suite run: 196 suites / 1,690 tests passed; the sole failure
+was `vision-transport.test.ts` being denied subprocess spawning by the sandbox.
+That test passed separately with subprocess permission (1,691 passing tests across
+197 active suites in total). Five suites / 31 tests skipped: existing opt-in tests
+plus the 15 historical, now-withdrawn ProductEditor import integration cases.

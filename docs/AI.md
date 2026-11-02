@@ -32,6 +32,38 @@ Shared task/food index model and query-instruction controls live in **Settings â
 
 Validation on 2026-10-18: all 400 Jest tests (58 suites), TypeScript, scoped Oxlint/format, repository Stylelint, Prisma validation/empty schema diff and production build passed. Twenty-one isolated PostgreSQL/service checks covered account isolation, inherited and explicit selections, per-turn snapshots, switching during generation, completed replay without defaults, meal drafts and unchanged shared index configurations. Browser checks used a temporary synthetic account: saved default selection, automatic meal-model inheritance and interpretation, inherited chat/streamed response, model switching with preserved earlier attribution, and inherited embedding generation (1,024 dimensions). Settings and embeddings layouts fit 390px without horizontal overflow; browser runtime errors were empty. Both test accounts and their data were removed and the isolated browser signed out/closed. Repository-wide lint continues to report existing errors in untouched planner/auth/UI files.
 
+## Image composer (#115)
+
+`AiPromptComposer` opts into images with `allowImages`; AI Dev enables this mode.
+Planner and meal-draft consumers remain text-only. `onSubmit(attachmentIds)` receives
+ordered persistent UUIDs, including for image-only messages. Consumers combine
+these with text using #114's `data-attachment` parts and use `AttachmentImage` for
+saved history. Pass `hasImageHistory` so text follow-ups also require a vision
+model when earlier turns contain photos. ProductEditor photo import is withdrawn while extraction is deferred (#118); its feature settings are hidden. Reusable composer image support and independent model pickers remain available.
+
+Upload image supports multiple files; Take photo uses a separate native
+`accept="image/*" capture="environment"` input, reset after every selection so
+front/back photos append sequentially. Browsers without capture support offer a
+file picker. Drop and image paste share the same validation/upload path. Native
+camera availability and format depend on the phone/browser; HEIC is rejected with
+an explanation because storage accepts JPEG, PNG and WebP only.
+
+Draft previews use temporary blob URLs. XHR sends original binary files to the
+existing authenticated attachment API, with per-image progress, retry and removal.
+Sending waits for all images to upload successfully and requires a model reporting
+both chat and vision capabilities. Switching models keeps text/photos intact.
+Only UUIDs enter chat state; saved images load through owner-authenticated GETs
+and show an unavailable-image message on failure. Removed/unsubmitted uploads use
+existing seven-day pruning; the UI never deletes potentially retained images.
+
+Verification: focused Jest tests cover capture ordering, multi-select, paste/drop,
+limits, progress, errors/retry, cleanup, capability changes, chat payloads and
+restored references. A temporary browser harness with mocked attachment transport
+checked sequential capture-input selections, paste/drop, model switching, reload
+rendering and dark layouts at 375px and 1280px without overflow or runtime errors.
+Actual native camera launch and authenticated end-to-end inference on a physical
+phone remain manual checks; this harness does not establish those results.
+
 ## Server API
 
 ```ts
@@ -53,11 +85,11 @@ const embeddingModel = await resolveEmbeddingModel({
 
 Discovery uses `GET /api/tags` and `POST /api/show`, with at most four concurrent inspections. It reads model metadata without generating text or loading model weights. Ollama's `completion` capability maps to `chat`, and `embedding` maps to `embedding`; `vision` and `thinking` metadata are also preserved. Unknown capabilities are not guessed from model names; models with neither supported capability remain discoverable with an empty capability list. Servers that omit capability metadata leave the model discoverable with an empty capability list. Unknown capabilities grant no input support; malformed metadata and provider/network failures remain explicit errors.
 
-Chat models are wrapped with a shared input guard for both generation and streaming. Every user message in the supplied context is checked, including restored history; image parts require both `chat` and `vision`. Text-only or unknown models fail with `AiError(MODEL_NOT_SUPPORTED)` before provider inference. Streaming consumers receive this error through the SDK error callback/stream. `modelInputSupport` in `lib/ai/capabilities.ts` is a client-safe helper returning separate `text` and `image` booleans from the same metadata. Future attachment UI should use it for availability; the server guard remains authoritative.
+Chat models are wrapped with a shared input guard for both generation and streaming. Every user message in the supplied context is checked, including restored history; image parts require both `chat` and `vision`. Text-only or unknown models fail with `AiError(MODEL_NOT_SUPPORTED)` before provider inference. Streaming consumers receive this error through the SDK error callback/stream. `modelInputSupport` in `lib/ai/capabilities.ts` is a client-safe helper returning separate `text` and `image` booleans from the same metadata. The attachment composer uses it for availability; the server guard remains authoritative.
 
 Both resolvers check the exact installed model ID (including its tag) and requested capability before constructing an AI SDK model. They inspect only the selected model. Discovery and resolution read fresh metadata without Next.js fetch caching. A future provider can be added behind the same entry point without importing AI Dev code; no provider registry or agent framework is needed yet.
 
-Metadata requests have a 10-second deadline; inference requests have a 120-second deadline and preserve caller cancellation. Discovery calls do not retry automatically. AI SDK callers own inference retry policy and overall operation deadlines. HTTP and network failures, invalid responses, configuration errors and invalid model selections throw `AiError` with a stable `code`. Provider response bodies and raw network errors are not included in these messages. SDK inference responses retain the SDK's own error handling.
+Metadata requests have a 10-second deadline; inference defaults to 120 seconds and preserves caller cancellation. Structured generation can supply explicit stage budgets through the same provider transport. Nutrition's two-stage import uses 240 seconds for transcription and 180 seconds for interpretation, bounded by a shared 540-second completion deadline and 600-second conversation lease. See [evidence-first extraction](AI_EXTRACTION_PIPELINES.md) for independent settings, source schemas and checkpoints. Discovery calls do not retry automatically. AI SDK callers own retry policy and overall deadlines. Network/configuration/model errors throw `AiError` with a stable code and safe message; provider bodies are excluded.
 
 API adapters must authenticate callers, validate input and map errors to their transport's error types. Future AI tools must delegate state changes to Vela's deterministic application services.
 
@@ -136,7 +168,7 @@ All conversation operations use the authenticated user ID. List, read, delete, g
 
 Before inference, a short transaction claims the conversation, validates the existing turn and saves the user message plus an assistant placeholder. Network/model calls happen outside transactions. The server assigns a stable assistant ID and uses it in the UI stream. A duplicate completed request replays the saved reply without inference; retrying a failed or interrupted turn reuses both message rows and replaces the incomplete assistant response. Reusing a message ID with different content is rejected. Older incomplete turns cannot be rewritten after later user messages.
 
-Only one generation can run per conversation. Concurrent attempts receive a conflict. A three-minute lease bounds abandoned generations; an authorized read or subsequent turn marks expired placeholders interrupted. Each completion must match the current generation token, so a late callback cannot overwrite a newer attempt or clear its lease. There are no background recovery jobs.
+Only one generation can run per conversation. Concurrent attempts receive a conflict. A ten-minute lease accommodates sequential extraction stages and bounds abandoned generations; an authorized read or subsequent turn marks expired placeholders interrupted. Each completion/checkpoint must match the active token, so late callbacks cannot overwrite newer attempts or clear their leases. There are no background recovery jobs.
 
 SDK stream completion/cancellation persists structured response parts and a `COMPLETED`, `INTERRUPTED` or `FAILED` status. Partial text is saved when cancellation/disconnection reaches the server. A process crash can lose partial text that has not reached finalization; the saved user message and placeholder remain recoverable after lease expiry. There are no per-token database writes. Saved text-part state is normalized for restoration, and empty or failed assistant content is omitted from inference history. A storage failure is surfaced as an error rather than treating the response as durably saved.
 
@@ -227,8 +259,16 @@ Both temporary verification routes were removed afterward. The checks explicitly
 
 ## Shared structured generation and Nutrition drafts
 
-`generateStructured` from `lib/ai/structured.ts` (also exported by `lib/ai`) accepts an explicit `AiModelSelection`, caller-owned Zod schema, system instructions, serialized context and optional cancellation signal. It resolves through the shared Ollama adapter, uses AI SDK `generateText` with `Output.object`, validates output, and masks provider payloads on failure. Context is bounded at 64,000 characters, output at 4,096 tokens, inference at 120 seconds, retries at zero and temperature at zero. Ollama thinking is disabled for structured calls. Model discovery/identity checks also accept cancellation when used by this helper or collection searches. Existing chat/task workflows retain their defaults.
+`generateStructured` from `lib/ai/structured.ts` (also exported by `lib/ai`) accepts an explicit selection, caller-owned Zod schema, system instructions, serialized context or model messages, and optional cancellation. It resolves through shared Ollama, uses AI SDK `generateText`/`Output.object`, validates output and masks provider payloads. Context is bounded at 64,000 characters. Defaults remain 4,096 output tokens, 120 seconds, zero retries and temperature zero; callers may supply bounded `maxOutputTokens`/`timeoutMs`. Ollama thinking is disabled. Model discovery/identity checks also accept cancellation. `generateStructuredStage`, `generateSourceEvidence` and `interpretSourceEvidence` add reusable capability checks, source schemas and per-stage diagnostics; see [extraction APIs](AI_EXTRACTION_PIPELINES.md).
 
 Nutrition Phase 4 consumes this helper for proposed draft operations. Its prompts, matching and persistence are feature-owned, with no infrastructure dependency on Nutrition. Protected procedures save user messages before inference and publish a whole validated operation batch only while its owner/revision/lease still matches. Model calls and semantic matching happen outside database transactions. Confirmation is deterministic application behavior and requires explicit user review. See [Nutrition](NUTRITION.md) for draft limits, retry/recovery and transactional confirmation.
 
 Synthetic live checks on 2026-10-18 verified structured generation and conversational correction with installed `qwen3:8b`. Initial `llama3.1:8b` results could satisfy the schema while omitting foods/category; schema validity is not semantic accuracy. The UI requires reviewing and resolving the draft. Account defaults are now resolved by the application settings service described above; there is no automatic model fallback. Product indexing uses its own dedicated collection/configuration and durable worker, and task indexing now has its own durable worker (see [semantic task search](SEMANTIC_TASK_SEARCH.md)).
+
+## Packaged product extraction
+
+Nutrition product conversations expose a protected structured extraction mutation.
+It reuses authorized multimodal history and shared schema-constrained generation,
+then deterministically normalizes a partial, unverified Product suggestion without
+Product writes. See [product extraction](PRODUCT_EXTRACTION.md) for the #117 API,
+provenance, units, model checks and limitations.

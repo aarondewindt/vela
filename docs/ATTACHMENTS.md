@@ -96,7 +96,7 @@ account removal until attachments have been dealt with. Out-of-band filesystem
 or database edits require operator reconciliation; cleanup does not blindly scan
 and delete unknown files.
 
-For #114:
+Implemented by [multimodal chat (#114)](MULTIMODAL_CHAT.md), retaining the conservative permanent-retention policy below:
 
 1. Persist only attachment UUIDs in messages, never local paths, data URLs or
    base64. Multiple independent UUIDs can be referenced by one message.

@@ -8,6 +8,14 @@ export const plannerChatInputSchema = chatInputSchema
     focusedTaskId: z.uuid().nullable().optional(),
   })
   .refine(
-    (value) => value.message.parts.reduce((sum, part) => sum + part.text.length, 0) <= 2000,
+    (value) => value.message.parts.every((part) => part.type === 'text'),
+    'Planner chat supports text only.'
+  )
+  .refine(
+    (value) =>
+      value.message.parts.reduce(
+        (sum, part) => sum + (part.type === 'text' ? part.text.length : 0),
+        0
+      ) <= 2000,
     'Planner messages support up to 2,000 characters.'
   );

@@ -3,9 +3,8 @@ import 'server-only';
 import sharp from 'sharp';
 import { TRPCError } from '@trpc/server';
 
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_IMAGE_PIXELS = 40_000_000;
-export const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp'] as const;
+import { MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from './limits';
+export { MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, imageMimeTypes } from './limits';
 
 export async function validateImage(bytes: Buffer, mimeType: string) {
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) {

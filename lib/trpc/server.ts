@@ -2,10 +2,13 @@ import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import { auth } from '@/lib/auth';
 
-export async function createTRPCContext({ req }: { req: Request }) {
+export async function createTRPCContext({ req }: { req: Request }): Promise<{
+  userId: string | null;
+  signal?: AbortSignal;
+}> {
   const session = await auth.api.getSession({ headers: req.headers });
 
-  return { userId: session?.user.id ?? null };
+  return { userId: session?.user.id ?? null, signal: req.signal };
 }
 
 const t = initTRPC

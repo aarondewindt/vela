@@ -7,6 +7,7 @@ import {
   modelFeatures,
   resolveModelSetting,
   settingKeys,
+  requiredModelCapabilities,
   updateModelSettingSchema,
   type ModelFeature,
   type ModelSelection,
@@ -76,11 +77,7 @@ export const modelSettingsService = {
   async update(userId: string, raw: unknown) {
     const { key, value } = updateModelSettingSchema.parse(raw);
     if (value && 'modelId' in value) {
-      const capability = key === 'embeddings' || key === 'aiDev.embeddings' ? 'embedding' : 'chat';
-      await validateModelSelection(
-        value,
-        key === 'visionLanguage' ? ['chat', 'vision'] : [capability]
-      );
+      await validateModelSelection(value, [...requiredModelCapabilities(key)]);
     }
     if (value) {
       await prisma.userAiModelSetting.upsert({

@@ -5,6 +5,8 @@ jest.mock('superjson', () => ({
   deserialize: (value: unknown) => value,
 }));
 jest.mock('@/lib/auth', () => ({ auth: { api: { getSession: jest.fn() } } }));
+jest.mock('./product-extraction/service', () => ({ extractProduct: jest.fn() }));
+jest.mock('./product-chat/service', () => ({ productConversations: {}, productChat: {} }));
 jest.mock('./recipe-autofill', () => ({ autofillRecipe: jest.fn() }));
 jest.mock('./products', () => ({
   nutritionProducts: {

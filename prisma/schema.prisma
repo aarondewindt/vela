@@ -151,13 +151,17 @@ model AiConversation {
   provider             String      @db.VarChar(64)
   modelId              String      @db.VarChar(200)
   inheritsModel        Boolean     @default(true)
+  modelSelections      Json?       @db.JsonB
   activeGenerationId   String?     @db.Uuid
   generationStartedAt  DateTime?
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
   messages             AiMessage[]
   recordProposals      PlannerRecordProposal[]
+  productId            String?     @db.Uuid
+  product              Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
 
+  @@index([userId, scope, productId])
   @@index([userId, updatedAt])
   @@map("ai_conversations")
 }
@@ -173,6 +177,8 @@ model AiMessage {
   replyToId      String?         @db.VarChar(128)
   provider       String?         @db.VarChar(64)
   modelId        String?         @db.VarChar(200)
+  modelSelections Json?           @db.JsonB
+  pipelineCheckpoint Json?         @db.JsonB
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -560,6 +566,7 @@ model Product {
   components             ProductComponent[]        @relation("ProductParent")
   usedIn                 ProductComponent[]        @relation("ProductChild")
   logEntries             NutritionLogEntry[]
+  aiConversations        AiConversation[]
   embedding              ProductEmbedding?
 
   @@unique([userId, id])

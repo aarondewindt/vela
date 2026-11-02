@@ -25,13 +25,14 @@ import { PlannerDebug } from '../PlannerChat/PlannerDebug';
 import { RecordResult } from '../PlannerChat/RecordResult';
 import { PlanningResult } from '../PlannerChat/PlanningResult';
 import { BasicMarkdown } from './BasicMarkdown';
-import { maxMessageLength } from '@/lib/ai-dev/schema';
+import { attachmentPartSchema, maxMessageLength } from '@/lib/ai-dev/schema';
 import { trpc } from '@/lib/trpc/client';
 import type { AppRouter } from '@/lib/trpc/root';
 import type { AiModel } from '@/lib/ai';
 import classes from './AiDevView.module.css';
 import { useFeatureModel } from '@/components/ModelSettings/FeatureModelSelect';
 import { ModelPicker } from '@/components/AiPromptComposer/ModelPicker';
+import { AttachmentImage } from '@/components/AiPromptComposer/AttachmentImage';
 import { AiPromptComposer } from '@/components/AiPromptComposer/AiPromptComposer';
 
 type SavedConversation = inferRouterOutputs<AppRouter>['aiDev']['getConversation'];
@@ -365,9 +366,9 @@ function ChatPanel({
       viewport.current.scrollTo({ top: viewport.current.scrollHeight });
     }
   }, [messages, status]);
-  const submit = () => {
+  const submit = (attachmentIds: string[]) => {
     if (
-      !input.trim() ||
+      (!input.trim() && attachmentIds.length === 0) ||
       busy ||
       error ||
       generatingElsewhere ||
@@ -377,7 +378,15 @@ function ChatPanel({
       return;
     }
     followResponse.current = true;
-    void sendMessage({ text: input.trim() });
+    void sendMessage({
+      parts: [
+        ...(input.trim() ? [{ type: 'text' as const, text: input.trim() }] : []),
+        ...attachmentIds.map((attachmentId) => ({
+          type: 'data-attachment' as const,
+          data: { attachmentId },
+        })),
+      ],
+    });
     setInput('');
   };
   return (
@@ -428,6 +437,12 @@ function ChatPanel({
                 {message.parts.map((part, index) =>
                   part.type === 'text' ? (
                     <BasicMarkdown key={`${message.id}-${index}`} text={part.text} />
+                  ) : part.type === 'data-attachment' &&
+                    attachmentPartSchema.safeParse(part).success ? (
+                    <AttachmentImage
+                      key={`${message.id}-${index}`}
+                      attachmentId={attachmentPartSchema.parse(part).data.attachmentId}
+                    />
                   ) : planner && part.type === 'data-planning' ? (
                     <PlanningResult
                       key={`${message.id}-${index}`}
@@ -503,6 +518,10 @@ function ChatPanel({
         </Alert>
       )}
       <AiPromptComposer
+        allowImages={!planner}
+        hasImageHistory={messages.some((message) =>
+          message.parts.some((part) => part.type === 'data-attachment')
+        )}
         inputRef={messageInput}
         value={input}
         onChange={setInput}

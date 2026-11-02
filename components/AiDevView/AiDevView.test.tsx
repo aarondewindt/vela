@@ -19,7 +19,7 @@ jest.mock('@/lib/trpc/client', () => ({
 
 import { useChat } from '@ai-sdk/react';
 import { modals } from '@mantine/modals';
-import { screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DefaultChatTransport } from 'ai';
 import { render } from '@/test-utils';
@@ -203,7 +203,7 @@ describe('AiDevView saved conversations', () => {
     render(<AiDevView />);
     await openSaved(user);
     await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Hello{Enter}');
-    expect(sendMessage).toHaveBeenCalledWith({ text: 'Hello' });
+    expect(sendMessage).toHaveBeenCalledWith({ parts: [{ type: 'text', text: 'Hello' }] });
     const message = { id: 'u', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
     const transport = (DefaultChatTransport as jest.Mock).mock.calls[0][0];
     expect(
@@ -212,6 +212,78 @@ describe('AiDevView saved conversations', () => {
         messages: [message, { role: 'assistant', id: 'a' }],
       })
     ).toEqual({ body: { conversationId: id, message } });
+  });
+  it('sends uploaded image IDs with text through the existing chat transport', async () => {
+    const attachmentIds = [
+      '9fc67afc-49ec-4084-bcf7-2542633271ec',
+      '10e534f1-47ec-4ff7-a12d-a9b98ecc73c5',
+    ];
+    (trpc.aiDev.listChatModels.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: [{ provider: 'ollama', id: 'first:latest', capabilities: ['chat', 'vision'] }],
+    });
+    URL.createObjectURL = jest.fn(() => 'blob:photo');
+    URL.revokeObjectURL = jest.fn();
+    const uploads: { onload?: () => void; status: number; responseText: string }[] = [];
+    const spy = jest.spyOn(window, 'XMLHttpRequest').mockImplementation(() => {
+      const request = {
+        open: jest.fn(),
+        setRequestHeader: jest.fn(),
+        send: jest.fn(),
+        abort: jest.fn(),
+        upload: {},
+        status: 201,
+        responseText: JSON.stringify({ id: attachmentIds[uploads.length] }),
+      };
+      uploads.push(request);
+      return request as unknown as XMLHttpRequest;
+    });
+    try {
+      const user = userEvent.setup();
+      render(<AiDevView />);
+      await openSaved(user);
+      fireEvent.change(screen.getByLabelText('Select images'), {
+        target: {
+          files: [
+            new File(['front'], 'front.jpg', { type: 'image/jpeg' }),
+            new File(['back'], 'back.jpg', { type: 'image/jpeg' }),
+          ],
+        },
+      });
+      act(() => uploads.forEach((request) => request.onload?.()));
+      await user.type(screen.getByRole('textbox', { name: 'Message' }), 'Read these labels{Enter}');
+      expect(sendMessage).toHaveBeenCalledWith({
+        parts: [
+          { type: 'text', text: 'Read these labels' },
+          ...attachmentIds.map((attachmentId) => ({
+            type: 'data-attachment',
+            data: { attachmentId },
+          })),
+        ],
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it('renders restored image references and rejects text-only follow-ups to image history', async () => {
+    const attachmentId = '9fc67afc-49ec-4084-bcf7-2542633271ec';
+    const messages = [
+      { id: 'u', role: 'user', parts: [{ type: 'data-attachment', data: { attachmentId } }] },
+    ];
+    (useChat as jest.Mock).mockReturnValue({ ...chat, messages });
+    (trpc.aiDev.getConversation.useQuery as jest.Mock).mockReturnValue({
+      ...query,
+      data: { ...saved, messages },
+    });
+    const user = userEvent.setup();
+    render(<AiDevView />);
+    await openSaved(user);
+    expect(screen.getByRole('img', { name: 'Attached image' })).toHaveAttribute(
+      'src',
+      `/api/attachments/${attachmentId}`
+    );
+    await user.type(screen.getByRole('textbox', { name: 'Message' }), 'What is this?{Enter}');
+    expect(sendMessage).not.toHaveBeenCalled();
   });
   it('keeps Shift+Enter as a line break', async () => {
     const user = userEvent.setup();

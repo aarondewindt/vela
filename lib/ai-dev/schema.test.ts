@@ -88,3 +88,27 @@ describe('embedding input schemas', () => {
     ).toBe(false);
   });
 });
+
+it('round-trips ordered mixed parts and accepts image-only messages', () => {
+  const image = { type: 'data-attachment', data: { attachmentId: input.conversationId } };
+  const parts = [image, { type: 'text', text: 'Back label' }, image];
+  expect(chatInputSchema.parse({ ...input, message: { ...message, parts } }).message.parts).toEqual(
+    parts
+  );
+  expect(
+    chatInputSchema.safeParse({ ...input, message: { ...message, parts: [image] } }).success
+  ).toBe(true);
+  for (const data of [
+    { attachmentId: '/private/file' },
+    { attachmentId: input.conversationId, url: 'https://evil.test' },
+  ]) {
+    expect(
+      chatInputSchema.safeParse({ ...input, message: { ...message, parts: [{ ...image, data }] } })
+        .success
+    ).toBe(false);
+  }
+  expect(
+    chatInputSchema.safeParse({ ...input, message: { ...message, parts: Array(9).fill(image) } })
+      .success
+  ).toBe(false);
+});

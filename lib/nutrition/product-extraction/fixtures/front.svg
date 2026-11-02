@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1000" viewBox="0 0 900 1000">
+<rect width="900" height="1000" fill="white"/><rect x="50" y="50" width="800" height="900" fill="#fff8dc" stroke="black" stroke-width="4"/>
+<g fill="black" font-family="sans-serif" text-anchor="middle">
+<text x="450" y="200" font-size="72" font-weight="bold">JUMBO</text>
+<text x="450" y="370" font-size="62">Halfvolle melk</text>
+<text x="450" y="520" font-size="44">Nederlandse weidemelk</text>
+<text x="450" y="820" font-size="72">1 L</text>
+<text x="450" y="910" font-size="22">SYNTHETIC TEST LABEL</text>
+</g></svg>

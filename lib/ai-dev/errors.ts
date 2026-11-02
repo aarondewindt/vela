@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { AiError } from '@/lib/ai';
+import { AiError } from '@/lib/ai/errors';
 import { TRPCError } from '@trpc/server';
 
 export function getAiDevError(error: unknown): { status: number; message: string } {

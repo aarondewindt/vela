@@ -3,7 +3,7 @@ jest.mock('server-only', () => ({}));
 jest.mock('ai', () => ({ generateText: jest.fn(), Output: { object: jest.fn((input) => input) } }));
 jest.mock('./ollama', () => ({ resolveChatModel: jest.fn() }));
 import { z } from 'zod';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 import { resolveChatModel } from './ollama';
 import { generateStructured } from './structured';
 const input = {
@@ -129,4 +129,51 @@ it('aborts timed-out inference, masks provider details and records the failure',
   } finally {
     jest.restoreAllMocks();
   }
+});
+
+it('passes multimodal messages together through schema-constrained generation', async () => {
+  const messages = [
+    {
+      role: 'user' as const,
+      content: [
+        { type: 'file' as const, data: new Uint8Array([1]), mediaType: 'image/png' },
+        { type: 'file' as const, data: new Uint8Array([2]), mediaType: 'image/png' },
+      ],
+    },
+  ];
+  (generateText as jest.Mock).mockResolvedValue({ output: { value: 'front and back' } });
+  await expect(generateStructured({ ...input, prompt: '', messages })).resolves.toEqual({
+    value: 'front and back',
+  });
+  const options = (generateText as jest.Mock).mock.calls[0][0];
+  expect(options.messages).toBe(messages);
+  expect(options).not.toHaveProperty('prompt');
+  expect(Output.object).toHaveBeenCalledWith({ schema: input.schema });
+});
+
+it('bounds textual context in multimodal messages before resolving the model', async () => {
+  await expect(
+    generateStructured({
+      ...input,
+      prompt: '',
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'x'.repeat(64_001) }] }],
+    })
+  ).rejects.toMatchObject({ code: 'INVALID_PROVIDER_RESPONSE' });
+  expect(resolveChatModel).not.toHaveBeenCalled();
+});
+
+it('passes an explicitly bounded stage budget through SDK and Ollama transport', async () => {
+  (generateText as jest.Mock).mockResolvedValue({ output: { value: 'ok' } });
+  const onDiagnostics = jest.fn();
+  await generateStructured({ ...input, timeoutMs: 240_000, maxOutputTokens: 8192, onDiagnostics });
+  expect(resolveChatModel).toHaveBeenCalledWith(input.selection, expect.any(AbortSignal), 240_000);
+  expect(generateText).toHaveBeenCalledWith(
+    expect.objectContaining({ timeout: 240_000, maxOutputTokens: 8192 })
+  );
+  expect(onDiagnostics).toHaveBeenCalledWith(
+    expect.objectContaining({ timeoutMs: 240_000, maxOutputTokens: 8192 })
+  );
+  await expect(generateStructured({ ...input, timeoutMs: 999_999 })).rejects.toMatchObject({
+    code: 'CONFIGURATION_ERROR',
+  });
 });

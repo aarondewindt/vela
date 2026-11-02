@@ -215,3 +215,15 @@ it('preserves entered recipe details when autofill fails', async () => {
   expect(screen.getByText('Offline')).toBeInTheDocument();
   expect(create.mutateAsync).not.toHaveBeenCalled();
 });
+
+it('keeps packaging extraction out of the normal product editor', () => {
+  render(<ProductEditor product={null} onClose={jest.fn()} onSaved={jest.fn()} />);
+  expect(screen.getByRole('textbox', { name: /Product name/ })).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Vision transcription model' })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: 'Text interpretation model' })
+  ).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Capture photo')).not.toBeInTheDocument();
+});

@@ -71,7 +71,7 @@ export async function streamPlannerChat(
         ? { date: pending.data.date, proposalId: pending.data.proposalId }
         : undefined,
       context.userTimezone,
-      input.message.parts.map((part) => part.text).join('\n'),
+      input.message.parts.map((part) => (part.type === 'text' ? part.text : '')).join('\n'),
       input.conversationId,
       input.date
     )

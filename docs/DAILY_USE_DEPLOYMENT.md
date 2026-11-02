@@ -110,7 +110,19 @@ Do not rebuild `.next-public` while it is being served: stop public:start first.
    Leave it running in a terminal. The wrapper reads `vela.env`, existing process
    variables, then optional `.env.public.local` overrides, and forces production
    mode, `VELA_PUBLIC_MODE=true`, the public origin, and same-origin browser auth.
-   No public env file is required. Registration is closed by default; if you
+   Configure private attachment storage before starting the public server. In this
+   workspace-backed deployment, add to ignored `.env.public.local`:
+
+   ```dotenv
+   VELA_ATTACHMENT_STORAGE_DIR=/workspaces/vela/.local/attachments
+   ```
+
+   Production requires this explicit absolute path. The directory must remain
+   persistent and writable by the app user; back it up with PostgreSQL. Reuse the
+   existing directory so previously uploaded images remain available. See
+   [attachment storage](ATTACHMENTS.md) for other deployment layouts.
+
+   Registration is closed by default; if you
    previously set `VELA_SIGNUP_EMAILS` in the container environment, override it
    with an empty `VELA_SIGNUP_EMAILS=` in `.env.public.local`.
    The wrapper does not migrate, reset, seed or rebuild the database.
