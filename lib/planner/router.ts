@@ -6,19 +6,47 @@ import { viewConfigSchema } from '@/lib/views/types';
 import { planningCategories } from './tasks';
 import { taskPatchSchema, themePatchSchema } from './record-schema';
 import { plannerService } from './service';
+import { legacyDraftCommands } from './drafts/compatibility';
 
 const id = z.uuid();
-const generatorOptions = z.object({
-  workSessionMinutes: z.number().int().min(15).max(240).refine((value) => value % 15 === 0),
-  shortBreakMinutes: z.number().int().min(5).max(60).refine((value) => value % 5 === 0),
-  leisureMinutes: z.number().int().min(0).max(240).refine((value) => value % 15 === 0),
-  shortLeisureBlockMinutes: z.number().int().min(15).max(120).refine((value) => value % 15 === 0),
-  maxLeisureBlockMinutes: z.number().int().min(15).max(240).refine((value) => value % 15 === 0),
-  fillExistingPlan: z.boolean(),
-}).refine((options) => options.maxLeisureBlockMinutes >= options.shortLeisureBlockMinutes, {
-  path: ['maxLeisureBlockMinutes'],
-  message: 'Maximum leisure block must be at least the short block size',
-});
+const generatorOptions = z
+  .object({
+    workSessionMinutes: z
+      .number()
+      .int()
+      .min(15)
+      .max(240)
+      .refine((value) => value % 15 === 0),
+    shortBreakMinutes: z
+      .number()
+      .int()
+      .min(5)
+      .max(60)
+      .refine((value) => value % 5 === 0),
+    leisureMinutes: z
+      .number()
+      .int()
+      .min(0)
+      .max(240)
+      .refine((value) => value % 15 === 0),
+    shortLeisureBlockMinutes: z
+      .number()
+      .int()
+      .min(15)
+      .max(120)
+      .refine((value) => value % 15 === 0),
+    maxLeisureBlockMinutes: z
+      .number()
+      .int()
+      .min(15)
+      .max(240)
+      .refine((value) => value % 15 === 0),
+    fillExistingPlan: z.boolean(),
+  })
+  .refine((options) => options.maxLeisureBlockMinutes >= options.shortLeisureBlockMinutes, {
+    path: ['maxLeisureBlockMinutes'],
+    message: 'Maximum leisure block must be at least the short block size',
+  });
 
 export const plannerRouter = router({
   getMealPreferences: protectedProcedure.query(({ ctx }) => mealService.get(ctx.userId)),
@@ -155,7 +183,7 @@ export const plannerRouter = router({
         startsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
       })
     )
-    .mutation(({ ctx, input }) => plannerService.createManualBlock(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.add(ctx.userId, input)),
   createManualCategoryBlock: protectedProcedure
     .input(
       z.object({
@@ -165,10 +193,10 @@ export const plannerRouter = router({
         endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
       })
     )
-    .mutation(({ ctx, input }) => plannerService.createManualCategoryBlock(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.slot(ctx.userId, input, 'add')),
   removeCategorySlot: protectedProcedure
     .input(z.object({ date: z.iso.date(), slotId: id }))
-    .mutation(({ ctx, input }) => plannerService.removeCategorySlot(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.slot(ctx.userId, input, 'remove')),
   updateCategorySlotTime: protectedProcedure
     .input(
       z.object({
@@ -178,7 +206,7 @@ export const plannerRouter = router({
         endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
       })
     )
-    .mutation(({ ctx, input }) => plannerService.updateCategorySlotTime(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.slot(ctx.userId, input, 'move')),
   updateBlockTime: protectedProcedure
     .input(
       z.object({
@@ -188,7 +216,7 @@ export const plannerRouter = router({
         endsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?$/),
       })
     )
-    .mutation(({ ctx, input }) => plannerService.updateBlockTime(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.move(ctx.userId, input)),
   updateBlockOutcome: protectedProcedure
     .input(
       z.object({
@@ -201,19 +229,17 @@ export const plannerRouter = router({
     .mutation(({ ctx, input }) => plannerService.updateBlockOutcome(ctx.userId, input)),
   removeBlockFromDay: protectedProcedure
     .input(z.object({ date: z.iso.date(), blockId: id }))
-    .mutation(({ ctx, input }) => plannerService.removeBlockFromDay(ctx.userId, input)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.remove(ctx.userId, input)),
   unskipBlock: protectedProcedure
     .input(z.object({ date: z.iso.date(), blockId: id }))
     .mutation(({ ctx, input }) => plannerService.unskipBlock(ctx.userId, input)),
   acceptDraft: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
-    .mutation(({ ctx, input }) => plannerService.acceptDraft(ctx.userId, input.date)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.accept(ctx.userId, input.date)),
   clearDayPlan: protectedProcedure
     .input(z.object({ date: z.iso.date() }))
-    .mutation(({ ctx, input }) => plannerService.clearDayPlan(ctx.userId, input.date)),
+    .mutation(({ ctx, input }) => legacyDraftCommands.clear(ctx.userId, input.date)),
   generateDraft: protectedProcedure
     .input(z.object({ date: z.iso.date(), options: generatorOptions.optional() }))
-    .mutation(({ ctx, input }) =>
-      plannerService.generateDraft(ctx.userId, input.date, input.options)
-    ),
+    .mutation(({ ctx, input }) => legacyDraftCommands.generate(ctx.userId, input.date)),
 });

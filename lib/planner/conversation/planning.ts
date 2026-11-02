@@ -14,7 +14,8 @@ export async function planInstruction(
   requestId: string,
   instruction: Exclude<Instruction, { type: 'record' | 'clarify' | 'find' }>,
   previous?: Pick<ConversationResult, 'date' | 'proposalId'>,
-  userTimezone?: string
+  userTimezone?: string,
+  planning = proposalService
 ) {
   const { date } = instruction;
   const old =
@@ -72,7 +73,7 @@ export async function planInstruction(
         details || 'No saved selection explanation or review concern is available for this plan.',
     };
   }
-  const context = await proposalService.context(userId, date);
+  const context = await planning.context(userId, date);
   if (userTimezone && context.timezone !== userTimezone) {
     throw new Clarification(
       `This saved plan uses ${context.timezone}, while your timezone is ${userTimezone}. Use the regular plan review to adjust its times, or choose a day without a saved plan.`
@@ -150,7 +151,7 @@ export async function planInstruction(
         });
       }
     }
-    const result = await proposalService.create(userId, {
+    const result = await planning.create(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
@@ -200,7 +201,7 @@ export async function planInstruction(
       }
       return !('blockId' in op && removed.has(op.blockId));
     });
-    const result = await proposalService.create(userId, {
+    const result = await planning.create(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
@@ -287,7 +288,7 @@ export async function planInstruction(
       }
       endTime = `${parts.hour}:${parts.minute}`;
     }
-    const result = await proposalService.replan(userId, {
+    const result = await planning.replan(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
@@ -390,7 +391,7 @@ export async function planInstruction(
         'This would remove every proposed change. Use Discard conversation preview to keep the current plan.'
       );
     }
-    const result = await proposalService.create(userId, {
+    const result = await planning.create(userId, {
       requestId,
       date,
       baseHash: context.baseHash,
@@ -411,7 +412,7 @@ export async function planInstruction(
   if (instruction.action !== 'remove' && (!instruction.startTime || !instruction.endTime)) {
     throw new Clarification('What start and end times should this block use?');
   }
-  const result = await proposalService.createEdit(userId, {
+  const result = await planning.createEdit(userId, {
     requestId,
     date,
     baseHash: context.baseHash,

@@ -124,54 +124,7 @@ export const proposalService = {
   async context(userId: string, date: string) {
     return database(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
-      const candidates = s.tasks.flatMap((task) => {
-        const occurrences = s.occurrences.filter(
-          (o) =>
-            o.taskId === task.id &&
-            ['PENDING', 'SCHEDULED'].includes(o.status) &&
-            (!task.isRecurring || o.occurrenceDate <= day(date))
-        );
-        const choices = occurrences.length ? occurrences.map((o) => o.id) : [null];
-        return choices.flatMap((occurrenceId) => {
-          try {
-            eligible(s, task.id, occurrenceId);
-            return [
-              {
-                id: `${task.id}:${occurrenceId ?? 'new'}`,
-                taskId: task.id,
-                occurrenceId,
-                title: `${task.title}${
-                  occurrenceId
-                    ? ` (${s.occurrences
-                        .find((o) => o.id === occurrenceId)!
-                        .occurrenceDate.toISOString()
-                        .slice(0, 10)})`
-                    : ''
-                }`,
-              },
-            ];
-          } catch {
-            // Eligibility rejection intentionally removes a candidate; no IO/model calls here.
-            return [];
-          }
-        });
-      });
-      return {
-        baseHash: s.hash,
-        timezone: s.timezone,
-        candidates,
-        blocks: existingBlocks(s).map((b) => ({
-          ...blockPreview(b)!,
-          ...(b.mealKind ? { mealKind: b.mealKind } : {}),
-          adjustable: ['PLANNED', 'IN_PROGRESS'].includes(b.status) && !b.calendarEventId,
-          status: b.status,
-          editable:
-            b.status === 'PLANNED' &&
-            (Boolean(b.mealKind) || (!b.isFixed && b.source !== 'MANUAL')) &&
-            !b.calendarEventId &&
-            b.startsAt >= new Date(),
-        })),
-      };
+      return contextForSnapshot(s);
     });
   },
   async replan(userId: string, raw: z.input<typeof replanSchema>) {
@@ -453,7 +406,7 @@ export const proposalService = {
         await tx.dailyPlanCategorySlot.create({
           data: {
             planId: plan.id,
-            category: 'LEISURE',
+            category: reservation.category,
             source: 'PLANNER',
             startsAt: reservation.startsAt,
             endsAt: reservation.endsAt,
@@ -619,3 +572,56 @@ export const proposalService = {
     }, true);
   },
 };
+
+export function contextForSnapshot(s: Snapshot, manualIntent = false) {
+  const candidates = s.tasks.flatMap((task) => {
+    const occurrences = s.occurrences.filter(
+      (o) =>
+        o.taskId === task.id &&
+        ['PENDING', 'SCHEDULED'].includes(o.status) &&
+        (!task.isRecurring || o.occurrenceDate <= day(s.date))
+    );
+    const choices = occurrences.length ? occurrences.map((o) => o.id) : [null];
+    return choices.flatMap((occurrenceId) => {
+      try {
+        eligible(s, task.id, occurrenceId);
+        return [
+          {
+            id: `${task.id}:${occurrenceId ?? 'new'}`,
+            taskId: task.id,
+            occurrenceId,
+            title: `${task.title}${
+              occurrenceId
+                ? ` (${s.occurrences
+                    .find((o) => o.id === occurrenceId)!
+                    .occurrenceDate.toISOString()
+                    .slice(0, 10)})`
+                : ''
+            }`,
+          },
+        ];
+      } catch {
+        // Eligibility rejection intentionally removes a candidate; no IO/model calls here.
+        return [];
+      }
+    });
+  });
+  return {
+    baseHash: s.hash,
+    timezone: s.timezone,
+    candidates,
+    blocks: existingBlocks(s).map((b) => ({
+      ...blockPreview(b)!,
+      ...(b.mealKind ? { mealKind: b.mealKind } : {}),
+      adjustable: ['PLANNED', 'IN_PROGRESS'].includes(b.status) && !b.calendarEventId,
+      status: b.status,
+      editable:
+        b.status === 'PLANNED' &&
+        !b.isLocked &&
+        (Boolean(b.mealKind) ||
+          (!b.isFixed && (manualIntent || (b.source !== 'MANUAL' && !b.manualOverride)))) &&
+        !b.calendarEventId &&
+        b.startsAt >= new Date(),
+    })),
+  };
+}

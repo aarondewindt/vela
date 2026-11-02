@@ -14,10 +14,12 @@ export function initialState(s: Snapshot): DraftState {
 // Ignore ordering and intent annotations when deciding whether cancellation needs confirmation.
 export function scheduleHash(state: DraftState) {
   return fingerprint({
-    blocks: [...state.blocks]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map(({ manualOverride: _, ...b }) => b),
-    slots: [...state.slots].sort((a, b) => a.id.localeCompare(b.id)),
+    blocks: state.blocks
+      .map(({ id: _, manualOverride: __, source: ___, ...b }) => b)
+      .sort((a, b) => fingerprint(a).localeCompare(fingerprint(b))),
+    slots: state.slots
+      .map(({ id: _, source: __, ...slot }) => slot)
+      .sort((a, b) => fingerprint(a).localeCompare(fingerprint(b))),
     freeIntervals: state.freeIntervals ?? [],
     taskLimits: state.taskLimits ?? [],
   });
@@ -101,6 +103,9 @@ export function withDraft(s: Snapshot, state: DraftState): Snapshot {
   const stamp = new Date(0);
   return {
     ...s,
+    draftTaskIds: Object.fromEntries(
+      state.blocks.flatMap((b) => (b.taskId ? [[b.id, b.taskId]] : []))
+    ),
     plan: {
       ...(s.plan ?? {
         id: planId,
@@ -204,16 +209,43 @@ export function netDocument(base: DraftState, state: DraftState): ProposalDocume
     schemaVersion: 1,
     operations,
     reservations: state.slots
-      .filter((slot) => !base.slots.some((old) => old.id === slot.id))
+      .filter((slot) => !base.slots.some((old) => fingerprint(old) === fingerprint(slot)))
       .map((slot) => {
-        if (slot.category !== 'LEISURE') {
-          throw new Error('Only leisure reservations are supported by draft operations.');
-        }
-        return { category: 'LEISURE', startsAt: slot.startsAt, endsAt: slot.endsAt, explanation };
+        return {
+          category: slot.category,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          explanation,
+        };
       }),
     freeIntervals: state.freeIntervals,
     taskLimits: state.taskLimits,
   };
+}
+
+export function validateDraft(s: Snapshot, base: DraftState, state: DraftState, now = new Date()) {
+  const slotsChanged = fingerprint(base.slots) !== fingerprint(state.slots);
+  const snapshot =
+    slotsChanged && s.plan
+      ? {
+          ...s,
+          plan: {
+            ...s.plan,
+            categorySlots: s.plan.categorySlots.filter((slot) =>
+              state.slots.some(
+                (next) =>
+                  next.id === slot.id &&
+                  next.startsAt === slot.startsAt.toISOString() &&
+                  next.endsAt === slot.endsAt.toISOString() &&
+                  next.category === slot.category
+              )
+            ),
+          },
+        }
+      : s;
+  return validateProposal(snapshot, netDocument(base, state), now, {
+    validateAllFuture: slotsChanged,
+  });
 }
 
 export function applyDocument(
@@ -221,7 +253,8 @@ export function applyDocument(
   state: DraftState,
   document: ProposalDocument,
   origin: 'manual' | 'ai',
-  now = new Date()
+  now = new Date(),
+  preserveIntent = false
 ): DraftState {
   if (document.operations.some((op) => ['finish', 'extend', 'skip'].includes(op.type))) {
     throw new Error(
@@ -242,7 +275,8 @@ export function applyDocument(
   const blocks = validated.final.map((b: ProposalBlock) => ({
     ...b,
     id: b.id.startsWith('new:') ? randomUUID() : b.id,
-    manualOverride: b.manualOverride || (origin === 'manual' && changed.has(b.id)),
+    manualOverride:
+      b.manualOverride || ((origin === 'manual' || preserveIntent) && changed.has(b.id)),
     source: origin === 'manual' && b.id.startsWith('new:') ? 'MANUAL' : b.source,
   }));
   return draftStateSchema.parse(
@@ -259,6 +293,7 @@ export function applyDocument(
         ],
         freeIntervals: merged.freeIntervals,
         taskLimits: merged.taskLimits,
+        generation: document.generation ?? state.generation,
       })
     )
   );

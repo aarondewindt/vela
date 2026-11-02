@@ -77,7 +77,8 @@ export function planningCandidates(s: Snapshot) {
           ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(b.status) &&
           (task.isRecurring
             ? Boolean(occurrenceId) && b.taskOccurrenceId === occurrenceId
-            : s.occurrences.some((o) => o.id === b.taskOccurrenceId && o.taskId === task.id))
+            : s.draftTaskIds?.[b.id] === task.id ||
+              s.occurrences.some((o) => o.id === b.taskOccurrenceId && o.taskId === task.id))
       );
       const completed = matchingBlocks
         .filter((b) => b.status === 'DONE')

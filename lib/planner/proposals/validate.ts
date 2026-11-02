@@ -49,7 +49,10 @@ export function existingBlocks(s: Snapshot): ProposalBlock[] {
       endsAt: b.endsAt,
       durationMinutes: b.durationMinutes,
       category: b.category,
-      taskId: s.occurrences.find((o) => o.id === b.taskOccurrenceId)?.taskId ?? null,
+      taskId:
+        s.draftTaskIds?.[b.id] ??
+        s.occurrences.find((o) => o.id === b.taskOccurrenceId)?.taskId ??
+        null,
       occurrenceId: b.taskOccurrenceId,
       status: b.status,
       source: b.source,
@@ -156,7 +159,12 @@ export function availability(s: Snapshot) {
   return available;
 }
 
-export function validateProposal(s: Snapshot, document: ProposalDocument, now = new Date()) {
+export function validateProposal(
+  s: Snapshot,
+  document: ProposalDocument,
+  now = new Date(),
+  options?: { validateAllFuture?: boolean }
+) {
   const taskChanges: {
     taskId: string;
     title: string;
@@ -326,6 +334,11 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
     changes.push({ type: operation.type, explanation: operation.explanation, before, after });
   }
   const final = [...blocks.values()];
+  if (options?.validateAllFuture) {
+    final
+      .filter((b) => b.status === 'PLANNED' && !b.calendarEventId && b.startsAt >= cutoff)
+      .forEach((b) => changed.add(b.id));
+  }
   const mealCounts = new Set<string>();
   for (const block of final) {
     if (!block.mealKind) {
@@ -398,7 +411,7 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
         (block) =>
           isOccupied(block) &&
           overlap(slot, block) &&
-          ((block.category !== 'LEISURE' && block.category !== 'REST') ||
+          ((block.category !== slot.category && block.category !== 'REST') ||
             block.startsAt < slot.startsAt ||
             block.endsAt > slot.endsAt)
       )

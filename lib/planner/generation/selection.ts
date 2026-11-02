@@ -46,7 +46,7 @@ export function selectionContract(candidates: readonly { key: string }[], fill =
           if (seen.has(item.key)) {
             throw new AiError(
               'INVALID_PROVIDER_RESPONSE',
-              'The model assessed the same candidate more than once.'
+              `The model assessed the same candidate ${item.key} more than once. Selected and omitted must be disjoint. When all candidates are selected, omitted must be an empty array, with no placeholder entries.`
             );
           }
           seen.add(item.key);

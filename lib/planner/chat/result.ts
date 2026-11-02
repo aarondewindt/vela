@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { reviewResultSchema } from '../review/schema';
 export const planningResultSchema = z.object({
   date: z.iso.date(),
+  draftUpdated: z.boolean().optional(),
+  draftFailed: z.boolean().optional(),
   recordProposalId: z.uuid().optional(),
   matches: z
     .array(z.object({ id: z.string(), label: z.string() }))

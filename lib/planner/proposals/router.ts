@@ -1,3 +1,4 @@
+import { TRPCError } from '@trpc/server';
 import { protectedProcedure, router } from '@/lib/trpc/server';
 import {
   createProposalSchema,
@@ -37,9 +38,13 @@ export const proposalRouter = router({
   createEdit: protectedProcedure
     .input(editSchema)
     .mutation(({ ctx, input }) => proposalService.createEdit(ctx.userId, input)),
-  accept: protectedProcedure
-    .input(proposalIdSchema)
-    .mutation(({ ctx, input }) => proposalService.accept(ctx.userId, input.id)),
+  accept: protectedProcedure.input(proposalIdSchema).mutation(() => {
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message:
+        'Legacy schedule proposals are read-only. Open Planner Today to create and accept a persistent working draft.',
+    });
+  }),
   discard: protectedProcedure
     .input(proposalIdSchema)
     .mutation(({ ctx, input }) => proposalService.discard(ctx.userId, input.id)),

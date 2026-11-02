@@ -93,6 +93,8 @@ export function replanDay(s: Snapshot, input: ReplanInput, requestHash: string, 
       b.id !== selected?.id &&
       b.status === 'PLANNED' &&
       !b.isFixed &&
+      !b.isLocked &&
+      !b.manualOverride &&
       b.source !== 'MANUAL' &&
       !b.calendarEventId &&
       b.startsAt.getTime() >= Math.ceil(now.getTime() / MINUTE) * MINUTE &&

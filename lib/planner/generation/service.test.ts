@@ -222,9 +222,9 @@ it('corrects a repeated reference once within a shared inference deadline, then 
   expect(result.report.outcomes.map((outcome) => outcome.scheduledMinutes)).toEqual([30, 0]);
   expect(model).toHaveBeenCalledTimes(2);
   expect(model.mock.calls[1][0].signal).toBe(model.mock.calls[0][0].signal);
-  expect(model.mock.calls[1][0].prompt).toContain(
-    'previous response had invalid or repeated candidate references'
-  );
+  expect(model.mock.calls[1][0].prompt).toContain('previous response was rejected');
+  expect(model.mock.calls[1][0].prompt).toContain('candidate C1');
+  expect(model.mock.calls[1][0].prompt).toContain('omitted must be an empty array');
 });
 
 it('preserves the plan on AI failure and offers an explicit deterministic option', async () => {

@@ -11,7 +11,8 @@ import {
   scheduleHash,
   withDraft,
 } from './state';
-import { validateProposal } from '../proposals/validate';
+import { planningCandidates } from '../generation/candidates';
+import { existingBlocks, validateProposal } from '../proposals/validate';
 
 const now = at('08:00');
 it('starts empty and applies one manual batch without creating occurrences', () => {
@@ -49,6 +50,56 @@ it('starts empty and applies one manual batch without creating occurrences', () 
   expect(s.occurrences).toEqual([]);
   expect(validateProposal(s, netDocument(base, next), now).final).toHaveLength(1);
   expect(withDraft(s, next).blocks[0].taskOccurrenceId).toBeNull();
+});
+it('retains task identity and effort for draft-only blocks without creating fake occurrences', () => {
+  const s = fixture();
+  const state = applyDocument(
+    s,
+    initialState(s),
+    {
+      schemaVersion: 1,
+      operations: [
+        {
+          type: 'add',
+          block: {
+            kind: 'TASK',
+            taskId: taskId(1),
+            occurrenceId: null,
+            startsAt: at('09:00').toISOString(),
+            endsAt: at('09:30').toISOString(),
+          },
+          explanation: 'Place task',
+        },
+      ],
+    },
+    'manual',
+    now
+  );
+  const snapshot = withDraft(s, state);
+  expect(existingBlocks(snapshot)[0]).toMatchObject({ taskId: taskId(1), occurrenceId: null });
+  expect(
+    planningCandidates(snapshot).candidates.find((c) => c.taskId === taskId(1))?.remaining
+  ).toBe(30);
+  const moved = applyDocument(
+    s,
+    state,
+    {
+      schemaVersion: 1,
+      operations: [
+        {
+          type: 'move',
+          blockId: state.blocks[0].id,
+          startsAt: at('10:00').toISOString(),
+          endsAt: at('10:30').toISOString(),
+          explanation: 'Move',
+        },
+      ],
+    },
+    'manual',
+    now
+  );
+  expect(moved.blocks[0]).toMatchObject({ taskId: taskId(1), occurrenceId: null });
+  expect(s.occurrences).toEqual([]);
 });
 it('manual move and move back has no net schedule difference', () => {
   const s = progressFixture();

@@ -192,3 +192,50 @@ it('bounds planning history and excludes saved debug data from future model prom
   expect(JSON.stringify(passed)).not.toContain('privateDebug');
   expect(JSON.stringify(passed).length).toBeLessThan(26000);
 });
+
+it('uses a concise application confirmation after a saved draft edit instead of verbose model prose', async () => {
+  chunks = [
+    { type: 'text-start', id: 'model' },
+    {
+      type: 'text-delta',
+      id: 'model',
+      delta: 'Long report with internal block IDs and allocations',
+    },
+    { type: 'text-end', id: 'model' },
+    {
+      type: 'tool-output-available',
+      toolCallId: 'call',
+      output: { date: '2030-01-07', reply: 'Updated the draft.', draftUpdated: true },
+    },
+  ];
+  const result = await run();
+  const text = result.writer.write.mock.calls
+    .map(([chunk]: any[]) => chunk)
+    .filter((chunk: any) => chunk.type === 'text-delta')
+    .map((chunk: any) => chunk.delta)
+    .join('');
+  expect(text).toBe('Updated the draft.');
+  expect(result.status).toBe('COMPLETED');
+});
+
+it('keeps a failed draft update visible even if the model later claims the schedule is ready', async () => {
+  chunks = [
+    {
+      type: 'tool-output-available',
+      toolCallId: 'call',
+      output: { date: '2030-01-07', reply: 'Could not update the draft.', draftFailed: true },
+    },
+    { type: 'text-start', id: 'model' },
+    { type: 'text-delta', id: 'model', delta: 'The schedule is ready to accept.' },
+    { type: 'text-end', id: 'model' },
+  ];
+  const result = await run();
+  expect(result.status).toBe('FAILED');
+  expect(result.message.parts).toContainEqual({
+    type: 'text',
+    text: 'Could not update the draft.',
+  });
+  expect(
+    JSON.stringify(result.message.parts.filter((part: any) => part.type === 'text'))
+  ).not.toContain('ready to accept');
+});

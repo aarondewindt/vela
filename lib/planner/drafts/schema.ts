@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { documentSchema } from '../proposals/schema';
+import { documentSchema, generationReportSchema } from '../proposals/schema';
 
 const instant = z.iso.datetime({ offset: true });
 export const draftBlockSchema = z.object({
@@ -20,6 +20,7 @@ export const draftBlockSchema = z.object({
   isLocked: z.boolean().default(false),
 });
 export const draftStateSchema = z.object({
+  generation: generationReportSchema.optional(),
   blocks: z.array(draftBlockSchema).max(1000),
   slots: z
     .array(
@@ -48,9 +49,20 @@ export const applyDraftSchema = draftCommandSchema
   .extend({
     document: documentSchema,
     origin: z.enum(['manual', 'ai']),
+    preserveIntent: z.boolean().default(false),
     label: z.string().trim().min(1).max(240),
   })
   .strict();
 export const cancelDraftSchema = draftCommandSchema
   .extend({ confirmed: z.boolean().default(false) })
+  .strict();
+
+export const slotDraftSchema = draftCommandSchema
+  .extend({
+    action: z.enum(['add', 'move', 'remove']),
+    slotId: z.uuid().optional(),
+    category: z.enum(['WORK', 'LIFE', 'LEISURE', 'REST']).optional(),
+    startsAt: instant.optional(),
+    endsAt: instant.optional(),
+  })
   .strict();

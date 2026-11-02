@@ -1,5 +1,6 @@
 import 'server-only';
-import { proposalService } from '../proposals/service';
+import { contextForSnapshot } from '../proposals/service';
+import { draftService } from '../drafts/service';
 import { plannerService } from '../service';
 
 export async function plannerChatContext(
@@ -7,14 +8,16 @@ export async function plannerChatContext(
   date: string,
   selection?: { focusedBlockId?: string | null; focusedTaskId?: string | null }
 ) {
-  const [context, day] = await Promise.all([
-    proposalService.context(userId, date),
+  const [workspace, day] = await Promise.all([
+    draftService.snapshot(userId, date, true),
     plannerService.getDayData(userId, date),
   ]);
+  const context = contextForSnapshot(workspace.snapshot, true);
   const focusedBlock = context.blocks.find((b) => b.id === selection?.focusedBlockId);
   const focusedTask = context.candidates.find((c) => c.taskId === selection?.focusedTaskId);
   return {
     date,
+    draft: workspace.draft,
     timezone: context.timezone,
     userTimezone: day.timezone,
     focusedBlock: focusedBlock

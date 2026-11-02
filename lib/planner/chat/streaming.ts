@@ -81,6 +81,9 @@ export async function streamPlanningTurn({
       let modelOutcome = 'unknown';
       let hasText = false;
       let hasProposal = false;
+      let draftReply: string | undefined;
+      let draftFailed = false;
+      const bufferedText: Parameters<typeof writer.write>[0][] = [];
       let errorMessage: string | undefined;
       try {
         const model = await resolveModel(turn.selection);
@@ -158,8 +161,32 @@ export async function streamPlanningTurn({
               'reply' in chunk.output
             ) {
               hasProposal = true;
+              if (
+                'draftFailed' in chunk.output &&
+                chunk.output.draftFailed === true &&
+                typeof chunk.output.reply === 'string'
+              ) {
+                draftReply = chunk.output.reply;
+                draftFailed = true;
+              }
+              if (
+                'draftUpdated' in chunk.output &&
+                chunk.output.draftUpdated === true &&
+                typeof chunk.output.reply === 'string'
+              ) {
+                draftReply = chunk.output.reply;
+                draftFailed = false;
+              }
             }
-            writer.write(chunk);
+            if (
+              chunk.type === 'text-start' ||
+              chunk.type === 'text-delta' ||
+              chunk.type === 'text-end'
+            ) {
+              bufferedText.push(chunk);
+            } else {
+              writer.write(chunk);
+            }
             if (chunk.type.startsWith('tool-')) {
               debug();
             }
@@ -167,10 +194,15 @@ export async function streamPlanningTurn({
         } finally {
           reader.releaseLock();
         }
+        if (draftReply) {
+          text(draftReply);
+        } else {
+          bufferedText.forEach((chunk) => writer.write(chunk));
+        }
         const interrupted = signal.aborted || modelOutcome === 'aborted';
         status = interrupted
           ? 'INTERRUPTED'
-          : modelOutcome === 'completed' && (hasText || hasProposal)
+          : modelOutcome === 'completed' && !draftFailed && (hasText || hasProposal)
             ? 'COMPLETED'
             : 'FAILED';
         if (!hasText && !hasProposal) {
@@ -187,7 +219,7 @@ export async function streamPlanningTurn({
                   ? 'A planning tool failed and the model did not produce a reply.'
                   : `The model ended without a reply or planning proposal (finish reason: ${finishReason ?? 'unknown'}).`;
           text(
-            `${reason} Open Planner debug below for details, then retry. Your saved schedule was not changed by chat.`
+            `${reason} Open Planner debug below for details, then retry. Your active schedule is unchanged. Any saved draft edits remain available.`
           );
         }
       } catch (error) {
@@ -195,7 +227,7 @@ export async function streamPlanningTurn({
         const errors = diagnosticErrors(error);
         trace.record('error', 'Planner generation failed', { errors });
         text(
-          `Planner could not finish: ${debugText(errors[0]?.message ?? 'Unknown generation error')}. Open Planner debug for details. Your saved schedule was not changed by chat.`
+          `Planner could not finish: ${debugText(errors[0]?.message ?? 'Unknown generation error')}. Open Planner debug for details. Your active schedule is unchanged. Any saved draft edits remain available.`
         );
       }
       trace.record('finish', `Planner response: ${status}`, { status, finishReason, modelOutcome });

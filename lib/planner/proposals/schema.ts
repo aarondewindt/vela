@@ -89,7 +89,7 @@ export const operationSchema = z.discriminatedUnion('type', [
 ]);
 export const reservationSchema = z
   .object({
-    category: z.literal('LEISURE'),
+    category: z.enum(['WORK', 'LIFE', 'LEISURE', 'REST']),
     ...interval,
     explanation: z.string().trim().min(1).max(2000),
   })

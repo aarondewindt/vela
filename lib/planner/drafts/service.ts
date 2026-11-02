@@ -5,20 +5,21 @@ import { z } from 'zod';
 import { Prisma, type PlannerDraft } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { fingerprint, loadSnapshot, type Snapshot } from '../proposals/snapshot';
-import { validateProposal } from '../proposals/validate';
+import { documentSchema, type ProposalDocument } from '../proposals/schema';
 import { wallInstant } from '../proposals/time';
 import {
   applyDraftSchema,
   cancelDraftSchema,
   draftCommandSchema,
   draftStateSchema,
+  slotDraftSchema,
   type DraftState,
 } from './schema';
 import {
   applyDocument,
   initialState,
   inputHash,
-  netDocument,
+  validateDraft,
   scheduleHash,
   withDraft,
 } from './state';
@@ -78,7 +79,7 @@ function assertFresh(row: PlannerDraft, s: Snapshot, state: DraftState) {
 }
 function validateNet(s: Snapshot, base: DraftState, state: DraftState) {
   try {
-    return validateProposal(s, netDocument(base, state));
+    return validateDraft(s, base, state);
   } catch (error) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -191,6 +192,87 @@ async function append(
 }
 
 export const draftService = {
+  async slot(userId: string, raw: z.input<typeof slotDraftSchema>) {
+    const input = slotDraftSchema.parse(raw);
+    return request(
+      userId,
+      input,
+      'slot',
+      async (tx, s, row, state) => {
+        assertFresh(row, s, state);
+        const next = draftStateSchema.parse(state);
+        const old = next.slots.find((slot) => slot.id === input.slotId);
+        if (input.action !== 'add' && (!old || new Date(old.startsAt) < new Date())) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Choose a future category reservation.',
+          });
+        }
+        next.slots = next.slots.filter((slot) => slot.id !== input.slotId);
+        if (input.action !== 'remove') {
+          if (!input.startsAt || !input.endsAt || (!old && !input.category)) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Choose category and start/end times.',
+            });
+          }
+          next.slots.push({
+            id: old?.id ?? randomUUID(),
+            category: old?.category ?? input.category!,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            source: 'MANUAL',
+          });
+        }
+        validateNet(s, draftStateSchema.parse(row.baseState), next);
+        const updated = await append(tx, row, next, s, 'Edit category reservation');
+        return { draftId: row.id, version: updated.version };
+      },
+      true
+    );
+  },
+  async applyGenerated(
+    userId: string,
+    raw: Command,
+    document: ProposalDocument,
+    generationInputHash: string
+  ) {
+    const command = draftCommandSchema.parse(raw);
+    const hasChanges =
+      document.operations.length ||
+      document.reservations?.length ||
+      document.freeIntervals?.length ||
+      document.taskLimits?.length;
+    const parsed = hasChanges ? documentSchema.parse(document) : document;
+    return request(
+      userId,
+      { ...command, document: parsed, generationInputHash },
+      'generate',
+      async (tx, s, row, state) => {
+        assertFresh(row, s, state);
+        if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
+          throw conflict('This day is finalized.');
+        }
+        let next;
+        try {
+          next = applyDocument(s, state, parsed, 'ai');
+        } catch (error) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: error instanceof Error ? error.message : 'Invalid generated draft.',
+          });
+        }
+        validateNet(s, draftStateSchema.parse(row.baseState), next);
+        const updated = await append(tx, row, next, s, 'Generate schedule');
+        return { draftId: row.id, version: updated.version, generationInputHash };
+      }
+    );
+  },
+  async byRequest(userId: string, requestId: string) {
+    return prisma.plannerDraftRequest.findUnique({
+      where: { userId_requestId: { userId, requestId } },
+    });
+  },
   async read(userId: string, date: string) {
     return draftTransaction(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
@@ -212,7 +294,7 @@ export const draftService = {
         conflicts.push('The active schedule or relevant planning inputs changed.');
       }
       try {
-        validateProposal(s, netDocument(base, state));
+        validateDraft(s, base, state);
       } catch (error) {
         conflicts.push(error instanceof Error ? error.message : 'Draft validation failed.');
       }
@@ -257,7 +339,14 @@ export const draftService = {
         }
         let next;
         try {
-          next = applyDocument(s, state, input.document, input.origin);
+          next = applyDocument(
+            s,
+            state,
+            input.document,
+            input.origin,
+            new Date(),
+            input.preserveIntent
+          );
         } catch (error) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -366,7 +455,11 @@ export const draftService = {
           isCurrent: true,
           version: (s.plans.at(-1)?.version ?? 0) + 1,
           generatedBy: 'MANUAL',
-          explanationJson: json({ draftId: row.id, draftVersion: row.version }),
+          explanationJson: json({
+            draftId: row.id,
+            draftVersion: row.version,
+            generation: state.generation,
+          }),
         },
       });
       const occurrenceIds = new Map<string, string>();
@@ -442,7 +535,7 @@ export const draftService = {
       return receipt;
     });
   },
-  async snapshot(userId: string, date: string) {
+  async snapshot(userId: string, date: string, allowStale = false) {
     return draftTransaction(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
       const row = await tx.plannerDraft.findFirst({
@@ -452,8 +545,48 @@ export const draftService = {
         return { snapshot: s, draft: null };
       }
       const state = await currentState(tx, row);
-      assertFresh(row, s, state);
-      return { snapshot: withDraft(s, state), draft: { id: row.id, version: row.version } };
+      if (!allowStale) {
+        assertFresh(row, s, state);
+      }
+      return {
+        snapshot: withDraft(s, state),
+        draft: { id: row.id, version: row.version, stale: row.baseHash !== inputHash(s, state) },
+      };
     });
   },
 };
+
+export async function mutateDraft<T extends Command>(
+  userId: string,
+  input: T,
+  action: string,
+  build: (s: Snapshot) => ProposalDocument
+) {
+  return request(
+    userId,
+    input,
+    action,
+    async (tx, s, row, state) => {
+      assertFresh(row, s, state);
+      if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
+        throw conflict('This day is finalized.');
+      }
+      let next;
+      try {
+        next = applyDocument(s, state, documentSchema.parse(build(withDraft(s, state))), 'manual');
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: error instanceof Error ? error.message : 'Invalid draft edit.',
+        });
+      }
+      validateNet(s, draftStateSchema.parse(row.baseState), next);
+      const updated = await append(tx, row, next, s, 'Manual calendar edit');
+      return { draftId: row.id, version: updated.version };
+    },
+    true
+  );
+}

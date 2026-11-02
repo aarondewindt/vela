@@ -5,9 +5,12 @@ import { dateInTimezone } from '@/lib/nutrition/dates';
 import { createHash } from 'node:crypto';
 import { tool } from 'ai';
 import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
+import { AiError } from '@/lib/ai/errors';
 import { generateDaySchema } from '../generation/schema';
-import { generateDayPlan } from '../generation/service';
-import { planInstruction } from '../conversation/planning';
+import { generateWorkingDraft } from '../drafts/generation';
+import { draftInstruction, draftInstructions } from '../drafts/planning';
+import { draftService } from '../drafts/service';
 import { Clarification, relativeDueDate } from '../conversation/resolve';
 import { instructionSchema, replaceBlocksSchema } from '../conversation/schema';
 import { proposalService } from '../proposals/service';
@@ -19,11 +22,25 @@ const recordToolSchema = instructionSchema.options[2]
   .omit({ type: true })
   .partial({ query: true, task: true, theme: true });
 const dateSchema = z.object({ date: z.iso.date() }).strict();
-const actionSchema = z.union(
-  instructionSchema.options.filter((option) =>
-    ['edit', 'reserve', 'replan', 'replaceBlocks'].includes(option.shape.type.value)
-  )
-);
+const actionSchema = z.discriminatedUnion('type', [
+  instructionSchema.options[6].extend({
+    blockQuery: instructionSchema.options[6].shape.blockQuery.default(null),
+    candidateQuery: instructionSchema.options[6].shape.candidateQuery.default(null),
+    startTime: instructionSchema.options[6].shape.startTime.default(null),
+    endTime: instructionSchema.options[6].shape.endTime.default(null),
+  }),
+  instructionSchema.options[5].extend({
+    action: z.enum(['replan', 'postpone', 'cancel', 'replace']),
+    blockQuery: instructionSchema.options[5].shape.blockQuery.default(null),
+    candidateQuery: instructionSchema.options[5].shape.candidateQuery.default(null),
+    startTime: instructionSchema.options[5].shape.startTime.default(null),
+    endTime: instructionSchema.options[5].shape.endTime.default(null),
+    additionalMinutes: z.null().default(null),
+    completeTask: z.literal(false).default(false),
+  }),
+  instructionSchema.options[7],
+  instructionSchema.options[8],
+]);
 
 export function planningGuidance(latestRequest: string | undefined, context: string) {
   const latest = latestRequest?.trim();
@@ -39,14 +56,14 @@ export function planningGuidance(latestRequest: string | undefined, context: str
 export function planningTools(
   userId: string,
   turnKey: string,
-  pending?: { date: string; proposalId: string },
+  _pending?: { date: string; proposalId: string },
   userTimezone?: string,
   latestRequest?: string,
   conversationId?: string,
   workspaceDate?: string
 ) {
-  let current = pending;
   let queue = Promise.resolve();
+  let modified = false;
   const sequential = <T>(operation: () => Promise<T>): Promise<T> => {
     const next = queue.then(operation);
     queue = next.then(
@@ -61,27 +78,25 @@ export function planningTools(
       .digest('hex');
     return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
   };
-  const replay = async (id: string) => proposalService.byRequest(userId, id);
-  const result = (date: string, reply: string, proposalId?: string) => {
-    if (proposalId) {
-      current = { date, proposalId };
+  const result = (date: string, reply: string) => ({ date, reply: reply.slice(0, 16000) });
+  const generationReply = (value: unknown) => {
+    if (value && typeof value === 'object' && 'unchanged' in value && value.unchanged) {
+      return 'summary' in value && typeof value.summary === 'string'
+        ? value.summary
+        : 'No draft changes were needed.';
     }
-    return { date, reply: reply.slice(0, 16000), ...(proposalId ? { proposalId } : {}) };
+    return 'Draft schedule updated.';
   };
-  const checkPending = async (date: string) => {
-    if (!current || current.date !== date) {
-      return undefined;
-    }
-    const proposal = await proposalService.get(userId, current.proposalId);
-    if (proposal.status !== 'PENDING') {
-      return undefined;
-    }
-    if (proposal.invalidReason) {
-      throw new Clarification(proposal.invalidReason);
-    }
-    return current;
-  };
-  const executeAction = async (instruction: z.input<typeof actionSchema>) =>
+  const failure = (date: string, error: unknown) => ({
+    ...result(
+      date,
+      error instanceof TRPCError || error instanceof AiError
+        ? `Could not update the draft: ${error.message}`
+        : 'Could not update the draft. Retry when the planning service is available.'
+    ),
+    draftFailed: true,
+  });
+  const executeAction = (instruction: z.input<typeof actionSchema>) =>
     sequential(async () => {
       const parsed = actionSchema.parse(instruction);
       if (
@@ -92,27 +107,21 @@ export function planningTools(
       ) {
         throw new Error('Unsupported planning action.');
       }
+      if (modified) {
+        return result(
+          parsed.date,
+          'This instruction already updated the draft. Summarize the saved change.'
+        );
+      }
       try {
-        const id = requestId(parsed);
-        const saved = await replay(id);
-        if (saved) {
-          return result(
-            parsed.date,
-            'Recovered the saved proposal. Review before accepting.',
-            saved.id
-          );
-        }
-        const previous = await checkPending(parsed.date);
-        const planned = await planInstruction(userId, id, parsed, previous, userTimezone);
-        if (previous && planned.proposalId && previous.proposalId !== planned.proposalId) {
-          await proposalService.discard(userId, previous.proposalId);
-        }
-        return result(parsed.date, planned.reply, planned.proposalId);
+        const updated = await draftInstruction(userId, requestId(parsed), parsed, userTimezone);
+        modified = true;
+        return updated;
       } catch (error) {
         if (error instanceof Clarification) {
           return result(parsed.date, error.message);
         }
-        throw error;
+        return failure(parsed.date, error);
       }
     });
   const executeRecord = async (input: z.output<typeof recordToolSchema>, revise = false) =>
@@ -158,6 +167,32 @@ export function planningTools(
       }
     });
   return {
+    editScheduleBatch: tool({
+      description:
+        'Apply several explicit schedule edits in ONE atomic undoable draft revision. Use this instead of separate mutation calls for a multi-part user instruction. All actions must target the same date. Generation uses generateDayPlan instead.',
+      inputSchema: z.object({ actions: z.array(actionSchema).min(1).max(20) }).strict(),
+      execute: ({ actions }) =>
+        sequential(async () => {
+          const parsed = actions as Parameters<typeof draftInstructions>[2];
+          if (modified) {
+            return result(parsed[0].date, 'This instruction already updated the draft.');
+          }
+          try {
+            const updated = await draftInstructions(
+              userId,
+              requestId(parsed),
+              parsed,
+              userTimezone
+            );
+            modified = true;
+            return updated;
+          } catch (error) {
+            return error instanceof Clarification
+              ? result(parsed[0].date, error.message)
+              : failure(parsed[0].date, error);
+          }
+        }),
+    }),
     findPlannerRecords: tool({
       description:
         'Find owner tasks or themes by exact name/ID or substring, including unscheduled and completed records. Show ambiguous choices with IDs; never guess. Use before updating/deleting or assigning a theme.',
@@ -193,67 +228,70 @@ export function planningTools(
     }),
     generateDayPlan: tool({
       description:
-        'Invoke the existing AI scheduler using saved availability and the current-time cutoff. Pass the user’s requests, constraints, hints, durations, preferred order and priorities as guidance, preserving relevant conversation context. The scheduler interprets and places tasks; do not classify requirements as unsupported or demand exact time slots before calling it. Returns a validated pending preview, never applies changes.',
-      inputSchema: generateDaySchema.pick({ date: true, guidance: true }),
-      execute: async ({ date, guidance }) =>
+        'Invoke the existing AI scheduler using saved availability and the current-time cutoff. Pass the user’s requests, constraints, hints, durations, preferred order and priorities as guidance, preserving relevant conversation context. The scheduler interprets and places tasks; do not classify requirements as unsupported or demand exact time slots before calling it. Edits the persistent working draft, never the active schedule. Set rebuild only for an explicit request to completely rebuild eligible future placements.',
+      inputSchema: generateDaySchema
+        .pick({ date: true, guidance: true })
+        .extend({ rebuild: z.boolean().optional() }),
+      execute: async ({ date, guidance, rebuild }) =>
         sequential(async () => {
+          if (modified) {
+            return result(date, 'This instruction already updated the draft.');
+          }
           const schedulerGuidance = planningGuidance(latestRequest, guidance);
-          const id = requestId({ type: 'generate', date, guidance: schedulerGuidance });
-          const saved = await replay(id);
-          if (saved) {
-            return result(date, 'Recovered the saved proposal. Review before accepting.', saved.id);
-          }
-          const old = await checkPending(date);
-          const generated = await generateDayPlan(userId, {
-            requestId: id,
+          const id = requestId({
+            type: 'generate',
             date,
-            mode: 'ai',
             guidance: schedulerGuidance,
-            reviseProposalId: old?.proposalId,
+            rebuild: Boolean(rebuild),
           });
-          if (old && generated.id && old.proposalId !== generated.id) {
-            await proposalService.discard(userId, old.proposalId);
+          const saved = await draftService.byRequest(userId, id);
+          if (saved) {
+            return { ...result(date, generationReply(saved.result)), draftUpdated: true };
           }
-          return {
-            ...result(
+          try {
+            const { draft } = await draftService.read(userId, date);
+            const generated = await generateWorkingDraft(userId, {
+              requestId: id,
               date,
-              [
-                generated.report.summary,
-                ...generated.report.outcomes.map(
-                  (outcome) =>
-                    `${outcome.title}: ${outcome.scheduledMinutes} minutes scheduled. ${outcome.reason}`
-                ),
-                ...generated.report.warnings,
-              ].join('\n'),
-              generated.id ?? undefined
-            ),
-            summary: generated.report.summary,
-          };
+              draftId: draft?.id ?? null,
+              expectedVersion: draft?.version ?? 0,
+              mode: 'ai',
+              guidance: schedulerGuidance,
+              rebuild: Boolean(rebuild),
+            });
+            modified = true;
+            return { ...result(date, generationReply(generated)), draftUpdated: true };
+          } catch (error) {
+            return failure(date, error);
+          }
         }),
     }),
     proposeScheduleChanges: tool({
       description:
-        'Propose a specific edit, timed free interval, or progress/replanning action via existing services. References must identify exactly one task/block. Revisions compose with the pending preview; nothing is applied. For easier replacements ask which eligible task. Never complete tasks unless explicitly requested.',
+        'Propose a specific edit, timed free interval, or progress/replanning action via existing services. References must identify exactly one task/block. Edits update the persistent draft; active stays unchanged. Actual task progress is recorded separately. For easier replacements ask which eligible task. Never complete tasks unless explicitly requested.',
       inputSchema: actionSchema,
       execute: executeAction,
     }),
     replaceScheduledBlocks: tool({
       description:
-        'Replace one or several specific planned blocks with an eligible task, preserving every selected block’s exact times and all unrelated preview changes. For requests such as replace Vela blocks after 20:30, select the matching block IDs from pending preview context using its local timezone. Pass the exact eligible candidate ID. Never invent time slots. Returns one validated preview; never applies changes.',
+        'Replace one or several specific planned blocks with an eligible task, preserving every selected block’s exact times and all unrelated preview changes. For requests such as replace Vela blocks after 20:30, select the matching block IDs from draft context using its local timezone. Pass the exact eligible candidate ID. Never invent time slots. Edits the working draft in one undoable batch; active stays unchanged.',
       inputSchema: replaceBlocksSchema.omit({ type: true }),
       execute: async (input) => executeAction({ ...input, type: 'replaceBlocks' }),
     }),
     reviewDayPlan: tool({
       description:
         'Review current or pending plan using the existing review service. Deterministic conflicts and optional AI concerns remain distinct.',
-      inputSchema: reviewDaySchema.omit({ proposalId: true }),
+      inputSchema: reviewDaySchema.omit({ proposalId: true, selection: true }),
       execute: async (input) =>
         sequential(async () => {
-          const previous = await checkPending(input.date);
-          const review = await reviewDayPlan(userId, {
-            ...input,
-            proposalId: previous?.proposalId,
-          });
+          const { snapshot } = await draftService.snapshot(userId, input.date, true);
+          const review = await reviewDayPlan(
+            userId,
+            {
+              ...input,
+            },
+            snapshot
+          );
           const compact = {
             ...review,
             guidance: review.guidance.slice(0, 500),
@@ -300,39 +338,26 @@ export function planningTools(
       inputSchema: dateSchema,
       execute: async ({ date }) =>
         sequential(async () => {
-          let proposal =
-            current?.date === date ? await proposalService.get(userId, current.proposalId) : null;
-          if (!proposal || !['PENDING', 'APPLIED'].includes(proposal.status)) {
-            const applied = (await proposalService.list(userId, date)).find(
-              (p) => p.status === 'APPLIED'
+          const { draft } = await draftService.read(userId, date);
+          if (draft) {
+            return result(
+              date,
+              draft.state.generation
+                ? [
+                    draft.state.generation.summary,
+                    ...draft.state.generation.outcomes.map((o) => `${o.title}: ${o.reason}`),
+                  ].join('\n')
+                : `Working draft: ${draft.state.blocks.length} blocks. ${draft.conflicts.join(' ') || 'Changes remain in the draft until you use Accept.'}`
             );
-            proposal = applied ? await proposalService.get(userId, applied.id) : null;
           }
-          if (!proposal) {
-            return result(date, 'No saved planning explanation is available for this date.');
-          }
-          if (proposal.invalidReason) {
-            return result(date, proposal.invalidReason);
-          }
-          const generation = proposal.preview.generation;
+          const applied = (await proposalService.list(userId, date)).find(
+            (p) => p.status === 'APPLIED'
+          );
+          const proposal = applied ? await proposalService.get(userId, applied.id) : null;
           return result(
             date,
-            [
-              generation?.summary,
-              proposal.preview.selectionExplanation
-                ? `Original selection assessment: ${proposal.preview.selectionExplanation.summary}`
-                : undefined,
-              ...(proposal.preview.selectionExplanation?.reasons.map(
-                (reason) => `${reason.title}: ${reason.reason}`
-              ) ?? []),
-              ...proposal.preview.changes.map((c) => c.explanation),
-              ...(generation?.outcomes.map(
-                (o) =>
-                  `${o.title}: ${o.scheduledMinutes} minutes scheduled. ${o.reason} ${o.selectionReason ?? ''}`
-              ) ?? []),
-            ]
-              .filter(Boolean)
-              .join('\n')
+            proposal?.preview.generation?.summary ??
+              'No saved planning explanation is available for this date.'
           );
         }),
     }),

@@ -8,11 +8,13 @@ jest.mock('@/lib/ai-dev/conversations', () => ({
 jest.mock('@/lib/ai-dev/service', () => ({
   createChatService: jest.fn(() => ({ streamChat: jest.fn() })),
 }));
-jest.mock('../proposals/service', () => ({ proposalService: { context: jest.fn() } }));
+jest.mock('../proposals/service', () => ({ contextForSnapshot: jest.fn() }));
+jest.mock('../drafts/service', () => ({ draftService: { snapshot: jest.fn() } }));
 jest.mock('../service', () => ({ plannerService: { getDayData: jest.fn() } }));
 
 import { createChatService } from '@/lib/ai-dev/service';
-import { proposalService } from '../proposals/service';
+import { contextForSnapshot } from '../proposals/service';
+import { draftService } from '../drafts/service';
 import { plannerService } from '../service';
 import { plannerChatContext, plannerChatConversations, streamPlannerChat } from './service';
 import { plannerChatInputSchema } from './schema';
@@ -27,11 +29,12 @@ const input = {
 beforeEach(() => {
   jest.clearAllMocks();
   (plannerChatConversations.get as jest.Mock).mockResolvedValue({});
-  (proposalService.context as jest.Mock).mockResolvedValue({
+  (contextForSnapshot as jest.Mock).mockReturnValue({
     timezone: 'Europe/Amsterdam',
     blocks: Array.from({ length: 81 }, (_, id) => ({ id, title: 'B'.repeat(300) })),
     candidates: Array.from({ length: 45 }, (_, id) => ({ id, title: 'T'.repeat(300) })),
   });
+  (draftService.snapshot as jest.Mock).mockResolvedValue({ snapshot: {}, draft: null });
   (plannerService.getDayData as jest.Mock).mockResolvedValue({
     availability: [{ start: '09:00', end: '17:00' }],
     privateExtra: 'never send',
@@ -39,7 +42,7 @@ beforeEach(() => {
 });
 it('loads owner-scoped day context and bounds the records and titles sent to the model', async () => {
   const result = await plannerChatContext('owner', input.date);
-  expect(proposalService.context).toHaveBeenCalledWith('owner', input.date);
+  expect(draftService.snapshot).toHaveBeenCalledWith('owner', input.date, true);
   expect(plannerService.getDayData).toHaveBeenCalledWith('owner', input.date);
   expect(result.blocks).toHaveLength(80);
   expect(result.candidates).toHaveLength(40);
@@ -56,7 +59,7 @@ it('authorizes the conversation before loading context or starting inference', a
   await expect(streamPlannerChat('other', input, new AbortController().signal)).rejects.toThrow(
     'Not found'
   );
-  expect(proposalService.context).not.toHaveBeenCalled();
+  expect(draftService.snapshot).not.toHaveBeenCalled();
   expect(chatStream).not.toHaveBeenCalled();
 });
 it('reuses streaming with typed orchestration instructions and authoritative date', async () => {
@@ -80,18 +83,14 @@ it('requires a valid calendar date and text-only user message', () => {
       .success
   ).toBe(false);
 });
-it('verifies explicit workspace proposal references against owner and selected date before inference', async () => {
-  const get = jest.fn().mockRejectedValue(new Error('Not found'));
-  Object.assign(proposalService, { get });
-  await expect(
-    streamPlannerChat(
-      'other',
-      { ...input, proposalId: input.conversationId },
-      new AbortController().signal
-    )
-  ).rejects.toThrow('Not found');
-  expect(get).toHaveBeenCalledWith('other', input.conversationId);
-  expect(chatStream).not.toHaveBeenCalled();
+it('ignores old conversation proposal references and reads the date-scoped draft', async () => {
+  await streamPlannerChat(
+    'owner',
+    { ...input, proposalId: input.conversationId },
+    new AbortController().signal
+  );
+  expect(draftService.snapshot).toHaveBeenCalledWith('owner', input.date, true);
+  expect(chatStream.mock.calls[0][3]).toContain('persistent working draft');
 });
 it('rejects oversized Planner messages rather than silently losing hard constraints during truncation', () => {
   expect(

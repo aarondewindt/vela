@@ -1,5 +1,13 @@
 /** @jest-environment node */
 jest.mock('server-only', () => ({}));
+jest.mock('@/lib/ai/structured', () => ({ generateStructured: jest.fn() }));
+jest.mock('@/lib/model-settings/service', () => ({ requireModelSelection: jest.fn() }));
+jest.mock('@/lib/task-search/service', () => ({
+  taskCollection: { status: jest.fn(), search: jest.fn() },
+}));
+jest.mock('@/lib/task-reviews/service', () => ({
+  taskReviewService: { schedulerContext: jest.fn() },
+}));
 jest.mock('@/lib/prisma', () => {
   const { PrismaClient } = jest.requireActual('@/generated/prisma/client');
   const { PrismaPg } = jest.requireActual('@prisma/adapter-pg');
@@ -19,6 +27,9 @@ import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { prisma } from '@/lib/prisma';
 import { draftService } from './service';
+import { editWorkingDraft } from './manual';
+import { generateWorkingDraft } from './generation';
+import { draftInstructions } from './planning';
 import { draftCommandSchema } from './schema';
 import type { z } from 'zod';
 const { schema } = jest.requireMock('@/lib/prisma');
@@ -169,6 +180,15 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
         category: 'WORK',
       },
     });
+    const checkin = await prisma.checkin.create({
+      data: {
+        userId: owner,
+        planId: plan.id,
+        blockId: block.id,
+        taskOccurrenceId: occurrence.id,
+        brief: 'Synthetic historical check-in',
+      },
+    });
     const input = {
       ...(await command()),
       origin: 'manual' as const,
@@ -196,6 +216,7 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
       draftService.accept(owner, accept),
     ]);
     expect(receipts[0]).toEqual(receipts[1]);
+    expect(await prisma.checkin.findUnique({ where: { id: checkin.id } })).toEqual(checkin);
     expect(await prisma.dailyPlan.count({ where: { userId: owner, isCurrent: true } })).toBe(1);
     expect(await prisma.dailyPlan.count({ where: { userId: owner } })).toBe(2);
     expect(
@@ -218,6 +239,8 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
     await draftService.apply(owner, await add());
     await prisma.task.update({ where: { id: taskId }, data: { estimatedMinutes: 75 } });
     expect((await draftService.read(owner, date)).draft?.conflicts.length).toBeGreaterThan(0);
+    expect((await draftService.snapshot(owner, date, true)).draft?.stale).toBe(true);
+    await expect(draftService.snapshot(owner, date)).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(draftService.accept(owner, await command())).rejects.toMatchObject({
       code: 'CONFLICT',
     });
@@ -250,5 +273,154 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
     expect(await prisma.dailyPlan.count({ where: { userId: owner } })).toBe(0);
     expect(await prisma.taskOccurrence.count({ where: { userId: owner } })).toBe(0);
     expect((await draftService.read(owner, date)).draft?.state.blocks).toHaveLength(1);
+  });
+  it('routes manual add/move/resize through drafts, regenerates safely and retains manual placements', async () => {
+    const input = {
+      ...(await command()),
+      action: 'add' as const,
+      taskId,
+      startsAt: `${date} 10:00:00`,
+    };
+    const first = await editWorkingDraft(owner, input);
+    expect(await editWorkingDraft(owner, input)).toEqual(first);
+    const before = (await draftService.read(owner, date)).draft!;
+    const block = before.state.blocks[0];
+    await editWorkingDraft(owner, {
+      ...(await command()),
+      action: 'time',
+      blockId: block.id,
+      startsAt: `${date} 11:00:00`,
+      endsAt: `${date} 12:00:00`,
+    });
+    await editWorkingDraft(owner, {
+      ...(await command()),
+      action: 'time',
+      blockId: block.id,
+      startsAt: `${date} 11:00:00`,
+      endsAt: `${date} 11:30:00`,
+    });
+    const generate = { ...(await command()), mode: 'deterministic' as const };
+    const receipt = await generateWorkingDraft(owner, generate);
+    expect(await generateWorkingDraft(owner, generate)).toEqual(receipt);
+    const draft = (await draftService.read(owner, date)).draft!;
+    expect(draft.state.blocks.find((b) => b.id === block.id)).toMatchObject({
+      startsAt: at('11:00').toISOString(),
+      endsAt: at('11:30').toISOString(),
+      manualOverride: true,
+    });
+    expect(await prisma.dailyPlan.count({ where: { userId: owner } })).toBe(0);
+    expect(await prisma.taskOccurrence.count({ where: { userId: owner } })).toBe(0);
+    await generateWorkingDraft(owner, {
+      ...(await command()),
+      mode: 'deterministic',
+      rebuild: true,
+    });
+    const rebuilt = (await draftService.read(owner, date)).draft!;
+    expect(rebuilt.state.blocks.some((b) => b.id === block.id)).toBe(false);
+    expect(rebuilt.state.blocks.some((b) => b.taskId === taskId)).toBe(true);
+  });
+  it('applies a multi-part conversational edit as exactly one persistent undo step', async () => {
+    await draftService.apply(owner, await add());
+    const before = (await draftService.read(owner, date)).draft!;
+    const block = before.state.blocks[0];
+    await draftInstructions(
+      owner,
+      randomUUID(),
+      [
+        {
+          type: 'edit',
+          date,
+          action: 'move',
+          blockQuery: block.id,
+          candidateQuery: null,
+          startTime: '11:00',
+          endTime: '11:30',
+          explanation: 'Move work',
+        },
+        {
+          type: 'edit',
+          date,
+          action: 'resize',
+          blockQuery: block.id,
+          candidateQuery: null,
+          startTime: '11:00',
+          endTime: '11:45',
+          explanation: 'Longer work',
+        },
+      ],
+      'UTC'
+    );
+    const after = (await draftService.read(owner, date)).draft!;
+    expect(after.version).toBe(before.version + 1);
+    expect(after.state.blocks[0]).toMatchObject({
+      taskId,
+      startsAt: at('11:00').toISOString(),
+      durationMinutes: 45,
+    });
+    await draftService.history(owner, await command(), 'undo');
+    expect((await draftService.read(owner, date)).draft?.state.blocks[0].startsAt).toBe(
+      at('10:00').toISOString()
+    );
+  });
+  it('validates category edits against the same whole draft and rolls invalid reservations back', async () => {
+    await draftService.apply(owner, await add());
+    await draftService.slot(owner, {
+      ...(await command()),
+      action: 'add',
+      category: 'WORK',
+      startsAt: at('10:00').toISOString(),
+      endsAt: at('11:00').toISOString(),
+    });
+    const before = (await draftService.read(owner, date)).draft!;
+    await expect(
+      draftService.slot(owner, {
+        ...(await command()),
+        action: 'add',
+        category: 'LIFE',
+        startsAt: at('10:00').toISOString(),
+        endsAt: at('11:00').toISOString(),
+      })
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect((await draftService.read(owner, date)).draft?.version).toBe(before.version);
+    await draftService.accept(owner, await command());
+    expect(
+      await prisma.dailyPlanCategorySlot.count({
+        where: { plan: { userId: owner, isCurrent: true } },
+      })
+    ).toBe(1);
+  });
+  it('races distinct acceptance requests without producing two active versions', async () => {
+    await draftService.apply(owner, await add());
+    const first = await command();
+    const results = await Promise.allSettled([
+      draftService.accept(owner, first),
+      draftService.accept(owner, { ...first, requestId: randomUUID() }),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(await prisma.dailyPlan.count({ where: { userId: owner, isCurrent: true } })).toBe(1);
+  });
+  it('retains unaccepted past-day drafts without promoting them', async () => {
+    const past = '2000-01-03';
+    await draftService.begin(owner, {
+      date: past,
+      requestId: randomUUID(),
+      draftId: null,
+      expectedVersion: 0,
+    });
+    const draft = (await draftService.read(owner, past)).draft!;
+    await expect(
+      draftService.accept(owner, {
+        date: past,
+        requestId: randomUUID(),
+        draftId: draft.id,
+        expectedVersion: draft.version,
+      })
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect((await draftService.read(owner, past)).draft?.id).toBe(draft.id);
+    expect(
+      await prisma.dailyPlan.count({
+        where: { userId: owner, planDate: new Date(`${past}T00:00:00Z`), isCurrent: true },
+      })
+    ).toBe(0);
   });
 });
