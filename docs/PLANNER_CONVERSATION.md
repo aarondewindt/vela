@@ -1,4 +1,9 @@
-# Planner conversation (#37 and #38)
+# Historical structured Planner conversation (#37 and #38)
+
+The November 2, 2026 [workspace redesign](PLANNER_WORKSPACE.md) supersedes this UI.
+`/planner/conversation` now redirects to Today. Existing rows and owner-scoped read
+APIs remain; legacy schedule proposal acceptance is disabled. The following notes
+describe the earlier implementation, not the current schedule-editing workflow.
 
 Open **Planner → Conversation** and create or resume a conversation. Configure an
 LLM through Settings; `planner.conversation` inherits Balanced / Default LLM.

@@ -119,3 +119,13 @@
   outline: 2px solid var(--mantine-color-blue-5);
   border-radius: var(--mantine-radius-sm);
 }
+
+.dualCalendars {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--mantine-spacing-xs);
+}
+
+.dualCalendars > div {
+  min-width: 0;
+}

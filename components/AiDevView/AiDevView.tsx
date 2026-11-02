@@ -322,8 +322,19 @@ function ChatPanel({
     id: conversation.id,
     messages: conversation.messages,
     transport,
-    onFinish: onSaved,
-    onError: onSaved,
+    onFinish: () => {
+      onSaved();
+      if (planner) {
+        void allUtils.plannerDraft?.read.invalidate();
+        void allUtils.planner.getDayData.invalidate();
+      }
+    },
+    onError: () => {
+      onSaved();
+      if (planner) {
+        void allUtils.plannerDraft?.read.invalidate();
+      }
+    },
   });
   const [input, setInput] = useState('');
   const messageInput = useRef<HTMLTextAreaElement>(null);
