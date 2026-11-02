@@ -20,6 +20,8 @@ export type ProposalBlock = {
   source: string;
   isFixed: boolean;
   calendarEventId: string | null;
+  manualOverride?: boolean;
+  isLocked?: boolean;
 };
 export type Change = {
   type: string;
@@ -53,6 +55,8 @@ export function existingBlocks(s: Snapshot): ProposalBlock[] {
       source: b.source,
       isFixed: b.isFixed,
       calendarEventId: b.calendarEventId,
+      manualOverride: b.manualOverride ?? false,
+      isLocked: b.isLocked ?? false,
     }));
 }
 
@@ -248,9 +252,11 @@ export function validateProposal(s: Snapshot, document: ProposalDocument, now = 
         }
       } else if (
         before.status !== 'PLANNED' ||
+        before.isLocked ||
         before.calendarEventId ||
         before.startsAt < cutoff ||
-        ((before.isFixed || before.source === 'MANUAL') && !operation.explicit)
+        ((before.isFixed || before.source === 'MANUAL' || before.manualOverride) &&
+          !operation.explicit)
       ) {
         fail('Manual, fixed, started, completed, skipped and cancelled blocks are protected.');
       }

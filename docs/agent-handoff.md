@@ -5,6 +5,24 @@ This Git-tracked checkpoint records significant unfinished work between agents; 
 **Status:** Issue #59 workspace foundation and #37 conversational planning implemented on `feat/59-planner-workspace` / draft PR #96. Live Ollama and authenticated browser acceptance remain; keep #37 open. Existing Android checkpoints below are historical.
 **Last updated:** 2026-10-25
 
+## Persistent Planner redesign — 2026-11-02 (in progress)
+
+- PR #96 is merged (`21157704`), and its code is on current master. November 2
+  issue requirements supersede its proposal-card workflow. Read #119, #59, #37,
+  #73, #120 and #18 before continuing.
+- Additive draft models/migration and protected plannerDraft API implemented;
+  complete snapshots, 100-revision undo/redo, durable idempotency receipts,
+  optimistic versions, input conflicts, conservative refresh and atomic new-plan
+  promotion reuse existing proposal validation. No application DB migration yet.
+- Nine focused state tests and five real isolated PostgreSQL lifecycle/concurrency/
+  rollback tests pass. DB tests need NODE_OPTIONS=--experimental-vm-modules and
+  access to local PostgreSQL; default sandbox cannot connect.
+- Still integrating generation, manual UI and chat. Existing legacy handlers are
+  present and must be moved before calling the feature usable. Do not close issues.
+  See [draft architecture](PLANNER_DRAFTS.md) for invariants and test command.
+- Next DevTools discovered port 3000 and verified project/routes/logs. Error tool
+  currently reports no connected browser session, not a clean visited page.
+
 ## Packaged product extraction #116 — 2026-10-25
 
 - #116 is updated and closed on GitHub. Implemented in the working tree on top

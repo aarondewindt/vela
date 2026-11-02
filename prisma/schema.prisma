@@ -36,6 +36,8 @@ model User {
   taskDependencies          TaskDependency[]
   taskOccurrences           TaskOccurrence[]
   planningProposals         PlanningProposal[]
+  plannerDrafts             PlannerDraft[]
+  plannerDraftRequests       PlannerDraftRequest[]
   dailyPlans                DailyPlan[]
   dailyBlocks               DailyBlock[]
   dayOverrides              DayOverride[]
@@ -843,6 +845,8 @@ model DailyPlan {
 }
 
 model DailyBlock {
+  manualOverride   Boolean         @default(false)
+  isLocked         Boolean         @default(false)
   mealKind         String?         @db.VarChar(16)
   id               String          @id @default(uuid()) @db.Uuid
   userId           String
@@ -1100,6 +1104,57 @@ model PlanningProposal {
   @@unique([userId, requestId])
   @@index([userId, planDate, createdAt])
   @@map("planning_proposals")
+}
+
+// Whole-day intended schedule; never a source of task outcomes or actual progress.
+model PlannerDraft {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDate    DateTime @db.Date
+  timezone    String   @db.VarChar(64)
+  status      String   @default("OPEN") @db.VarChar(16)
+  basePlanId  String?  @db.Uuid
+  baseHash    String   @db.Char(64)
+  baseState   Json     @db.JsonB
+  version     Int      @default(1)
+  cursor      Int      @default(0)
+  nextRevision Int    @default(1)
+  receipt     Json?    @db.JsonB
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  revisions   PlannerDraftRevision[]
+  requests    PlannerDraftRequest[]
+
+  @@index([userId, planDate, status])
+  @@map("planner_drafts")
+}
+
+model PlannerDraftRevision {
+  draftId     String   @db.Uuid
+  draft       PlannerDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  sequence    Int
+  state       Json     @db.JsonB
+  label       String   @db.VarChar(240)
+  createdAt   DateTime @default(now())
+
+  @@id([draftId, sequence])
+  @@map("planner_draft_revisions")
+}
+
+// Receipts outlive undo branches and cancelled/accepted drafts.
+model PlannerDraftRequest {
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String @db.Uuid
+  draftId     String @db.Uuid
+  draft       PlannerDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  requestHash String @db.Char(64)
+  result      Json @db.JsonB
+  createdAt   DateTime @default(now())
+
+  @@id([userId, requestId])
+  @@map("planner_draft_requests")
 }
 
 model TaskReview {

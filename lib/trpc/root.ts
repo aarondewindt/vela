@@ -6,6 +6,7 @@ import { homeAssistantRouter } from '@/lib/integrations/home-assistant/router';
 import { healthRouter } from '@/lib/health/router';
 import { proposalRouter } from '@/lib/planner/proposals/router';
 import { plannerRouter } from '@/lib/planner/router';
+import { draftRouter } from '@/lib/planner/drafts/router';
 import { settingsRouter } from '@/lib/settings/router';
 import { devToolsRouter } from '@/lib/dev-tools/router';
 import { aiDevRouter } from '@/lib/ai-dev/router';
@@ -21,6 +22,7 @@ export const appRouter = router({
   devices: devicesRouter,
   discover: discoverRouter,
   planner: plannerRouter,
+  plannerDraft: draftRouter,
   plannerConversation: conversationRouter,
   taskReviews: taskReviewRouter,
   planningProposals: proposalRouter,
