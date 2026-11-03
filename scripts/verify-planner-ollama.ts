@@ -125,6 +125,26 @@ async function main() {
       ),
       'Amsterdam 14:00 stored as 13:00Z'
     );
+    const manualBlock = draft.state.blocks.find((b) => b.taskId === block.taskId)!;
+    const regenerate = {
+      date,
+      requestId: randomUUID(),
+      draftId: draft.id,
+      expectedVersion: draft.version,
+      mode: 'ai' as const,
+    };
+    const regenerated = await generateWorkingDraft(userId, regenerate);
+    assert.deepEqual(
+      await generateWorkingDraft(userId, regenerate),
+      regenerated,
+      'retrying a completed generation request must replay its receipt'
+    );
+    draft = (await draftService.read(userId, date)).draft;
+    assert.deepEqual(
+      draft?.state.blocks.find((candidate) => candidate.id === manualBlock.id),
+      manualBlock,
+      'normal live regeneration must preserve the manual override exactly'
+    );
     await prisma.task.create({
       data: { userId, title: 'Synthetic outage fixture', estimatedMinutes: 30 },
     });
