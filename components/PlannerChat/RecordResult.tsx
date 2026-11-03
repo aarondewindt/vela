@@ -2,7 +2,7 @@
 import { Alert, Button, Group, Stack, Text } from '@mantine/core';
 import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
-import { RecordReview } from '../PlannerConversation/RecordReview';
+import { RecordReview } from './RecordReview';
 
 export function RecordResult({
   conversationId,

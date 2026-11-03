@@ -1,12 +1,19 @@
 # Planning proposals
 
+> Historical UI note (November 3, 2026): persistent whole-day drafts now own the
+> user-facing Planner workflow described in [Planner Today workspace](PLANNER_WORKSPACE.md).
+> The saved-proposal selector, manual proposal editor, schedule preview cards and
+> Apply/Discard controls were removed in #73. The service contract and stored rows
+> below remain in use internally and for historical compatibility; legacy schedule
+> proposal acceptance is disabled.
+
 Implemented for [#33](https://github.com/aarondewindt/vela/issues/33), under #18.
 This is the shared review/application workflow for the replacement scheduler.
 It follows [Scheduler policy](PLANNER_SCHEDULER_POLICY.md). [AI day planning](AI_DAY_PLANNING.md)
 (#34) now generates through this workflow. [Remaining-day replanning](REPLANNING.md)
 (#36) adds explicit progress and protected-work adjustments. [Day plan reviews](PLAN_REVIEWS.md) (#35) separate verified conflicts from advisory AI concerns and compose validated corrections through this workflow.
 
-## Using the workflow
+## Historical user workflow
 
 Open **Planner → Today → Generate plan** for the selected date. For a manual change,
 expand **Manual plan change** and choose an addition,

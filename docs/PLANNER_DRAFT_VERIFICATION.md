@@ -1,4 +1,4 @@
-# Planner draft verification — November 2, 2026
+# Planner draft verification — November 3, 2026
 
 This report covers the persistent-draft redesign in #119, #59, #37 and #73.
 #120 remains open for the broader acceptance matrix and repeated daily use.
@@ -31,6 +31,17 @@ focused generation/chat/draft/proposal checks passed 257 tests, and
 isolated PostgreSQL passed ten tests. TypeScript, changed-file lint/style checks
 and production build passed. The initial full-suite transport failure was sandbox
 child-process denial and passed on rerun with the required execution access.
+
+After the final #123 validation-policy changes landed, the #37 integration was
+rechecked against that exact revision. The focused draft/chat/generation/proposal/
+review/UI run passed 26 suites / 290 tests (13 opt-in skips), the isolated PostgreSQL
+suite passed all ten lifecycle tests, TypeScript passed, and the full Jest run passed
+199 suites / 1,700 tests (41 opt-in skips). A fresh live run again used `qwen3:8b`
+for conversation and independently configured `qwen3:14b` for scheduling; it created
+a draft without an active plan, kept an informational question revision-neutral,
+applied the following edit as one revision, preserved state across conversation
+deletion and rolled back a deliberately failed scheduler call. Repository-wide
+format/lint checks still report the documented unrelated baseline violations.
 
 ## Reproduction
 

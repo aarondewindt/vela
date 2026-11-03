@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { usePlanningWorkspaceStore } from '@/store/planningWorkspaceStore';
 import { PlannerChat } from '../PlannerChat/PlannerChat';
 import {
@@ -27,14 +26,12 @@ import { DatePickerInput } from '@mantine/dates';
 import { AgendaView, DayView, type ScheduleEventData } from '@mantine/schedule';
 import { notifications } from '@mantine/notifications';
 import { useWorkingDraft } from '@/lib/planner/drafts/hooks';
-import { DraftReview } from './DraftReview';
+import { PlannerToolbar } from './PlannerToolbar';
 import { draftDayData } from '@/lib/planner/drafts/day-data';
 import {
   IconCalendar,
-  IconCheck,
   IconChevronLeft,
   IconChevronRight,
-  IconPlus,
   IconTargetArrow,
 } from '@tabler/icons-react';
 import {
@@ -799,90 +796,29 @@ export function TodayView() {
                   </Stack>
                 </HoverCard.Dropdown>
               </HoverCard>
-              <Button
-                size="xs"
-                variant="default"
-                leftSection={<IconPlus size={14} />}
-                onClick={() => openAddTask()}
-              >
-                Add task
-              </Button>
-              <Button
-                size="xs"
-                variant="default"
-                loading={workspace.generate.isPending}
-                disabled={workspace.busy}
-                onClick={() => workspace.generate.mutate({ ...workspace.command(), mode: 'ai' })}
-              >
-                Generate
-              </Button>
-              <Button
-                size="xs"
-                variant="subtle"
-                loading={workspace.generate.isPending}
-                disabled={workspace.busy}
-                onClick={() =>
+              <PlannerToolbar
+                date={selectedDate}
+                hasDraft={Boolean(draft)}
+                canUndo={draft?.canUndo ?? false}
+                canRedo={draft?.canRedo ?? false}
+                busy={workspace.busy}
+                generating={workspace.generate.isPending}
+                accepting={acceptDraft.isPending}
+                onAddTask={() => openAddTask()}
+                onGenerate={() => workspace.generate.mutate({ ...workspace.command(), mode: 'ai' })}
+                onAutoFill={() =>
                   workspace.generate.mutate({ ...workspace.command(), mode: 'deterministic' })
                 }
-              >
-                Auto-fill
-              </Button>
-              <DraftReview date={selectedDate} />
-              <Button
-                size="xs"
-                variant="subtle"
-                disabled={workspace.busy}
-                onClick={() => setRebuildOpen(true)}
-              >
-                Rebuild…
-              </Button>
-              <Button size="xs" variant="default" component={Link} href="/settings/planner">
-                Planning settings
-              </Button>
-              {draft && (
-                <Button
-                  size="xs"
-                  color="teal"
-                  leftSection={<IconCheck size={14} />}
-                  loading={acceptDraft.isPending}
-                  disabled={workspace.busy}
-                  onClick={() => acceptDraft.mutate(workspace.command())}
-                >
-                  Accept draft
-                </Button>
-              )}
-              {draft && (
-                <>
-                  <Button
-                    size="xs"
-                    variant="default"
-                    disabled={!draft.canUndo || workspace.busy}
-                    onClick={() => workspace.undo.mutate(workspace.command())}
-                  >
-                    Undo
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="default"
-                    disabled={!draft.canRedo || workspace.busy}
-                    onClick={() => workspace.redo.mutate(workspace.command())}
-                  >
-                    Redo
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="default"
-                    disabled={workspace.busy}
-                    onClick={() =>
-                      draft.modified
-                        ? setClearPlanOpen(true)
-                        : workspace.cancel.mutate(workspace.command())
-                    }
-                  >
-                    Cancel draft
-                  </Button>
-                </>
-              )}
+                onRebuild={() => setRebuildOpen(true)}
+                onAccept={() => acceptDraft.mutate(workspace.command())}
+                onUndo={() => workspace.undo.mutate(workspace.command())}
+                onRedo={() => workspace.redo.mutate(workspace.command())}
+                onCancel={() =>
+                  draft?.modified
+                    ? setClearPlanOpen(true)
+                    : workspace.cancel.mutate(workspace.command())
+                }
+              />
             </>
           )}
           {layer === 'categories' && (
@@ -933,8 +869,10 @@ export function TodayView() {
           style={{ minHeight: 420 }}
         >
           <Splitter.Pane
-            defaultSize="18%"
-            min="12%"
+            defaultSize="16%"
+            min="10%"
+            collapsible
+            collapseThreshold="10%"
             className={classes.workspacePane}
             data-active={workspaceSurface === 'tasks' || undefined}
             aria-label="Task list"
@@ -976,7 +914,7 @@ export function TodayView() {
             )}
           </Splitter.Pane>
           <Splitter.Pane
-            defaultSize="60%"
+            defaultSize="64%"
             min="35%"
             className={classes.workspacePane}
             data-active={workspaceSurface === 'schedule' || undefined}
@@ -1218,8 +1156,10 @@ export function TodayView() {
             </div>
           </Splitter.Pane>
           <Splitter.Pane
-            defaultSize="22%"
-            min="15%"
+            defaultSize="20%"
+            min="12%"
+            collapsible
+            collapseThreshold="12%"
             className={classes.workspacePane}
             data-active={workspaceSurface === 'chat' || undefined}
             aria-label="Planner chat"

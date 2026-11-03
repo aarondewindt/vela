@@ -45,11 +45,13 @@ selected date, recent turns and the pending preview. An explicit unquoted “due
 wall times are rejected. A different saved-plan timezone requires using the regular
 plan review for explicit time adjustments.
 
-## Preview and acceptance
+## Historical preview and acceptance
 
-Messages never apply changes. Plan previews use `ProposalWorkspace` and the existing
-proposal acceptance service, including stale checks, expiry, deterministic constraints
-and receipts. Task/theme previews show the resolved record, requested fields and
+In this retired UI, messages did not apply changes. Plan previews used the removed
+`ProposalWorkspace` and the existing proposal acceptance service, including stale
+checks, expiry, deterministic constraints and receipts. Current schedule changes edit
+the persistent working draft and are accepted only from Today. Task/theme previews
+still show the resolved record, requested fields and
 before/after values and resolved theme names. Deletion additionally requires a checkbox and **Confirm deletion**;
 writing “yes” in chat does not bypass acceptance. Theme deletion retains tasks with
 no theme. Task deletion uses the existing deletion service: occurrences/dependencies/

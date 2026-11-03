@@ -94,7 +94,7 @@
 
 .workspaceLabels {
   display: grid;
-  grid-template-columns: 22fr 48fr 30fr;
+  grid-template-columns: 16fr 64fr 20fr;
   padding: var(--mantine-spacing-xs);
   border-bottom: 1px solid var(--mantine-color-default-border);
 }

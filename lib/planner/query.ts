@@ -233,38 +233,3 @@ export function useUnskipBlockMutation() {
     },
   });
 }
-
-export function useGenerateDraftMutation() {
-  const utils = trpc.useUtils();
-
-  return trpc.planner.generateDraft.useMutation({
-    onSuccess: (_plan, { date }) => {
-      utils.planner.getPlan.invalidate({ date });
-      utils.planner.getDayData.invalidate({ date });
-      utils.planner.listTasks.invalidate();
-    },
-  });
-}
-
-export function useAcceptDraftMutation() {
-  const utils = trpc.useUtils();
-
-  return trpc.planner.acceptDraft.useMutation({
-    onSuccess: (_result, { date }) => {
-      utils.planner.getPlan.invalidate({ date });
-      utils.planner.getDayData.invalidate({ date });
-    },
-  });
-}
-
-export function useClearDayPlanMutation() {
-  const utils = trpc.useUtils();
-
-  return trpc.planner.clearDayPlan.useMutation({
-    onSuccess: (_result, { date }) => {
-      utils.planner.getPlan.invalidate({ date });
-      utils.planner.getDayData.invalidate({ date });
-      utils.planner.listTasks.invalidate();
-    },
-  });
-}

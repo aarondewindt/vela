@@ -43,6 +43,28 @@ draft edits cannot complete work, change actual progress or infer task completio
 The desktop Splitter retains resizable side columns. Existing narrow-screen surface
 selection remains; mobile redesign and synchronized calendar scrolling are deferred.
 
+## Workspace cleanup (#73)
+
+The task layer toolbar keeps one primary Generate/Regenerate action plus Review.
+Accept, Cancel, Undo and Redo appear only while a working draft exists; unavailable
+history actions stay disabled. Deterministic Auto-fill, explicit future Rebuild and
+Planner settings remain discoverable in the single More menu instead of competing
+with draft lifecycle controls. Rebuild retains its confirmation because it may
+reorganize eligible future manual placements.
+
+The candidate-task and chat panes are resizable and can collapse at their minimum
+widths, with more initial width reserved for the calendar. A draft adds only the
+read-only Active and editable Working draft labels. Changed/conflicting blocks are
+marked in DayView and acceptance failures remain visible as errors.
+
+The redirected structured-conversation screen and old proposal workspace UI were
+removed, including the giant generation/manual-change form, saved-proposal selector,
+duplicate previews, and schedule Apply/Discard cards. The underlying proposal,
+review, generation, scheduling and historical-record services remain for internal
+reuse and compatibility. Inventory record previews are deliberately retained: task
+and theme mutations are separate consequential changes and still require explicit
+review/acceptance.
+
 ## Persistence and conflicts
 
 See [persistent drafts](PLANNER_DRAFTS.md) for models, transaction/lock ordering,
