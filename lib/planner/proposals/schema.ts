@@ -71,6 +71,15 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
+      type: z.literal('retime'),
+      explicit: z.literal(true).optional(),
+      blockId: z.uuid(),
+      ...interval,
+      explanation: z.string().trim().min(1).max(2000),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('remove'),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),

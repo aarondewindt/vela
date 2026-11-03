@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { draftCommandSchema } from './schema';
 import { mutateDraft } from './service';
 import { wallInstant, timeMinute } from '../proposals/time';
-import { eligible, existingBlocks } from '../proposals/validate';
+import { existingBlocks } from '../proposals/validate';
 import type { ProposalOperation } from '../proposals/schema';
 
 export const manualDraftSchema = draftCommandSchema
@@ -46,11 +46,6 @@ export async function editWorkingDraft(userId: string, raw: z.input<typeof manua
         occurrences.find((o) => o.occurrenceDate.toISOString().slice(0, 10) === input.date)?.id ??
         occurrences[0]?.id ??
         null;
-      try {
-        eligible(s, task.id, occurrenceId);
-      } catch (error) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: (error as Error).message });
-      }
       const startsAt = instant(input.startsAt);
       const endsAt = new Date(
         new Date(startsAt).getTime() + (task.estimatedMinutes ?? 25) * 60000
@@ -69,12 +64,7 @@ export async function editWorkingDraft(userId: string, raw: z.input<typeof manua
         input.action === 'remove'
           ? { type: 'remove', blockId: block.id, explanation }
           : {
-              type:
-                input.action === 'time'
-                  ? instant(input.startsAt) === block.startsAt.toISOString()
-                    ? 'resize'
-                    : 'move'
-                  : input.action,
+              type: input.action === 'time' ? 'retime' : input.action,
               blockId: block.id,
               startsAt: instant(input.startsAt),
               endsAt: instant(input.endsAt),

@@ -362,7 +362,7 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
       at('10:00').toISOString()
     );
   });
-  it('validates category edits against the same whole draft and rolls invalid reservations back', async () => {
+  it('persists overlapping category edits and rejects acceptance without altering the draft', async () => {
     await draftService.apply(owner, await add());
     await draftService.slot(owner, {
       ...(await command()),
@@ -372,22 +372,26 @@ suite('persistent draft lifecycle on isolated PostgreSQL', () => {
       endsAt: at('11:00').toISOString(),
     });
     const before = (await draftService.read(owner, date)).draft!;
-    await expect(
-      draftService.slot(owner, {
-        ...(await command()),
-        action: 'add',
-        category: 'LIFE',
-        startsAt: at('10:00').toISOString(),
-        endsAt: at('11:00').toISOString(),
-      })
-    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect((await draftService.read(owner, date)).draft?.version).toBe(before.version);
-    await draftService.accept(owner, await command());
+    await draftService.slot(owner, {
+      ...(await command()),
+      action: 'add',
+      category: 'LIFE',
+      startsAt: at('10:00').toISOString(),
+      endsAt: at('11:00').toISOString(),
+    });
+    const conflicting = (await draftService.read(owner, date)).draft!;
+    expect(conflicting.version).toBe(before.version + 1);
+    expect(conflicting.state.slots).toHaveLength(2);
+    await expect(draftService.accept(owner, await command())).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+      message: expect.stringContaining('overlaps LIFE reservation'),
+    });
+    expect((await draftService.read(owner, date)).draft?.state.slots).toHaveLength(2);
     expect(
       await prisma.dailyPlanCategorySlot.count({
         where: { plan: { userId: owner, isCurrent: true } },
       })
-    ).toBe(1);
+    ).toBe(0);
   });
   it('races distinct acceptance requests without producing two active versions', async () => {
     await draftService.apply(owner, await add());

@@ -29,9 +29,12 @@ or acceptance. Successful retries return their original receipt. Reload after an
 mutation to obtain the current server version rather than trusting an old receipt.
 
 `drafts/state.ts` adapts snapshots for the existing proposal validator and scheduler.
-It does not schedule independently. The existing operations remain validation
-primitives; proposal cards are not draft storage. Draft operations reject actual
-finish/skip/extend commands and never write task progress, outcomes or estimates.
+It does not schedule independently. Validation has three explicit policies: strict
+automatic scheduling, structurally permissive manual editing, and hard-consistency
+acceptance. The existing operations remain validation primitives; `retime` represents
+a combined move and resize without replacing block identity. Proposal cards are not
+draft storage. Draft operations reject actual finish/skip/extend commands and never
+write task progress, outcomes or estimates.
 Manual origin, manual override and explicit lock are separate fields. A lock
 prevents edits even with an explicit operation. Manual overrides protect AI-origin
 blocks after a user moves or resizes them.
@@ -48,10 +51,22 @@ complete net validation. An active-base conflict requires preserving the draft f
 comparison or cancelling and starting from the new active version. No automatic
 merge can overwrite authoritative changes.
 
+Manual edits enforce ownership, references, selected-day bounds, positive whole-minute
+duration and protected/locked history. They intentionally permit temporary block,
+busy-event and category-slot overlaps, placement outside availability, category or
+leisure mismatches, and task-estimate overrides. These states are complete revisions,
+so reload, undo/redo and input refresh do not erase them. Strict AI generation still
+uses availability, task effort, categories, leisure reservations, protected blocks and
+the other scheduler rules; normal generation cannot remove manual origins or overrides.
+
 Acceptance revalidates the net schedule changes, not obsolete intermediate edits,
-against current inputs and time. Elapsed/started/completed/calendar history is
-preserved. Unaccepted past-day drafts remain saved and cannot be promoted. Draft
-changes whose start time elapsed meanwhile must be corrected before acceptance.
+against current inputs and time. It rejects overlapping occupied blocks, busy calendar
+events, overlapping category reservations, invalid day/duration bounds and protected
+history or lock violations. Conflict messages identify block/event/slot IDs, titles and
+local ranges where available. Non-busy calendar overlaps, availability, category/leisure
+guidance and task estimates are not acceptance failures. Rejection leaves the OPEN draft
+and every revision intact. Elapsed/started/completed/calendar history is preserved.
+Unaccepted past-day drafts remain saved and cannot be promoted.
 
 Acceptance atomically marks the previous plan non-current, creates the next ACTIVE
 version and copies intended blocks/reservations. Previous blocks/check-ins remain
@@ -68,8 +83,9 @@ ambiguous legacy current base rather than deleting data to repair it.
 
 ## Validation and remaining integration
 
-Focused state and authenticated router tests cover manual intent, net-empty edits, history protection,
-progress rejection and DST. Opt-in real PostgreSQL tests create an isolated schema,
+Focused state and authenticated router tests cover manual intent, both-edge/combined
+retiming, every permissive override, hard acceptance conflicts, net-empty edits,
+history protection, progress rejection and DST. Opt-in real PostgreSQL tests create an isolated schema,
 apply all migrations, exercise create/edit/history/retries/races/acceptance/staleness
 and inject a late transactional failure to verify rollback:
 

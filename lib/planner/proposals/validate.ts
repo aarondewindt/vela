@@ -29,6 +29,7 @@ export type Change = {
   before: ProposalBlock | null;
   after: ProposalBlock | null;
 };
+export type ValidationPolicy = 'strict' | 'manual' | 'acceptance';
 const occupied = (block: ProposalBlock) =>
   ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status);
 const overlap = (a: { startsAt: Date; endsAt: Date }, b: { startsAt: Date; endsAt: Date }) =>
@@ -163,8 +164,10 @@ export function validateProposal(
   s: Snapshot,
   document: ProposalDocument,
   now = new Date(),
-  options?: { validateAllFuture?: boolean }
+  options?: { validateAllFuture?: boolean; policy?: ValidationPolicy }
 ) {
+  const policy = options?.policy ?? 'strict';
+  const strict = policy === 'strict';
   const taskChanges: {
     taskId: string;
     title: string;
@@ -214,7 +217,21 @@ export function validateProposal(
       : `task:${b.taskId}`;
   };
   const add = (input: Addition, id: string): ProposalBlock => {
-    const task = input.kind === 'TASK' ? eligible(s, input.taskId, input.occurrenceId) : null;
+    const task =
+      input.kind !== 'TASK'
+        ? null
+        : strict
+          ? eligible(s, input.taskId, input.occurrenceId)
+          : (s.tasks.find((candidate) => candidate.id === input.taskId) ??
+            fail('Task not found or inaccessible.'));
+    if (input.kind === 'TASK' && input.occurrenceId) {
+      const occurrence = s.occurrences.find(
+        (candidate) => candidate.id === input.occurrenceId && candidate.taskId === input.taskId
+      );
+      if (!occurrence || !['PENDING', 'SCHEDULED'].includes(occurrence.status)) {
+        fail('Occurrence not found, closed, or inaccessible.');
+      }
+    }
     if (
       input.kind === 'MEAL' &&
       !readMealPreferences('mealPreferences' in s.settings ? s.settings.mealPreferences : null)[
@@ -304,23 +321,38 @@ export function validateProposal(
       }
     } else if (operation.type === 'add' || operation.type === 'replace') {
       after = add(operation.block, `new:${index}`);
-    } else if (operation.type === 'move' || operation.type === 'resize') {
+    } else if (
+      operation.type === 'move' ||
+      operation.type === 'resize' ||
+      operation.type === 'retime'
+    ) {
       after = {
         ...before!,
         startsAt: new Date(operation.startsAt),
         endsAt: new Date(operation.endsAt),
         durationMinutes: minutes(new Date(operation.startsAt), new Date(operation.endsAt)),
       };
-      if (operation.type === 'move' && after.durationMinutes !== before!.durationMinutes) {
+      if (strict && operation.type === 'retime') {
+        fail('Combined move and resize is reserved for explicit draft editing.');
+      }
+      if (
+        strict &&
+        operation.type === 'move' &&
+        after.durationMinutes !== before!.durationMinutes
+      ) {
         fail('A move must preserve duration. Use a duration change instead.');
       }
-      if (operation.type === 'resize' && after.startsAt.getTime() !== before!.startsAt.getTime()) {
+      if (
+        strict &&
+        operation.type === 'resize' &&
+        after.startsAt.getTime() !== before!.startsAt.getTime()
+      ) {
         fail('A duration change must preserve the start time.');
       }
       if (after.mealKind && operation.explicit) {
         after.isFixed = true;
       }
-      if (after.taskId) {
+      if (strict && after.taskId) {
         eligible(s, after.taskId, after.occurrenceId);
       }
     }
@@ -374,7 +406,7 @@ export function validateProposal(
       fail('Task time limits require unique owned tasks and a boundary within the selected day.');
     }
     limited.add(limit.taskId);
-    if (limitedTaskMinutes(final, limit) > limit.maxMinutes) {
+    if (strict && limitedTaskMinutes(final, limit) > limit.maxMinutes) {
       fail(
         `${limit.title}: proposed remaining-day task time exceeds the requested maximum of ${limit.maxMinutes} minutes. Adjust existing commitments or revise this limit explicitly.`
       );
@@ -383,11 +415,12 @@ export function validateProposal(
   for (const interval of document.freeIntervals ?? []) {
     const free = { startsAt: new Date(interval.startsAt), endsAt: new Date(interval.endsAt) };
     if (
-      free.startsAt < cutoff ||
+      (strict && free.startsAt < cutoff) ||
       free.endsAt <= free.startsAt ||
       free.endsAt > dayEnd ||
-      final.some((block) => isOccupied(block) && overlap(free, block)) ||
-      busy.some((event) => overlap(free, event))
+      (strict &&
+        (final.some((block) => isOccupied(block) && overlap(free, block)) ||
+          busy.some((event) => overlap(free, event))))
     ) {
       fail(
         'The requested free interval contains occupied time, crosses the selected day, or has already started. Adjust protected commitments explicitly.'
@@ -401,20 +434,22 @@ export function validateProposal(
       );
     }
     if (
+      slot.startsAt < dayStart ||
       slot.endsAt <= slot.startsAt ||
       slot.endsAt > dayEnd ||
-      !windows.some((w) => slot.startsAt >= w.startsAt && slot.endsAt <= w.endsAt) ||
-      originalSlots.some((other) => overlap(slot, other)) ||
-      reservations.slice(index + 1).some((other) => overlap(slot, other)) ||
-      busy.some((event) => overlap(slot, event)) ||
-      final.some(
-        (block) =>
-          isOccupied(block) &&
-          overlap(slot, block) &&
-          ((block.category !== slot.category && block.category !== 'REST') ||
-            block.startsAt < slot.startsAt ||
-            block.endsAt > slot.endsAt)
-      )
+      (strict &&
+        (!windows.some((w) => slot.startsAt >= w.startsAt && slot.endsAt <= w.endsAt) ||
+          originalSlots.some((other) => overlap(slot, other)) ||
+          reservations.slice(index + 1).some((other) => overlap(slot, other)) ||
+          busy.some((event) => overlap(slot, event)) ||
+          final.some(
+            (block) =>
+              isOccupied(block) &&
+              overlap(slot, block) &&
+              ((block.category !== slot.category && block.category !== 'REST') ||
+                block.startsAt < slot.startsAt ||
+                block.endsAt > slot.endsAt)
+          )))
     ) {
       fail(
         'New leisure reservations must fit future availability without conflicting with reservations or occupied time.'
@@ -440,26 +475,30 @@ export function validateProposal(
     if (
       !Number.isInteger(block.durationMinutes) ||
       block.durationMinutes <= 0 ||
+      block.startsAt < dayStart ||
       block.endsAt > dayEnd ||
-      !windows.some(
-        (w) =>
-          (progress
-            ? new Date(Math.max(block.startsAt.getTime(), cutoff.getTime()))
-            : block.startsAt) >= w.startsAt && block.endsAt <= w.endsAt
-      )
+      (strict &&
+        !windows.some(
+          (w) =>
+            (progress
+              ? new Date(Math.max(block.startsAt.getTime(), cutoff.getTime()))
+              : block.startsAt) >= w.startsAt && block.endsAt <= w.endsAt
+        ))
     ) {
       fail(
         'Changed blocks must have positive whole-minute durations within future availability and the selected day.'
       );
     }
     if (
-      busy.some((e) => overlap(block, e)) ||
-      final.some((other) => other.id !== block.id && isOccupied(other) && overlap(block, other))
+      strict &&
+      (busy.some((e) => overlap(block, e)) ||
+        final.some((other) => other.id !== block.id && isOccupied(other) && overlap(block, other)))
     ) {
       fail('A proposed block overlaps occupied time or a busy calendar event.');
     }
     const intersectingSlots = slots.filter((slot) => overlap(block, slot));
     if (
+      strict &&
       block.category !== 'REST' &&
       intersectingSlots.some(
         (slot) =>
@@ -471,6 +510,7 @@ export function validateProposal(
       fail('Task placement conflicts with a category reservation.');
     }
     if (
+      strict &&
       block.category === 'LEISURE' &&
       !intersectingSlots.some(
         (slot) =>
@@ -482,7 +522,7 @@ export function validateProposal(
       fail('Leisure tasks need a matching leisure reservation.');
     }
     const task = s.tasks.find((t) => t.id === block.taskId);
-    if (task?.earliestStartAt && block.startsAt < task.earliestStartAt) {
+    if (strict && task?.earliestStartAt && block.startsAt < task.earliestStartAt) {
       fail('This task cannot start before its earliest start time.');
     }
   }
@@ -513,7 +553,7 @@ export function validateProposal(
   }
   const dayBudget = (block: ProposalBlock) =>
     unfinishedEffortBudget(estimateOf(block.taskId), completedTotals.get(taskKey(block)) ?? 0);
-  for (const block of final.filter((b) => changed.has(b.id) && b.taskId)) {
+  for (const block of strict ? final.filter((b) => changed.has(b.id) && b.taskId) : []) {
     const estimate = dayBudget(block);
     if (
       occupied(block) &&
@@ -605,7 +645,7 @@ export function validateProposal(
     baselineTotals,
     [...otherBlocks, ...original].filter((b) => b.taskId && occupied(b))
   );
-  for (const [id, metric] of sessionMetrics(final, totals, allocations)) {
+  for (const [id, metric] of strict ? sessionMetrics(final, totals, allocations) : []) {
     const old = baseline.get(id);
     if (
       metric.invalid &&

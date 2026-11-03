@@ -9,6 +9,8 @@ import {
   inputHash,
   netDocument,
   scheduleHash,
+  draftAcceptanceConflicts,
+  validateDraft,
   withDraft,
 } from './state';
 import { planningCandidates } from '../generation/candidates';
@@ -197,4 +199,219 @@ it('uses saved-zone 23/25 hour days and rejects ambiguous local times', () => {
       3600000
   ).toBe(25);
   expect(() => wallInstant('2030-10-27', 150, 'Europe/Amsterdam')).toThrow('twice');
+});
+
+const addTask = (id: string, start: string, end: string) => ({
+  type: 'add' as const,
+  block: {
+    kind: 'TASK' as const,
+    taskId: id,
+    occurrenceId: null,
+    startsAt: at(start).toISOString(),
+    endsAt: at(end).toISOString(),
+  },
+  explanation: 'Manual placement',
+});
+
+it('manual policy persists overlaps with blocks and busy/non-busy calendar events', () => {
+  const s = fixture();
+  s.events.push(
+    {
+      id: taskId(91),
+      title: 'Busy appointment',
+      startsAt: at('09:10'),
+      endsAt: at('09:40'),
+      isBusy: true,
+    } as (typeof s.events)[number],
+    {
+      id: taskId(92),
+      title: 'Optional event',
+      startsAt: at('09:00'),
+      endsAt: at('10:00'),
+      isBusy: false,
+    } as (typeof s.events)[number]
+  );
+  const base = initialState(s);
+  const first = applyDocument(
+    s,
+    base,
+    { schemaVersion: 1, operations: [addTask(taskId(1), '09:00', '09:30')] },
+    'manual',
+    now
+  );
+  const overlapping = applyDocument(
+    s,
+    first,
+    { schemaVersion: 1, operations: [addTask(taskId(2), '09:15', '10:00')] },
+    'manual',
+    now
+  );
+  expect(overlapping.blocks).toHaveLength(2);
+  expect(() => validateDraft(s, base, overlapping, now, 'manual')).not.toThrow();
+  expect(draftAcceptanceConflicts(s, overlapping, now)).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining('overlaps block'),
+      expect.stringContaining('Busy appointment'),
+    ])
+  );
+  expect(draftAcceptanceConflicts(s, overlapping, now).join(' ')).not.toContain('Optional event');
+});
+
+it('manual policy permits availability, category, leisure and estimate overrides', () => {
+  const s = fixture([30]);
+  s.tasks[0].category = 'LEISURE';
+  const base = initialState(s);
+  const state = applyDocument(
+    s,
+    base,
+    { schemaVersion: 1, operations: [addTask(taskId(1), '08:00', '09:30')] },
+    'manual',
+    now
+  );
+  expect(state.blocks[0]).toMatchObject({ category: 'LEISURE', durationMinutes: 90 });
+  expect(() => validateDraft(s, base, state, now, 'manual')).not.toThrow();
+  expect(() => validateDraft(s, base, state, now, 'acceptance')).not.toThrow();
+  expect(() =>
+    applyDocument(
+      s,
+      base,
+      { schemaVersion: 1, operations: [addTask(taskId(1), '08:00', '09:30')] },
+      'ai',
+      now
+    )
+  ).toThrow();
+});
+
+it('manual retime supports leading-edge resize while retaining identity and intent', () => {
+  const s = fixture();
+  const placed = applyDocument(
+    s,
+    initialState(s),
+    { schemaVersion: 1, operations: [addTask(taskId(1), '10:00', '10:30')] },
+    'manual',
+    now
+  );
+  const id = placed.blocks[0].id;
+  const resized = applyDocument(
+    s,
+    placed,
+    {
+      schemaVersion: 1,
+      operations: [
+        {
+          type: 'retime',
+          blockId: id,
+          startsAt: at('09:45').toISOString(),
+          endsAt: at('10:30').toISOString(),
+          explanation: 'Resize from leading edge',
+        },
+      ],
+    },
+    'manual',
+    now
+  );
+  expect(resized.blocks[0]).toMatchObject({
+    id,
+    startsAt: at('09:45').toISOString(),
+    endsAt: at('10:30').toISOString(),
+    durationMinutes: 45,
+    manualOverride: true,
+  });
+});
+
+it('manual category reservations may overlap each other and availability, but acceptance rejects them', () => {
+  const s = fixture();
+  const base = initialState(s);
+  const state = {
+    ...base,
+    slots: [
+      {
+        id: taskId(81),
+        category: 'WORK' as const,
+        startsAt: at('08:00').toISOString(),
+        endsAt: at('09:00').toISOString(),
+        source: 'MANUAL' as const,
+      },
+      {
+        id: taskId(82),
+        category: 'LEISURE' as const,
+        startsAt: at('08:30').toISOString(),
+        endsAt: at('09:30').toISOString(),
+        source: 'MANUAL' as const,
+      },
+    ],
+  };
+  expect(() => validateDraft(s, base, state, now, 'manual')).not.toThrow();
+  expect(() => validateDraft(s, base, state, now, 'acceptance')).toThrow(
+    /WORK reservation[\s\S]*overlaps LEISURE reservation/
+  );
+});
+
+it('acceptance errors identify conflicting block/event IDs and local ranges', () => {
+  const s = fixture();
+  s.events.push({
+    id: taskId(93),
+    title: 'Dentist',
+    startsAt: at('09:15'),
+    endsAt: at('09:45'),
+    isBusy: true,
+  } as (typeof s.events)[number]);
+  const base = initialState(s);
+  const state = applyDocument(
+    s,
+    base,
+    { schemaVersion: 1, operations: [addTask(taskId(1), '09:00', '09:30')] },
+    'manual',
+    now
+  );
+  expect(() => validateDraft(s, base, state, now, 'acceptance')).toThrow(
+    new RegExp(`${taskId(93)}[\\s\\S]*09:15–09:45`)
+  );
+});
+
+it('manual and acceptance policies still enforce day bounds, whole minutes and locks', () => {
+  const s = progressFixture();
+  const base = initialState(s);
+  base.blocks[1].isLocked = true;
+  expect(() =>
+    applyDocument(
+      s,
+      base,
+      {
+        schemaVersion: 1,
+        operations: [
+          {
+            type: 'retime',
+            blockId: taskId(21),
+            startsAt: at('11:00').toISOString(),
+            endsAt: at('11:30').toISOString(),
+            explanation: 'Locked edit',
+          },
+        ],
+      },
+      'manual',
+      now
+    )
+  ).toThrow('protected');
+  const fresh = fixture();
+  expect(() =>
+    applyDocument(
+      fresh,
+      initialState(fresh),
+      {
+        schemaVersion: 1,
+        operations: [
+          {
+            ...addTask(taskId(1), '09:00', '09:30'),
+            block: {
+              ...addTask(taskId(1), '09:00', '09:30').block,
+              endsAt: new Date(at('09:30').getTime() + 30_000).toISOString(),
+            },
+          },
+        ],
+      },
+      'manual',
+      now
+    )
+  ).toThrow('whole-minute');
 });

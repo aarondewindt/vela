@@ -14,21 +14,26 @@ picker are reused. Earlier proposal-card expectations are superseded.
    performs that action. With an active plan it copies intended state; otherwise
    it starts empty. No schedule edit silently changes active.
 3. While drafting, compare the read-only active DayView with the editable draft
-   beside it. Changed placements are labeled. Category reservations also edit the
-   draft. Availability remains an authoritative planning setting; changing it can
-   flag the open draft for renewed validation.
+   beside it. Changed placements are labeled. Manual drag/resize is deliberately
+   permissive: blocks and category reservations may overlap, leave availability,
+   mismatch categories/leisure reservations or exceed a task estimate. Both resize
+   edges use one identity-preserving retime operation. Hard conflicts are marked and
+   explained, but remain persisted until the user fixes or undoes them.
 4. Use Undo/Redo for one manual action or one chat edit/batch at a time. The draft,
    cursor and redo branch survive reload, date changes and conversation deletion.
-5. Accept revalidates and atomically saves a new active plan version, retaining old
-   plans, blocks, occurrence identities and check-ins. Cancel leaves active intact;
-   materially changed drafts require confirmation. Both return to one calendar.
+5. Accept is the hard-consistency boundary. It rejects occupied-block, busy-calendar,
+   reservation-slot, day-boundary and protection/lock conflicts with actionable IDs
+   and local ranges while preserving the draft. It allows non-busy events and explicit
+   availability/category/leisure/estimate overrides. A valid draft is atomically saved
+   as the next active version, retaining old plans, blocks, occurrence identities and
+   check-ins. Cancel leaves active intact; materially changed drafts require confirmation.
 
 Generate and Auto-fill share the existing scheduler. Normal regeneration replaces
 eligible automatic future placements while preserving manual origins and user
 overrides. Rebuild requires an explicit request/confirmation and may reorganize
 eligible future manual placements. Started/completed, locked, fixed and calendar
-commitments remain protected. Resize still obeys the recorded remaining task effort;
-use the task editor to explicitly revise an estimate when more time is needed.
+commitments remain protected. Automatic placements remain strict; manual resizing may
+deliberately exceed recorded remaining task effort without changing the task estimate.
 
 Review schedule uses the existing deterministic review on the current draft (or
 active when none is open). Findings and conflicts remain separate from advisory AI
@@ -46,7 +51,8 @@ boundary. Persistent server state stays in TanStack Query; Zustand holds date an
 focus only. Polling and mutation invalidation update other tabs. Conflicting edits
 reject expected-version mismatches without dropping either saved schedule.
 
-A stale draft stays visible with an explanation and disabled Accept. Refresh inputs
+A stale draft stays visible with an explanation. Accept rechecks freshness and rejects
+without changing the draft. Refresh inputs
 can revalidate it if its active base is unchanged; otherwise keep it for comparison
 or cancel and start from the new active version. Past drafts stay saved and cannot
 auto-activate. Timezone/DST conversion uses the existing saved-zone resolver;

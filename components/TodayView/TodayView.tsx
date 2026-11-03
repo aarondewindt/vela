@@ -298,21 +298,24 @@ export function TodayView() {
         ? []
         : (dayData?.plan?.dailyBlocks ?? []).map((block) => ({
             id: block.id,
-            title: `${focusedBlockId === block.id ? 'Selected · ' : ''}${draft && !dayQuery.data?.plan?.dailyBlocks.some((b) => b.id === block.id && b.startsAt.getTime() === block.startsAt.getTime() && b.endsAt.getTime() === block.endsAt.getTime()) ? 'Changed · ' : ''}${block.title}`,
+            title: `${focusedBlockId === block.id ? 'Selected · ' : ''}${draft?.conflicts.some((message) => message.includes(block.id)) ? 'Conflict · ' : ''}${draft && !dayQuery.data?.plan?.dailyBlocks.some((b) => b.id === block.id && b.startsAt.getTime() === block.startsAt.getTime() && b.endsAt.getTime() === block.endsAt.getTime()) ? 'Changed · ' : ''}${block.title}`,
             start: localDateTime(block.startsAt, timezone),
             end: localDateTime(block.endsAt, timezone),
-            color: block.calendarEventId
-              ? block.calendarEvent?.isBusy
-                ? 'red'
-                : 'gray'
-              : colorBy === 'category'
-                ? (categoryColors[
-                    block.category ??
-                      tasksById.get(block.taskOccurrence?.taskId ?? '')?.category ??
-                      'WORK'
-                  ] ?? 'gray')
-                : (themesById.get(tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? '')
-                    ?.color ?? 'gray'),
+            color: draft?.conflicts.some((message) => message.includes(block.id))
+              ? 'red'
+              : block.calendarEventId
+                ? block.calendarEvent?.isBusy
+                  ? 'red'
+                  : 'gray'
+                : colorBy === 'category'
+                  ? (categoryColors[
+                      block.category ??
+                        tasksById.get(block.taskOccurrence?.taskId ?? '')?.category ??
+                        'WORK'
+                    ] ?? 'gray')
+                  : (themesById.get(
+                      tasksById.get(block.taskOccurrence?.taskId ?? '')?.themeId ?? ''
+                    )?.color ?? 'gray'),
             variant: 'light' as const,
             display:
               block.calendarEventId && block.calendarEvent?.isBusy
@@ -408,16 +411,7 @@ export function TodayView() {
     if (endMinute > 1440) {
       return false;
     }
-    const overlaps = (startsAt: Date, endsAt: Date) =>
-      getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
-      getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
-    return !(
-      blocks.some(
-        (block) =>
-          ['PLANNED', 'IN_PROGRESS', 'DONE'].includes(block.status) &&
-          overlaps(block.startsAt, block.endsAt)
-      ) || busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
-    );
+    return endMinute <= 1440;
   };
 
   const canPlaceCategoryAt = (start: string) => {
@@ -426,13 +420,7 @@ export function TodayView() {
     if (startMinute < 0 || endMinute > 1440) {
       return false;
     }
-    const overlaps = (startsAt: Date, endsAt: Date) =>
-      getMinuteInDay(startsAt, timezone, selectedDate) < endMinute &&
-      getMinuteInDay(endsAt, timezone, selectedDate) > startMinute;
-    return !(
-      categorySlots.some((slot) => overlaps(slot.startsAt, slot.endsAt)) ||
-      busyEvents.some((event) => overlaps(event.startsAt, event.endsAt))
-    );
+    return true;
   };
 
   const addCategorySlotAt = (category: PlanningCategoryValue, start: string) => {
@@ -857,7 +845,7 @@ export function TodayView() {
                   color="teal"
                   leftSection={<IconCheck size={14} />}
                   loading={acceptDraft.isPending}
-                  disabled={workspace.busy || Boolean(draft?.conflicts.length)}
+                  disabled={workspace.busy}
                   onClick={() => acceptDraft.mutate(workspace.command())}
                 >
                   Accept draft
@@ -997,13 +985,15 @@ export function TodayView() {
             {draft?.conflicts.map((message) => (
               <Alert key={message} color="yellow" title="Draft needs attention" m="xs">
                 {message}
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  onClick={() => workspace.refresh.mutate(workspace.command())}
-                >
-                  Refresh inputs
-                </Button>
+                {message.includes('active schedule or relevant planning inputs changed') && (
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => workspace.refresh.mutate(workspace.command())}
+                  >
+                    Refresh inputs
+                  </Button>
+                )}
               </Alert>
             ))}
             <div className={draft ? classes.dualCalendars : undefined}>
@@ -1165,7 +1155,7 @@ export function TodayView() {
                     }}
                     onEventPlacementRejected={() =>
                       notifications.show({
-                        message: 'That time is unavailable or overlaps another block',
+                        message: 'Keep the block within the selected calendar day',
                         color: 'yellow',
                       })
                     }
@@ -1177,6 +1167,8 @@ export function TodayView() {
                     }
                     preventEventOverlap={(stillEvent, movingEvent) => {
                       if (
+                        layer === 'tasks' ||
+                        layer === 'categories' ||
                         stillEvent.payload?.kind === 'proposal' ||
                         movingEvent.payload?.kind === 'proposal' ||
                         stillEvent.payload?.kind === 'category-slot' ||

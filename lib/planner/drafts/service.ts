@@ -17,6 +17,7 @@ import {
 } from './schema';
 import {
   applyDocument,
+  draftAcceptanceConflicts,
   initialState,
   inputHash,
   validateDraft,
@@ -77,9 +78,14 @@ function assertFresh(row: PlannerDraft, s: Snapshot, state: DraftState) {
     );
   }
 }
-function validateNet(s: Snapshot, base: DraftState, state: DraftState) {
+function validateNet(
+  s: Snapshot,
+  base: DraftState,
+  state: DraftState,
+  policy: 'manual' | 'acceptance' = 'manual'
+) {
   try {
-    return validateDraft(s, base, state);
+    return validateDraft(s, base, state, new Date(), policy);
   } catch (error) {
     throw new TRPCError({
       code: 'BAD_REQUEST',
@@ -224,7 +230,7 @@ export const draftService = {
             source: 'MANUAL',
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next);
+        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
         const updated = await append(tx, row, next, s, 'Edit category reservation');
         return { draftId: row.id, version: updated.version };
       },
@@ -262,7 +268,7 @@ export const draftService = {
             message: error instanceof Error ? error.message : 'Invalid generated draft.',
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next);
+        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
         const updated = await append(tx, row, next, s, 'Generate schedule');
         return { draftId: row.id, version: updated.version, generationInputHash };
       }
@@ -293,11 +299,7 @@ export const draftService = {
       if (row.baseHash !== inputHash(s, state)) {
         conflicts.push('The active schedule or relevant planning inputs changed.');
       }
-      try {
-        validateDraft(s, base, state);
-      } catch (error) {
-        conflicts.push(error instanceof Error ? error.message : 'Draft validation failed.');
-      }
+      conflicts.push(...draftAcceptanceConflicts(s, state));
       return {
         activePlanId: s.plan?.id ?? null,
         draft: {
@@ -353,7 +355,7 @@ export const draftService = {
             message: error instanceof Error ? error.message : 'Invalid draft edit.',
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next);
+        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
         const updated = await append(tx, row, next, s, input.label);
         return { draftId: row.id, version: updated.version };
       },
@@ -420,7 +422,7 @@ export const draftService = {
           'The active schedule changed. Keep this saved draft for comparison, or cancel it and start from the new active schedule.'
         );
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), state);
+      validateNet(s, draftStateSchema.parse(row.baseState), state, 'manual');
       const updated = await tx.plannerDraft.update({
         where: { id: row.id },
         data: { baseHash: inputHash(s, state), version: { increment: 1 } },
@@ -441,7 +443,7 @@ export const draftService = {
           message: 'Past-day drafts remain saved and cannot be activated.',
         });
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), state);
+      validateNet(s, draftStateSchema.parse(row.baseState), state, 'acceptance');
       await tx.dailyPlan.updateMany({
         where: { userId, planDate: row.planDate, isCurrent: true },
         data: { isCurrent: false },
@@ -583,7 +585,7 @@ export async function mutateDraft<T extends Command>(
           message: error instanceof Error ? error.message : 'Invalid draft edit.',
         });
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), next);
+      validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
       const updated = await append(tx, row, next, s, 'Manual calendar edit');
       return { draftId: row.id, version: updated.version };
     },
