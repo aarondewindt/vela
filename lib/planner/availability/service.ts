@@ -524,10 +524,11 @@ export const availabilityService = {
           include: {
             logicalSlots: { select: { id: true } },
             revisions: {
-              where: { effectiveDate: { lt: day(startsOn) } },
-              orderBy: { effectiveDate: 'desc' },
-              take: 1,
-              select: { slots: { select: { logicalSlotId: true } } },
+              orderBy: { effectiveDate: 'asc' },
+              select: {
+                effectiveDate: true,
+                slots: { select: { logicalSlotId: true } },
+              },
             },
           },
         });
@@ -538,9 +539,10 @@ export const availabilityService = {
           throw badRequest('Restore the template before revising it.');
         }
         const owned = new Set(template.logicalSlots.map(({ id }) => id));
-        const retained = new Set(
-          template.revisions[0]?.slots.map(({ logicalSlotId }) => logicalSlotId) ?? []
-        );
+        const previous = template.revisions
+          .filter((revision) => dateString(revision.effectiveDate) < startsOn)
+          .at(-1);
+        const retained = new Set(previous?.slots.map(({ logicalSlotId }) => logicalSlotId) ?? []);
         for (const slot of input.slots) {
           if (slot.logicalSlotId && !owned.has(slot.logicalSlotId)) {
             throw badRequest('A logical slot does not belong to this template.');
@@ -550,6 +552,16 @@ export const availabilityService = {
           }
         }
         const logicalIds = input.slots.map((slot) => slot.logicalSlotId ?? randomUUID());
+        const nextLogicalIds = new Set(
+          template.revisions
+            .filter((revision) => dateString(revision.effectiveDate) > startsOn)
+            .flatMap((revision) => revision.slots.map(({ logicalSlotId }) => logicalSlotId))
+        );
+        if ([...retained].some((id) => !logicalIds.includes(id) && nextLogicalIds.has(id))) {
+          throw badRequest(
+            'Deleting this slot would resurrect its identity in an existing future revision. Revise the future configuration first.'
+          );
+        }
         const newIds = logicalIds.filter((id) => !owned.has(id));
         if (newIds.length) {
           await tx.availabilityTemplateSlot.createMany({
@@ -639,13 +651,21 @@ export const availabilityService = {
             throw badRequest('The template has no revision effective on the assignment date.');
           }
         }
-        return tx.weeklyAvailabilityAssignment.create({
-          data: {
+        return tx.weeklyAvailabilityAssignment.upsert({
+          where: {
+            userId_weekday_effectiveDate: {
+              userId,
+              weekday: input.weekday,
+              effectiveDate: day(startsOn),
+            },
+          },
+          create: {
             userId,
             weekday: input.weekday,
             effectiveDate: day(startsOn),
             templateId: input.templateId,
           },
+          update: { templateId: input.templateId },
         });
       }
     );

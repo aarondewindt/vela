@@ -164,7 +164,16 @@ function wallCandidates(date: string, minute: number, timezone: string) {
 }
 
 function wallInstant(date: string, minute: number, timezone: string, fullDayBoundary: boolean) {
-  const matches = wallCandidates(date, minute, timezone);
+  let matches = wallCandidates(date, minute, timezone);
+  if (matches.length === 0 && fullDayBoundary) {
+    const boundaryDate = minute === 1440 ? nextDate(date) : date;
+    for (let representedMinute = 1; representedMinute < 1440; representedMinute += 1) {
+      matches = wallCandidates(boundaryDate, representedMinute, timezone);
+      if (matches.length > 0) {
+        break;
+      }
+    }
+  }
   if (matches.length === 0) {
     throw new Error(`${date} minute ${minute} does not exist in timezone ${timezone}`);
   }

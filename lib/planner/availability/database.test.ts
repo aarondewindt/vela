@@ -178,6 +178,93 @@ suite('versioned availability persistence on isolated PostgreSQL', () => {
     ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
   });
 
+  it('does not let an inserted revision resurrect a logical slot in an existing future revision', async () => {
+    const created = await availabilityService.createTemplate(
+      owner,
+      { name: 'Weekday', effectiveDate: '2026-11-04', slots: [slot()] },
+      now
+    );
+    const templateId = created.template.id;
+    const logicalSlotId = created.template.logicalSlots[0].id;
+    await availabilityService.reviseTemplate(
+      owner,
+      templateId,
+      {
+        name: 'Already scheduled future revision',
+        effectiveDate: '2026-11-06',
+        slots: [slot(logicalSlotId)],
+      },
+      now
+    );
+
+    await expect(
+      availabilityService.reviseTemplate(
+        owner,
+        templateId,
+        { name: 'Delete the slot first', effectiveDate: '2026-11-05', slots: [] },
+        now
+      )
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+  });
+
+  it('versions Planner timezone and archives only after future assignments are removed', async () => {
+    const draft = await prisma.plannerDraft.create({
+      data: {
+        userId: owner,
+        planDate: date('2026-11-03'),
+        timezone: 'Europe/Amsterdam',
+        baseHash: 'a'.repeat(64),
+        baseState: {},
+        revisions: { create: { sequence: 0, state: {}, label: 'Initial' } },
+      },
+    });
+    const timezone = await availabilityService.setTimezone(
+      owner,
+      { timezone: 'Europe/London' },
+      now
+    );
+    expect(timezone.value).toMatchObject({ timezone: 'Europe/London' });
+    expect(timezone.impact.openDrafts).toEqual([
+      expect.objectContaining({ id: draft.id, date: '2026-11-03' }),
+    ]);
+
+    const created = await availabilityService.createTemplate(
+      owner,
+      { name: 'Weekday', effectiveDate: '2026-11-04', slots: [slot()] },
+      now
+    );
+    await availabilityService.assignWeekday(
+      owner,
+      { weekday: 3, templateId: created.template.id, effectiveDate: '2026-11-04' },
+      now
+    );
+    await expect(
+      availabilityService.archiveTemplate(owner, created.template.id, now)
+    ).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+
+    await availabilityService.assignWeekday(
+      owner,
+      { weekday: 3, templateId: null, effectiveDate: '2026-11-04' },
+      now
+    );
+    await expect(
+      availabilityService.archiveTemplate(other, created.template.id, now)
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      availabilityService.restoreTemplate(other, created.template.id)
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(
+      await availabilityService.archiveTemplate(owner, created.template.id, now)
+    ).toMatchObject({
+      id: created.template.id,
+      archivedAt: now,
+    });
+    expect(await availabilityService.restoreTemplate(owner, created.template.id)).toEqual({
+      id: created.template.id,
+      archivedAt: null,
+    });
+  });
+
   it('uses independent date snapshots, preserves unrelated day context on reset and isolates owners', async () => {
     const created = await availabilityService.createTemplate(
       owner,

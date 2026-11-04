@@ -240,35 +240,46 @@ describe('resolveEffectiveAvailability', () => {
   });
 
   it.each([
-    ['2026-03-29', 23],
-    ['2026-10-25', 25],
-  ])('resolves a full local day on %s to its actual %i-hour duration', (date, hours) => {
-    const result = resolveEffectiveAvailability(
-      input({
-        date,
-        weeklyAssignments: [
-          { id: 'assignment-1', weekday: 0, effectiveDate: '2020-01-01', templateId: 'template-1' },
-        ],
-        templates: [
-          {
-            id: 'template-1',
-            revisions: [
-              {
-                id: 'revision-1',
-                effectiveDate: '2020-01-01',
-                name: 'Full day',
-                slots: [templateSlot({ startMinute: 0, endMinute: 1440 })],
-              },
-            ],
-          },
-        ],
-      })
-    );
-    expect(
-      (new Date(result.slots[0].endsAt).getTime() - new Date(result.slots[0].startsAt).getTime()) /
-        3_600_000
-    ).toBe(hours);
-  });
+    ['2026-03-29', 'Europe/Amsterdam', 23],
+    ['2026-10-25', 'Europe/Amsterdam', 25],
+    ['2026-03-08', 'America/Havana', 23],
+  ])(
+    'resolves a full local day on %s in %s to its actual %i-hour duration',
+    (date, timezone, hours) => {
+      const result = resolveEffectiveAvailability(
+        input({
+          date,
+          timezonePeriods: [{ effectiveDate: '2020-01-01', timezone }],
+          weeklyAssignments: [
+            {
+              id: 'assignment-1',
+              weekday: 0,
+              effectiveDate: '2020-01-01',
+              templateId: 'template-1',
+            },
+          ],
+          templates: [
+            {
+              id: 'template-1',
+              revisions: [
+                {
+                  id: 'revision-1',
+                  effectiveDate: '2020-01-01',
+                  name: 'Full day',
+                  slots: [templateSlot({ startMinute: 0, endMinute: 1440 })],
+                },
+              ],
+            },
+          ],
+        })
+      );
+      expect(
+        (new Date(result.slots[0].endsAt).getTime() -
+          new Date(result.slots[0].startsAt).getTime()) /
+          3_600_000
+      ).toBe(hours);
+    }
+  );
 
   it.each([
     ['2026-03-29', 150, 'does not exist'],

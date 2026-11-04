@@ -18,6 +18,7 @@
     "oxlint": "oxlint -c oxlint.config.mjs .",
     "stylelint": "stylelint '**/*.css' --cache",
     "jest": "jest",
+    "test:planner-availability-db": "NODE_OPTIONS=--experimental-vm-modules VELA_AVAILABILITY_DB_TESTS=1 jest --runInBand lib/planner/availability/database.test.ts",
     "jest:watch": "jest --watch",
     "format:test": "oxfmt -c oxfmt.config.mjs --check \"**/*.{ts,tsx,css}\"",
     "format:write": "oxfmt -c oxfmt.config.mjs --write \"**/*.{ts,tsx,css}\"",
