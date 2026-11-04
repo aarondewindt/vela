@@ -1,6 +1,6 @@
 import 'server-only';
 import { generateText, Output, type ModelMessage } from 'ai';
-import type { z } from 'zod';
+import { ZodError, type z } from 'zod';
 import { resolveChatModel, type AiModelSelection } from './ollama';
 import { AiError } from './errors';
 import { diagnosticErrors, diagnosticText, type GenerationDiagnostics } from './diagnostics';
@@ -107,9 +107,22 @@ export async function generateStructured<T>({
     if (error instanceof AiError) {
       throw error;
     }
+    const validationPaths: string[] = [];
+    const seen = new Set<unknown>();
+    let current = error;
+    while (current instanceof Error && !seen.has(current)) {
+      seen.add(current);
+      if (current instanceof ZodError) {
+        validationPaths.push(
+          ...current.issues.slice(0, 20).map((issue) => issue.path.join('.').slice(0, 200))
+        );
+      }
+      current = current.cause;
+    }
     throw new AiError(
       'INVALID_PROVIDER_RESPONSE',
-      'The model did not return a valid structured response. Your saved work is preserved; check the model and retry.'
+      'The model did not return a valid structured response. Your saved work is preserved; check the model and retry.',
+      [...new Set(validationPaths)]
     );
   } finally {
     details.durationMs = Date.now() - started;

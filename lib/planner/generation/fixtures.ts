@@ -5,6 +5,36 @@ export const date = '2030-01-07';
 export const at = (time: string) => new Date(`${date}T${time}:00Z`);
 export const taskId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 export function fixture(durations = [60, 45]): Snapshot {
+  const effectiveAvailability = {
+    schemaVersion: 1 as const,
+    date,
+    timezone: 'UTC',
+    origin: 'WEEKLY_ASSIGNMENT' as const,
+    dateOverrideId: null,
+    assignmentId: taskId(90),
+    templateId: taskId(91),
+    templateRevisionId: taskId(92),
+    templateName: 'Default',
+    slots: [
+      {
+        id: taskId(93),
+        logicalSlotId: taskId(93),
+        templateRevisionSlotId: taskId(94),
+        sourceTemplateId: null,
+        sourceTemplateRevisionId: null,
+        sourceLogicalSlotId: null,
+        origin: 'TEMPLATE_REVISION' as const,
+        position: 0,
+        startMinute: 540,
+        endMinute: 1020,
+        startsAt: at('09:00').toISOString(),
+        endsAt: at('17:00').toISOString(),
+        name: 'Day',
+        guidance: null,
+        policy: { mode: 'ALL' as const, categories: [] },
+      },
+    ],
+  };
   return {
     userId: 'owner',
     date,
@@ -41,5 +71,27 @@ export function fixture(durations = [60, 45]): Snapshot {
     override: null,
     windows: [{ startMinute: 540, endMinute: 1020 }],
     settings: { ...DEFAULT_GENERATOR_OPTIONS, leisureMinutes: 0 },
+    effectiveAvailability,
+    availabilitySnapshot: {
+      schemaVersion: 1,
+      date,
+      timezone: 'UTC',
+      origin: 'WEEKLY_ASSIGNMENT',
+      templateId: taskId(91),
+      templateName: 'Default',
+      slots: effectiveAvailability.slots.map((slot) => ({
+        id: slot.id,
+        origin: slot.origin,
+        position: slot.position,
+        startMinute: slot.startMinute,
+        endMinute: slot.endMinute,
+        startsAt: slot.startsAt,
+        endsAt: slot.endsAt,
+        name: slot.name,
+        guidance: slot.guidance,
+        policy: slot.policy,
+      })),
+    },
+    availabilityHash: 'b'.repeat(64),
   } as unknown as Snapshot;
 }

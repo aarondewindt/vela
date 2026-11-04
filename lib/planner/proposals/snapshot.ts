@@ -2,11 +2,13 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '../../../generated/prisma/client';
 import { DEFAULT_GENERATOR_OPTIONS } from '../scheduling';
+import { availabilitySnapshotHash, canonicalAvailabilitySnapshot } from '../availability/resolver';
 
 export const fingerprint = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string, date: string) {
+  const { resolveAvailabilityWithClient } = await import('../availability/service');
   const day = new Date(`${date}T00:00:00Z`);
   const [
     user,
@@ -59,6 +61,7 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
     );
   }
   const plan = current[0] ?? null;
+  const effectiveAvailability = await resolveAvailabilityWithClient(tx, userId, date);
   const snapshot = {
     userId,
     date,
@@ -77,8 +80,15 @@ export async function loadSnapshot(tx: Prisma.TransactionClient, userId: string,
       ...settings,
       mealPreferences: settings?.mealPreferences ?? null,
     },
+    effectiveAvailability,
+    availabilitySnapshot: canonicalAvailabilitySnapshot(effectiveAvailability),
+    availabilityHash: availabilitySnapshotHash(effectiveAvailability),
   };
-  return { ...snapshot, hash: fingerprint(snapshot), timezone: plan?.timezone ?? user.timezone };
+  return {
+    ...snapshot,
+    hash: fingerprint(snapshot),
+    timezone: effectiveAvailability.timezone,
+  };
 }
 export type Snapshot = Awaited<ReturnType<typeof loadSnapshot>> & {
   // Draft task placements can exist before authoritative occurrences are created.

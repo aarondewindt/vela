@@ -18,6 +18,7 @@ it('reports overlapping blocks with references, ignores touching endpoints and p
 it('detects dependencies, availability, busy events, earliest starts and excess allocations', () => {
   const s = progressFixture();
   s.windows = [];
+  s.effectiveAvailability.slots = [];
   s.tasks[1].estimatedMinutes = 10;
   s.tasks[1].earliestStartAt = at('12:00');
   s.dependencies = [

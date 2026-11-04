@@ -173,6 +173,15 @@ it('replaces scheduled work while keeping its old task and actual history', () =
 it('shows work that no longer fits after availability changes while preserving active/fixed history', () => {
   const s = progressFixture();
   s.windows = [{ ...s.windows[0], startMinute: 540, endMinute: 600 }];
+  s.effectiveAvailability.slots = [
+    {
+      ...s.effectiveAvailability.slots[0],
+      startMinute: 540,
+      endMinute: 600,
+      startsAt: at('09:00').toISOString(),
+      endsAt: at('10:00').toISOString(),
+    },
+  ];
   s.blocks[2].isFixed = true;
   const d = build(s, { action: 'replan', blockId: undefined });
   expect(d.replan!.warnings.join()).toMatch(/Task 2.*30 scheduled minutes no longer fit/);

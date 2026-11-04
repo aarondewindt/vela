@@ -5,6 +5,7 @@ import type { Snapshot } from './snapshot';
 import type { Addition, ProposalDocument } from './schema';
 import { wallInstant } from './time';
 import { occursOn } from './recurrence';
+import { candidateAllowedInSlot } from '../generation/slot-intent';
 
 export type ProposalBlock = {
   id: string;
@@ -107,41 +108,42 @@ export function eligible(s: Snapshot, taskId: string, occurrenceId: string | nul
 }
 
 export function availability(s: Snapshot) {
-  const override = s.override;
-  if (override && ['NO_WORK', 'PTO'].includes(override.workMode)) {
-    return [];
-  }
-  const windows =
-    override?.workMode === 'CUSTOM'
-      ? override.availabilityWindows.length
-        ? override.availabilityWindows
-        : override.startTime && override.endTime
-          ? [
-              {
-                startMinute:
-                  override.startTime.getUTCHours() * 60 + override.startTime.getUTCMinutes(),
-                endMinute: override.endTime.getUTCHours() * 60 + override.endTime.getUTCMinutes(),
-              },
-            ]
-          : []
-      : s.windows;
-  const intervals = windows
-    .filter((w) => w.endMinute > w.startMinute)
-    .map((w) => ({
-      startsAt: wallInstant(s.date, w.startMinute, s.timezone),
-      endsAt: wallInstant(s.date, w.endMinute, s.timezone),
-    }))
-    .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
-  const merged: typeof intervals = [];
-  for (const interval of intervals) {
-    const previous = merged.at(-1);
-    if (previous && interval.startsAt <= previous.endsAt) {
-      previous.endsAt = new Date(Math.max(previous.endsAt.getTime(), interval.endsAt.getTime()));
-    } else {
-      merged.push({ ...interval });
+  // Older policy fixtures and the legacy generator still construct the pre-#126
+  // snapshot shape. Production snapshots always carry effectiveAvailability.
+  if (!s.effectiveAvailability) {
+    const override = s.override;
+    if (override && ['NO_WORK', 'PTO'].includes(override.workMode)) {
+      return [];
     }
+    const values =
+      override?.workMode === 'CUSTOM'
+        ? override.availabilityWindows.length
+          ? override.availabilityWindows
+          : override.startTime && override.endTime
+            ? [
+                {
+                  startMinute:
+                    override.startTime.getUTCHours() * 60 + override.startTime.getUTCMinutes(),
+                  endMinute: override.endTime.getUTCHours() * 60 + override.endTime.getUTCMinutes(),
+                },
+              ]
+            : []
+        : s.windows;
+    return values.map((window, position) => ({
+      id: `legacy:${position}`,
+      position,
+      startsAt: wallInstant(s.date, window.startMinute, s.timezone),
+      endsAt: wallInstant(s.date, window.endMinute, s.timezone),
+      policy: { mode: 'ALL' as const, categories: [] },
+    }));
   }
-  let available = merged;
+  let available = s.effectiveAvailability.slots
+    .map((slot) => ({
+      ...slot,
+      startsAt: new Date(slot.startsAt),
+      endsAt: new Date(slot.endsAt),
+    }))
+    .sort((a, b) => a.position - b.position);
   for (const excluded of s.planningExclusions ?? []) {
     available = available.flatMap((window) => {
       if (!overlap(window, excluded)) {
@@ -149,10 +151,10 @@ export function availability(s: Snapshot) {
       }
       return [
         ...(window.startsAt < excluded.startsAt
-          ? [{ startsAt: window.startsAt, endsAt: excluded.startsAt }]
+          ? [{ ...window, startsAt: window.startsAt, endsAt: excluded.startsAt }]
           : []),
         ...(window.endsAt > excluded.endsAt
-          ? [{ startsAt: excluded.endsAt, endsAt: window.endsAt }]
+          ? [{ ...window, startsAt: excluded.endsAt, endsAt: window.endsAt }]
           : []),
       ];
     });
@@ -522,6 +524,17 @@ export function validateProposal(
       fail('Leisure tasks need a matching leisure reservation.');
     }
     const task = s.tasks.find((t) => t.id === block.taskId);
+    const effectiveSlot = windows.find(
+      (window) => block.startsAt >= window.startsAt && block.endsAt <= window.endsAt
+    );
+    if (
+      strict &&
+      task &&
+      effectiveSlot &&
+      !candidateAllowedInSlot(task.category ?? task.theme?.category ?? 'WORK', effectiveSlot.policy)
+    ) {
+      fail('Task placement conflicts with the availability slot category policy.');
+    }
     if (strict && task?.earliestStartAt && block.startsAt < task.earliestStartAt) {
       fail('This task cannot start before its earliest start time.');
     }

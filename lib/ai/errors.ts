@@ -9,7 +9,8 @@ export type AiErrorCode =
 export class AiError extends Error {
   constructor(
     public readonly code: AiErrorCode,
-    message: string
+    message: string,
+    public readonly validationPaths: string[] = []
   ) {
     super(message);
     this.name = 'AiError';

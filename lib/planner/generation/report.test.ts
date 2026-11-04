@@ -2,10 +2,33 @@ import { fixture, at } from './fixtures';
 import { planningCandidates } from './candidates';
 import { scheduleDay } from './schedule';
 import { placementReport } from './report';
+import { resolveEffectiveAvailability } from '../availability/resolver';
 
 it('summarizes actual evening placements instead of AI claims about morning or midday', () => {
   const s = fixture([30, 45]);
-  s.windows = [{ startMinute: 0, endMinute: 1440 }] as typeof s.windows;
+  s.effectiveAvailability = resolveEffectiveAvailability({
+    date: s.date,
+    timezonePeriods: [{ effectiveDate: '2000-01-01', timezone: 'UTC' }],
+    weeklyAssignments: [],
+    templates: [],
+    dateOverrides: [
+      {
+        id: 'full-day',
+        date: s.date,
+        slots: [
+          {
+            id: 'full-day-slot',
+            position: 0,
+            startMinute: 0,
+            endMinute: 1440,
+            name: null,
+            guidance: null,
+            policy: { mode: 'ALL', categories: [] },
+          },
+        ],
+      },
+    ],
+  });
   const candidates = planningCandidates(s).candidates;
   const result = scheduleDay(
     s,

@@ -35,7 +35,13 @@ function subtract(windows: Interval[], obstacles: Interval[]) {
 /** Application-owned placement. Model output never supplies timestamps or constraint exceptions. */
 export function scheduleDay(
   s: Snapshot,
-  ordered: { candidate: Candidate; reason: string; plannedMinutes?: number | null }[],
+  ordered: {
+    candidate: Candidate;
+    reason: string;
+    plannedMinutes?: number | null;
+    slotId?: string;
+    slotTargetMinutes?: number;
+  }[],
   workBudget: number | null,
   now = new Date()
 ) {
@@ -44,7 +50,11 @@ export function scheduleDay(
     earliestGeneratedStart(now)
   );
   const windows = availability(s)
-    .map((w) => ({ start: Math.max(w.startsAt.getTime(), cutoff), end: w.endsAt.getTime() }))
+    .map((w) => ({
+      slotId: w.id,
+      start: Math.max(w.startsAt.getTime(), cutoff),
+      end: w.endsAt.getTime(),
+    }))
     .filter((w) => w.end > w.start);
   const occupied = existingBlocks(s).filter(
     (b) =>
@@ -126,6 +136,7 @@ export function scheduleDay(
     hourCycle: 'h23',
   });
   let workUsed = 0;
+  const slotUsed = new Map<string, number>();
   const accepts = (operations: ProposalOperation[]) => {
     try {
       validateProposal(
@@ -138,7 +149,7 @@ export function scheduleDay(
       return false;
     } // Pure constraint rejection; try a different placement.
   };
-  for (const { candidate, plannedMinutes } of ordered) {
+  for (const { candidate, plannedMinutes, slotId, slotTargetMinutes } of ordered) {
     const limit = s.planningTaskLimits?.find((item) => item.taskId === candidate.taskId);
     const proposed = document.operations.flatMap((op) =>
       op.type === 'add' && op.block.kind === 'TASK'
@@ -152,7 +163,15 @@ export function scheduleDay(
           ]
         : []
     );
-    const preferred = Math.min(candidate.remaining, plannedMinutes ?? candidate.remaining);
+    const alreadyScheduled = scheduled.get(candidate.key) ?? 0;
+    const slotRemaining = slotId
+      ? Math.max(0, (slotTargetMinutes ?? 1440) - (slotUsed.get(slotId) ?? 0))
+      : 1440;
+    const preferred = Math.min(
+      Math.max(0, candidate.remaining - alreadyScheduled),
+      plannedMinutes ?? candidate.remaining,
+      slotRemaining
+    );
     const target = limit
       ? Math.min(
           preferred,
@@ -196,6 +215,7 @@ export function scheduleDay(
       ];
       let choices = subtract(
         windows
+          .filter((window) => !slotId || window.slotId === slotId)
           .map((w) => ({ ...w, start: Math.max(w.start, earliest) }))
           .filter((w) => w.end > w.start),
         taskObstacles
@@ -325,6 +345,9 @@ export function scheduleDay(
           if (!isLeisure) {
             workUsed += duration;
           }
+          if (slotId) {
+            slotUsed.set(slotId, (slotUsed.get(slotId) ?? 0) + duration);
+          }
           earliest = new Date(task.block.endsAt).getTime();
           placed = true;
           break;
@@ -334,7 +357,7 @@ export function scheduleDay(
         break;
       }
     }
-    scheduled.set(candidate.key, target - remaining);
+    scheduled.set(candidate.key, alreadyScheduled + target - remaining);
   }
   if (document.operations.length || document.reservations!.length) {
     validateProposal(s, document, now);

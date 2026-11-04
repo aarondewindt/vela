@@ -4,6 +4,35 @@ import { scheduleDay } from './schedule';
 import { validateProposal } from '../proposals/validate';
 import { documentSchema } from '../proposals/schema';
 import type { Snapshot } from '../proposals/snapshot';
+import { resolveEffectiveAvailability } from '../availability/resolver';
+
+function setSlots(
+  s: Snapshot,
+  slots: { startMinute: number; endMinute: number }[],
+  timezone = s.timezone
+) {
+  s.timezone = timezone;
+  s.effectiveAvailability = resolveEffectiveAvailability({
+    date: s.date,
+    timezonePeriods: [{ effectiveDate: '2000-01-01', timezone }],
+    weeklyAssignments: [],
+    templates: [],
+    dateOverrides: [
+      {
+        id: taskId(80),
+        date: s.date,
+        slots: slots.map((slot, position) => ({
+          id: taskId(81 + position),
+          position,
+          ...slot,
+          name: null,
+          guidance: null,
+          policy: { mode: 'ALL', categories: [] },
+        })),
+      },
+    ],
+  });
+}
 
 function run(s: Snapshot, budget: number | null = null) {
   return scheduleDay(
@@ -112,25 +141,25 @@ it('rounds the review window up after inference and does not spill into tomorrow
   expect(placements(scheduleDay(s, ordered, null, new Date(`${date}T09:00:36Z`)))[0].start).toBe(
     '09:11'
   );
-  s.windows = [{ startMinute: 0, endMinute: 1440 }] as Snapshot['windows'];
+  setSlots(s, [{ startMinute: 0, endMinute: 1440 }]);
   expect(scheduleDay(s, ordered, null, at('23:55')).document.operations).toEqual([]);
 });
 
 it('prefers an intact later placement over a small earlier gap', () => {
   const s = fixture([30]);
-  s.windows = [
+  setSlots(s, [
     { startMinute: 540, endMinute: 553 },
     { startMinute: 600, endMinute: 660 },
-  ] as Snapshot['windows'];
+  ]);
   expect(placements(run(s))).toEqual([{ kind: 'TASK', start: '10:00', end: '10:30' }]);
 });
 
 it('avoids both a tiny partial block and leaving a tiny task remainder', () => {
   const s = fixture([60, 30]);
-  s.windows = [
+  setSlots(s, [
     { startMinute: 540, endMinute: 591 },
     { startMinute: 600, endMinute: 609 },
-  ] as Snapshot['windows'];
+  ]);
   const result = run(s);
   expect(placements(result)).toEqual([{ kind: 'TASK', start: '09:00', end: '09:50' }]);
   expect([...result.scheduled.values()]).toEqual([50, 0]);
@@ -143,13 +172,47 @@ it('still permits genuinely short whole tasks', () => {
   ]);
 });
 
+it('keeps adjacent slots distinct and splits one task into independently budgeted segments', () => {
+  const s = fixture([90]);
+  setSlots(s, [
+    { startMinute: 540, endMinute: 600 },
+    { startMinute: 600, endMinute: 660 },
+  ]);
+  const candidate = planningCandidates(s).candidates[0];
+  const [first, second] = s.effectiveAvailability.slots;
+  const result = scheduleDay(
+    s,
+    [
+      {
+        candidate,
+        reason: 'First slot.',
+        slotId: first.id,
+        slotTargetMinutes: 60,
+      },
+      {
+        candidate,
+        reason: 'Second slot.',
+        slotId: second.id,
+        slotTargetMinutes: 30,
+      },
+    ],
+    null,
+    at('00:00')
+  );
+  expect(placements(result)).toEqual([
+    { kind: 'TASK', start: '09:00', end: '10:00' },
+    { kind: 'TASK', start: '10:00', end: '10:30' },
+  ]);
+  expect(result.scheduled.get(candidate.key)).toBe(90);
+});
+
 it('does not fill two- or nine-minute evening gaps around leisure reservations', () => {
   const s = fixture([45, 30, 60, 30]);
   s.settings.leisureMinutes = 60;
   s.tasks[0].category = 'LEISURE';
   s.tasks[1].category = 'LEISURE';
   s.tasks[2].category = 'LIFE';
-  s.windows = [{ startMinute: 0, endMinute: 1440 }] as Snapshot['windows'];
+  setSlots(s, [{ startMinute: 0, endMinute: 1440 }]);
   const result = scheduleDay(
     s,
     planningCandidates(s).candidates.map((candidate) => ({
@@ -233,8 +296,7 @@ it('rounds a sub-minute earliest start up to the next valid scheduling minute', 
 it('uses actual elapsed time through the autumn DST change', () => {
   const s = fixture([120]);
   s.date = '2030-10-27';
-  s.timezone = 'Europe/Amsterdam';
-  s.windows = [{ startMinute: 60, endMinute: 240 }] as Snapshot['windows'];
+  setSlots(s, [{ startMinute: 60, endMinute: 240 }], 'Europe/Amsterdam');
   const candidate = planningCandidates(s).candidates[0];
   const result = scheduleDay(
     s,
@@ -251,9 +313,9 @@ it('uses actual elapsed time through the autumn DST change', () => {
 it('rejects ambiguous wall-time availability rather than silently choosing an offset', () => {
   const s = fixture([30]);
   s.date = '2030-10-27';
-  s.timezone = 'Europe/Amsterdam';
-  s.windows = [{ startMinute: 150, endMinute: 240 }] as Snapshot['windows'];
-  expect(() => run(s)).toThrow(/occurs twice/);
+  expect(() => setSlots(s, [{ startMinute: 150, endMinute: 240 }], 'Europe/Amsterdam')).toThrow(
+    /occurs twice/
+  );
 });
 
 it('treats a WORK to LIFE category change as the same continuous work session', () => {
@@ -341,7 +403,7 @@ it('reserves leisure without changing existing slots and schedules leisure insid
 it('reports leisure shortfall on PTO and never uses reservations to bypass availability', () => {
   const s = fixture([30]);
   s.settings.leisureMinutes = 60;
-  s.override = { workMode: 'PTO' } as Snapshot['override'];
+  setSlots(s, []);
   const result = run(s);
   expect(result.document.operations).toEqual([]);
   expect(result.document.reservations).toEqual([]);

@@ -69,14 +69,7 @@ export function inputHash(s: Snapshot, state: DraftState) {
         isHardBlock: d.isHardBlock,
         prerequisite: d.dependsOnTask,
       })),
-    windows: s.windows.map((w) => ({ startMinute: w.startMinute, endMinute: w.endMinute })),
-    override: s.override && {
-      workMode: s.override.workMode,
-      windows: s.override.availabilityWindows.map((w) => ({
-        startMinute: w.startMinute,
-        endMinute: w.endMinute,
-      })),
-    },
+    availability: s.availabilitySnapshot,
     events: s.events
       .filter((e) => e.isBusy && e.startsAt < end && e.endsAt > start)
       .map((e) => ({ id: e.id, startsAt: e.startsAt, endsAt: e.endsAt })),

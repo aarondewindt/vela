@@ -7,10 +7,39 @@ import { planningCandidates } from './candidates';
 import { documentSchema, type ProposalDocument } from '../proposals/schema';
 import { validateProposal } from '../proposals/validate';
 import { replanDay } from '../proposals/replan';
+import { resolveEffectiveAvailability } from '../availability/resolver';
+
+function setSlots(
+  s: Snapshot,
+  slots: { startMinute: number; endMinute: number }[],
+  timezone = s.timezone
+) {
+  s.timezone = timezone;
+  s.effectiveAvailability = resolveEffectiveAvailability({
+    date: s.date,
+    timezonePeriods: [{ effectiveDate: '2000-01-01', timezone }],
+    weeklyAssignments: [],
+    templates: [],
+    dateOverrides: [
+      {
+        id: taskId(80),
+        date: s.date,
+        slots: slots.map((slot, position) => ({
+          id: taskId(81 + position),
+          position,
+          ...slot,
+          name: null,
+          guidance: null,
+          policy: { mode: 'ALL', categories: [] },
+        })),
+      },
+    ],
+  });
+}
 
 function withMeals(durations: number[] = []) {
   const s = fixture(durations);
-  s.windows = [{ startMinute: 420, endMinute: 1260 }] as Snapshot['windows'];
+  setSlots(s, [{ startMinute: 420, endMinute: 1260 }]);
   s.settings = {
     ...s.settings,
     mealPreferences: structuredClone(DEFAULT_MEAL_PREFERENCES),
@@ -91,9 +120,9 @@ it('allows disabled individual meals and handles overlapping preferred windows w
   const final = validateProposal(s, result.document, at('00:00')).final;
   expect(final[1].startsAt >= final[0].endsAt).toBe(true);
 });
-it.each(['PTO', 'NO_WORK', 'CUSTOM'])('reports every unmet meal for %s days', (mode) => {
+it('reports every unmet meal for an explicitly unavailable date', () => {
   const { s } = withMeals();
-  s.override = { workMode: mode, availabilityWindows: [] } as unknown as Snapshot['override'];
+  setSlots(s, []);
   const result = run(s);
   expect(result.meals.every((m) => m.status === 'unmet')).toBe(true);
   expect(result.warnings).toHaveLength(3);
@@ -101,10 +130,10 @@ it.each(['PTO', 'NO_WORK', 'CUSTOM'])('reports every unmet meal for %s days', (m
 });
 it('does not split meals across fragmented availability or silently fall outside a preferred window', () => {
   const { s } = withMeals();
-  s.windows = [
+  setSlots(s, [
     { startMinute: 420, endMinute: 435 },
     { startMinute: 450, endMinute: 465 },
-  ] as Snapshot['windows'];
+  ]);
   expect(run(s).meals.map((m) => m.status)).toEqual(['unmet', 'unmet', 'unmet']);
 });
 it('honors calendar commitments, half-open boundaries and same-day review cutoff', () => {
@@ -210,7 +239,7 @@ it('reports flexible meals that no longer fit while keeping fixed individual ove
   const { s } = withMeals();
   apply(s, run(s).document);
   s.blocks[1].isFixed = true;
-  s.windows = [];
+  setSlots(s, []);
   const d = replan(s);
   expect(d.replan!.warnings.join()).toMatch(/Breakfast requirement unmet/);
   expect(d.replan!.warnings.join()).toMatch(/Lunch.*conflicts/);
@@ -220,8 +249,8 @@ it('reports flexible meals that no longer fit while keeping fixed individual ove
 });
 it('resolves meal windows in the saved plan timezone, including normal DST days', () => {
   const { s } = withMeals();
-  s.timezone = 'Europe/Amsterdam';
   s.date = '2030-03-31';
+  setSlots(s, [{ startMinute: 420, endMinute: 1260 }], 'Europe/Amsterdam');
   const result = scheduleDay(s, [], null, new Date('2030-03-30T00:00:00Z'));
   expect(result.document.operations[0]).toMatchObject({
     block: { startsAt: '2030-03-31T05:00:00.000Z' },
@@ -229,8 +258,8 @@ it('resolves meal windows in the saved plan timezone, including normal DST days'
 });
 it('reports DST-invalid windows instead of moving meals to another local time', () => {
   const { s, preferences } = withMeals();
-  s.timezone = 'Europe/Amsterdam';
   s.date = '2030-03-31';
+  setSlots(s, [{ startMinute: 420, endMinute: 1260 }], 'Europe/Amsterdam');
   preferences.BREAKFAST.startMinute = 150;
   preferences.BREAKFAST.endMinute = 210;
   expect(scheduleDay(s, [], null, new Date('2030-03-30T00:00:00Z')).meals[0]).toMatchObject({

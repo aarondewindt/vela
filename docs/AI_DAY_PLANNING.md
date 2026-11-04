@@ -1,15 +1,16 @@
 # AI day planning
 
-Implemented for #34, using the #31 [scheduler policy](PLANNER_SCHEDULER_POLICY.md)
-and #33 [proposal workflow](PLANNING_PROPOSALS.md).
+Implemented for #34 and updated by #69 to use the #126 effective-availability
+foundation, the #31 [scheduler policy](PLANNER_SCHEDULER_POLICY.md), and persistent
+working drafts from #123.
 
 ## Using it
 
-Open **Planner → Today → Generate plan**. Choose AI task selection, optionally
-enter guidance such as “focus on housework” or “keep today light,” and select
-**Generate plan preview**. Review selections, omissions, remaining minutes,
-deadline risks, breaks and new leisure reservations, then **Apply changes** or
-**Discard proposal**. Saved proposals can be reopened in the same dialog.
+Open **Planner → Today → Generate plan**, optionally enter one-off guidance, and
+review the resulting working-draft revision before accepting the whole draft. One
+bounded model call returns typed intent for every effective availability slot. The
+application resolves categories, validates eligibility, places timestamps, enforces
+constraints and saves the revision.
 
 New same-day placements leave at least ten minutes after scheduling for review.
 The preview shows **Apply before** using its earliest proposed task, break or leisure
@@ -19,52 +20,39 @@ using the saved method and guidance. Planning input changes can require regenera
 before the displayed deadline. Generation never shifts an existing preview silently.
 
 **Settings → AI & models → Planner · Day planning** chooses the model. It inherits
-Balanced / Medium, then Default LLM, unless configured explicitly. An unavailable
-or unconfigured model produces an error; choose **Deterministic · urgency order**
-for an explicit model-free alternative. Deterministic mode does not interpret
-natural-language guidance. **Planning settings** saves work-session, break and
-leisure targets used by either method.
+Balanced / Medium, then Default LLM, unless configured explicitly. An unavailable,
+timed-out or invalid model response leaves the draft unchanged and produces an
+actionable error. Vela does not invoke a deterministic fallback. The legacy explicit
+Auto-fill surface remains temporarily until #124 and is not used as failure recovery.
 
-With blank guidance, generation attempts to fill eligible future open time: it uses
-the AI shortlist first, then tries other eligible candidates in urgency order. A
-model-suggested work cap does not restrict an unguided day. With guidance, the AI
-selection and its work budget remain authoritative preferences, so “keep today
-light” and narrow focus requests do not trigger the fill pass. The report shows
-the planning goal, any work budget, additional candidates considered, and actual
-availability windows. The standard weekday windows are 08:00–08:45, 12:00–13:00
-and 17:15–24:00; the gaps between them are unavailable, not unfilled capacity.
+Global one-off guidance outranks saved slot guidance as a soft preference. Slot
+category policy is always a hard automatic-placement constraint. The model may
+intentionally underfill or leave a slot empty; there is no application fill pass
+that silently adds omitted tasks. Gaps between effective slots are unavailable,
+and adjacent slots remain separate boundaries.
 
-Generation preserves all existing blocks and category
-reservations. It does not rebuild the day or move existing commitments. Protected
-work adjustment and replanning remain with #36. Previously saved legacy drafts
-can still be accepted; the old generator API remains for compatibility, but Today
-now generates proposals instead of calling it.
+By default, regeneration replaces eligible future automatic placements while
+preserving manual, locked, fixed, calendar-backed and meal blocks. Explicit rebuild
+may also replace otherwise eligible manual placements, but never protected blocks.
+Category reservations and the remaining legacy generator surfaces stay compatible
+until #124 removes them; Today saves generated working-draft revisions.
 
 ## Responsibilities and persistence
 
-Protected `planningProposals.generate({requestId,date,mode,guidance,freeTimes?,taskLimits?,reviseProposalId?})` delegates to
-`lib/planner/generation/service.ts`. Generation reads a consistent owner-scoped
-snapshot, performs inference outside transactions, computes placements, and calls
-the existing proposal creation service with that snapshot's fingerprint. Input
-changes during generation require a fresh preview. Nothing updates planning
-records before acceptance.
+Protected `plannerDraft.generate` delegates through
+`lib/planner/drafts/generation.ts` to `lib/planner/generation/service.ts`; Planner
+conversation uses the same path. Generation reads a consistent owner-scoped
+snapshot, performs inference outside transactions, computes placements, and saves
+one fenced draft revision. Invalid intent or changed inputs fail before the draft is
+modified.
 
-AI chooses candidate order, explains selections/omissions, and may suggest a
-smaller work-minute budget. Guided model output requires a positive integer
-`plannedMinutes` for every selected task; an omitted/null allocation is invalid rather
-than silently scheduling its entire remaining estimate. Numeric allocation targets
-are saved alongside actual placed minutes and shown under the AI assessment. Approximate requests such as “about an hour” become bounded allocation targets rather than changes to recorded task estimates. Unguided generation tries
-remaining eligible candidates after the AI shortlist, without a model-imposed
-work cap or unsolicited per-task allocation target. It cannot supply placement timestamps, alter task
-properties, waive constraints, complete prerequisites, or apply changes. The
-application calculates availability, remaining estimates, category compatibility,
-leisure reservations, task splitting and rest. Trial placements use the shared
-proposal validator, including downstream existing sessions. Task-boundary finish
-extensions apply only to completing the current task. Intact placements, including
-later windows, are tried before splitting. Generated partial-task segments and the
-remainders they create are at least ten minutes; smaller gaps are left unused.
-Genuinely short whole tasks still fit, and manual proposals retain their existing
-positive-minute validation. These are placement preferences, not new task facts.
+AI returns slot identity, target task minutes, ordered eligible task aliases and
+bounded reasons—never timestamps or categories. Application code clamps slot and
+task budgets, enforces remaining estimates and category policy, and owns splitting,
+rest and final placement. A generated block never crosses a slot boundary; one task
+may span slots only as independently eligible segments. Meals and generated breaks
+are not task-category filtered. Manual draft edits and acceptance remain permissive
+about availability and category advice under #123.
 A busy meeting does not
 count as rest; a WORK/LIFE category change does not reset a session.
 
@@ -75,19 +63,17 @@ presented as statements about where tasks actually landed. The model prompt incl
 the earliest planning start and clipped future availability, and prohibits claiming
 placements or day-part timing before the application schedules work.
 
-Generation reports, guidance and actual model attribution are saved in the
-proposal document and preview JSONB. Acceptance reuses the existing locked,
-transactional fingerprint check and validation. New LEISURE reservations are
-validated against availability, busy events, preserved blocks and other
-reservations, then inserted atomically with blocks and the acceptance receipt.
-No schema migration is needed.
+Each successful generated revision stores the effective-availability snapshot/hash
+actually used. Acceptance independently stores the effective availability present
+at acceptance, allowing generation and acceptance context to differ. Failed attempts
+store bounded sanitized diagnostics for 30 days and at most 100 records per owner;
+full prompts, raw model output and secrets are not retained.
 
-A saved generation request replays its proposal ID/report before reading current
-inputs or resolving a model, even after application/discard. Reusing its request
-ID with changed generation inputs fails. Concurrent requests cannot create two
-proposals for one owner/request; competing completions may need a retry. If no
-blocks or reservations can be added, the service returns an unsaved report with
-`id: null`; retrying that no-change result recalculates it.
+A saved generation request replays its draft request receipt before resolving a
+model. Reusing its request ID with changed generation inputs fails. Revision saves
+recheck both draft version and the planning snapshot used before inference. Sparse
+valid intent can still create a provenance-bearing revision; no-availability state
+does not create or modify a draft revision.
 
 ## Candidates, context and limits
 
@@ -121,19 +107,14 @@ The AI context includes every eligible due/important candidate independently of
 semantic top-k, then semantic matches and urgency-ranked other work. It is bounded
 to 60 occurrences with short title/brief/notes/first-step/theme/tag excerpts and
 up to 200 dependency edges. More than 60 due/important occurrences rejects AI
-planning explicitly; deterministic planning remains available. Up to 1,000
-eligible occurrences are supported overall. Every candidate outside the AI context
-is still reported. In guided mode it stays unscheduled; in unguided fill mode the
-application can try it after the AI shortlist. The model uses short request-local candidate aliases
-(C1, C2, etc.), constrained by the output schema; the server maps them back to
-owned task/occurrence references. Unknown or repeated references fail generation.
-Candidates the model leaves unmentioned receive an explicit unassessed warning
-and no invented AI omission reason. Guided planning leaves them unscheduled;
-unguided planning considers them in its application fill pass. Unguided output
-requires an empty AI omission list. A repeated-reference response permits one
-correction attempt within the same 120-second inference deadline; unresolved
-invalid references still reject generation before persistence. The shared structured generator bounds total prompt,
-output tokens and generation time; provider failures preserve the plan.
+planning explicitly and leaves manual planning available. Up to 1,000 eligible
+occurrences are supported overall. Every candidate outside the AI context remains
+reported and unscheduled. The model uses short request-local candidate aliases
+(C1, C2, etc.); the server maps them back to owned task/occurrence references and
+validates eligibility independently for each slot. Unknown, repeated, hard-ineligible
+or contradictory references reject the single model attempt before persistence.
+The shared structured generator bounds total prompt, output tokens and generation
+time; provider failures preserve the draft.
 
 Recurring work does not need the legacy generator to materialize occurrences.
 Existing open occurrences through the selected date can be planned. A supported
@@ -152,8 +133,8 @@ a bounded greedy scheduler, not a guarantee of a globally optimal packing.
 
 ## Daily meal requirements and default
 
-AI is the default for both Today and omitted API modes. The existing deterministic
-option remains the model-free rollback through the same proposal workflow.
+AI is the default for both Today and omitted API modes. There is no automatic
+model-free rollback after AI failure.
 Enabled [daily meals](PLANNER_MEALS.md) reserve continuous blocks before optional
 work/leisure and remain independent of the model's task budget or omissions.
 Previews report each scheduled/preserved/skipped/unmet meal and bounded timing/count
@@ -162,27 +143,25 @@ real-model measurements and remaining manual review under #41.
 
 ## Verification
 
-Colocated tests cover candidate eligibility/deadline propagation, model-free
-planning, semantic fallback, malformed model references, replay and input
+Colocated tests cover candidate eligibility/deadline propagation, per-slot intent,
+semantic fallback, malformed model references, replay and input
 validation, plus task-boundary sessions, preserved history, calendar rest,
 category reservations, leisure, recurrence, minute rounding, DST, the review buffer,
 small-gap/remainder avoidance and intact later placement. Component
 checks cover generation guidance/method selection, displayed deadlines, expiry/regeneration,
 separate AI assessments and explicit acceptance.
 
-Live synthetic PostgreSQL/Ollama checks exercise real generation with `qwen3:8b`,
-light-day guidance, preview isolation, deferred recurrence creation, atomic leisure
-insertion, owner isolation, stale inputs and duplicate acceptance. Browser checks
-exercise unavailable-model errors, explicit deterministic fallback, preview/apply
-and desktop/390px layouts. Temporary fixtures are removed after verification.
+Live synthetic PostgreSQL/Ollama checks remain opt-in. Browser checks should cover
+unavailable-model errors, unchanged drafts, preview/apply and desktop/390px layouts.
+Temporary fixtures are removed after verification.
 
 ## Requested task durations
 
 Chat planning uses saved availability and the existing current-time cutoff automatically.
-Approximate durations, ordering and relative emphasis belong in guidance; the scheduler
-must return numeric `plannedMinutes` for each selected candidate. Deterministic placement caps
-that allocation at remaining effort, available time and existing session constraints.
-Unguided fill ignores unsolicited model allocation targets, preserving normal fill behavior.
+Approximate durations, ordering and relative emphasis belong in guidance. The model
+returns one target task-minute budget per slot, not per-task durations. Application
+placement caps that slot budget at remaining effort, available time and existing
+session constraints; it does not add an unguided fill pass.
 
 Application callers can request an explicit maximum, such as “clean my room for max 30 minutes,” using typed
 `taskLimits: [{taskQuery, maxMinutes}]`. The generation service resolves names/IDs
@@ -208,8 +187,7 @@ re-enter saved availability or reserve an empty interval for a task.
 `node --conditions=react-server --import tsx scripts/evaluate-planner-allocations.ts`
 runs the selection contract and deterministic placement with synthetic tasks only;
 it reads no user records and saves no proposals. It uses configured Ollama and
-`PLANNER_EVAL_MODEL` (default `qwen3:8b`). With Vela estimated at 9,999 minutes and
-guidance requesting an hour, cleaning up to 30 minutes, video focus and guitar,
-the 2026-10-24 check returned actual allocations of 60 / 30 / 96 / 30 minutes
-respectively, alongside dinner, breaks and leisure reservations. This is one
-synthetic real-model case, not general natural-language compliance evidence.
+`PLANNER_EVAL_MODEL` (default `qwen3:8b`). It verifies that a real structured response
+resolves through the bounded alias contract and that every generated operation stays
+inside the supplied effective slot. This is one synthetic real-model case, not general
+natural-language compliance evidence.

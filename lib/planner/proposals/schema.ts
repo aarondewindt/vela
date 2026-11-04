@@ -1,26 +1,26 @@
-import { mealKindSchema } from '../meals';
-import { z } from 'zod';
+import { mealKindSchema } from "../meals";
+import { z } from "zod";
 
 const instant = z.iso
   .datetime({ offset: true })
-  .refine((value) => new Date(value).getTime() % 60_000 === 0, 'Use whole minutes.');
+  .refine((value) => new Date(value).getTime() % 60_000 === 0, "Use whole minutes.");
 const interval = { startsAt: instant, endsAt: instant };
-const addition = z.discriminatedUnion('kind', [
+const addition = z.discriminatedUnion("kind", [
   z
     .object({
-      kind: z.literal('TASK'),
+      kind: z.literal("TASK"),
       taskId: z.uuid(),
       occurrenceId: z.uuid().nullable(),
       ...interval,
     })
     .strict(),
-  z.object({ kind: z.literal('REST'), ...interval }).strict(),
-  z.object({ kind: z.literal('MEAL'), mealKind: mealKindSchema, ...interval }).strict(),
+  z.object({ kind: z.literal("REST"), ...interval }).strict(),
+  z.object({ kind: z.literal("MEAL"), mealKind: mealKindSchema, ...interval }).strict(),
 ]);
-export const operationSchema = z.discriminatedUnion('type', [
+export const operationSchema = z.discriminatedUnion("type", [
   z
     .object({
-      type: z.literal('skip'),
+      type: z.literal("skip"),
       blockId: z.uuid(),
       explicit: z.literal(true).optional(),
       explanation: z.string().trim().min(1).max(2000),
@@ -28,7 +28,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('finish'),
+      type: z.literal("finish"),
       blockId: z.uuid(),
       endsAt: instant,
       completeTask: z.boolean(),
@@ -37,7 +37,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('extend'),
+      type: z.literal("extend"),
       blockId: z.uuid(),
       endsAt: instant,
       estimatedMinutes: z.number().int().positive().max(525600).optional(),
@@ -46,14 +46,14 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('add'),
+      type: z.literal("add"),
       block: addition,
       explanation: z.string().trim().min(1).max(2000),
     })
     .strict(),
   z
     .object({
-      type: z.literal('move'),
+      type: z.literal("move"),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),
       ...interval,
@@ -62,7 +62,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('resize'),
+      type: z.literal("resize"),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),
       ...interval,
@@ -71,7 +71,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('retime'),
+      type: z.literal("retime"),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),
       ...interval,
@@ -80,7 +80,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('remove'),
+      type: z.literal("remove"),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),
       explanation: z.string().trim().min(1).max(2000),
@@ -88,7 +88,7 @@ export const operationSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('replace'),
+      type: z.literal("replace"),
       explicit: z.literal(true).optional(),
       blockId: z.uuid(),
       block: addition,
@@ -98,20 +98,24 @@ export const operationSchema = z.discriminatedUnion('type', [
 ]);
 export const reservationSchema = z
   .object({
-    category: z.enum(['WORK', 'LIFE', 'LEISURE', 'REST']),
+    category: z.enum(["WORK", "LIFE", "LEISURE", "REST"]),
     ...interval,
     explanation: z.string().trim().min(1).max(2000),
   })
   .strict();
 export const generationReportSchema = z.object({
   requestHash: z.string(),
-  mode: z.enum(['ai', 'deterministic']),
-  model: z.object({ provider: z.literal('ollama'), modelId: z.string() }).nullable(),
+  availabilityHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
+  mode: z.enum(["ai", "deterministic"]),
+  model: z.object({ provider: z.literal("ollama"), modelId: z.string() }).nullable(),
   guidance: z.string(),
   summary: z.string(),
   selectionSummary: z.string().optional(),
   reviewBy: z.iso.datetime().optional(),
-  planningGoal: z.enum(['fill', 'guided']).optional(),
+  planningGoal: z.enum(["fill", "guided"]).optional(),
   workBudgetMinutes: z.number().int().min(0).nullable().optional(),
   availableWindows: z.array(z.object({ startsAt: z.string(), endsAt: z.string() })).optional(),
   additionalCandidateCount: z.number().int().min(0).optional(),
@@ -126,12 +130,23 @@ export const generationReportSchema = z.object({
     .array(
       z.object({
         mealKind: mealKindSchema,
-        status: z.enum(['scheduled', 'preserved', 'unmet', 'skipped']),
+        status: z.enum(["scheduled", "preserved", "unmet", "skipped"]),
         reason: z.string(),
-      })
+      }),
     )
     .optional(),
   warnings: z.array(z.string()),
+  slots: z
+    .array(
+      z.object({
+        slotId: z.uuid(),
+        targetTaskMinutes: z.number().int().min(0).max(1440),
+        scheduledTaskMinutes: z.number().int().min(0).max(1440),
+        shortfallMinutes: z.number().int().min(0).max(1440),
+        reason: z.string().trim().min(1).max(1000),
+      }),
+    )
+    .optional(),
   outcomes: z.array(
     z.object({
       key: z.string(),
@@ -142,7 +157,7 @@ export const generationReportSchema = z.object({
       reason: z.string(),
       selectionReason: z.string().optional(),
       deadlineRisk: z.boolean(),
-    })
+    }),
   ),
 });
 export type GenerationReport = z.infer<typeof generationReportSchema>;
@@ -188,7 +203,7 @@ export const documentSchema = z
       Boolean(d.reservations?.length) ||
       Boolean(d.freeIntervals?.length) ||
       Boolean(d.taskLimits?.length),
-    'A proposal needs a change.'
+    "A proposal needs a change.",
   );
 export const createProposalSchema = z
   .object({
@@ -205,10 +220,10 @@ export const editSchema = z
     requestId: z.uuid(),
     date: z.iso.date(),
     baseHash: z.string().regex(/^[a-f0-9]{64}$/),
-    type: z.enum(['add', 'move', 'resize', 'remove', 'replace']),
+    type: z.enum(["add", "move", "resize", "remove", "replace"]),
     blockId: z.uuid().optional(),
     candidateId: z.string().max(200).optional(),
-    kind: z.enum(['TASK', 'REST']).default('TASK'),
+    kind: z.enum(["TASK", "REST"]).default("TASK"),
     startTime: z
       .string()
       .regex(/^\d{2}:\d{2}$/)
@@ -245,7 +260,7 @@ export const previewSchema = z.object({
         title: z.string(),
         estimatedMinutes: z.number().optional(),
         complete: z.boolean().optional(),
-      })
+      }),
     )
     .optional(),
   reservations: z.array(reservationSchema).optional(),
@@ -256,11 +271,11 @@ export const previewSchema = z.object({
       explanation: z.string(),
       before: previewBlock.nullable(),
       after: previewBlock.nullable(),
-    })
+    }),
   ),
   warnings: z.array(z.string()),
   remaining: z.array(
-    z.object({ key: z.string(), taskId: z.string(), title: z.string(), minutes: z.number() })
+    z.object({ key: z.string(), taskId: z.string(), title: z.string(), minutes: z.number() }),
   ),
 });
 export const receiptSchema = z.object({
@@ -275,7 +290,7 @@ export const replanSchema = z
     requestId: z.uuid(),
     date: z.iso.date(),
     baseHash: z.string().regex(/^[a-f0-9]{64}$/),
-    action: z.enum(['replan', 'extend', 'finish', 'postpone', 'skip', 'cancel', 'replace']),
+    action: z.enum(["replan", "extend", "finish", "postpone", "skip", "cancel", "replace"]),
     blockId: z.uuid().optional(),
     endTime: z
       .string()
@@ -293,39 +308,39 @@ export const replanSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    const require = (field: 'blockId' | 'endTime' | 'startTime' | 'candidateId') => {
+    const require = (field: "blockId" | "endTime" | "startTime" | "candidateId") => {
       if (!value[field]) {
         ctx.addIssue({
-          code: 'custom',
+          code: "custom",
           path: [field],
-          message: 'Required for this progress action.',
+          message: "Required for this progress action.",
         });
       }
     };
-    if (value.action !== 'replan') {
-      require('blockId');
+    if (value.action !== "replan") {
+      require("blockId");
     }
-    if (value.action === 'finish' || value.action === 'extend') {
-      require('endTime');
+    if (value.action === "finish" || value.action === "extend") {
+      require("endTime");
     }
-    if (value.action === 'postpone') {
-      require('startTime');
+    if (value.action === "postpone") {
+      require("startTime");
     }
-    if (value.action === 'replace') {
-      require('candidateId');
+    if (value.action === "replace") {
+      require("candidateId");
     }
-    if (value.completeTask && value.action !== 'finish') {
+    if (value.completeTask && value.action !== "finish") {
       ctx.addIssue({
-        code: 'custom',
-        path: ['completeTask'],
-        message: 'Only an explicit finish can complete work.',
+        code: "custom",
+        path: ["completeTask"],
+        message: "Only an explicit finish can complete work.",
       });
     }
-    if (value.estimatedMinutes !== undefined && value.action !== 'extend') {
+    if (value.estimatedMinutes !== undefined && value.action !== "extend") {
       ctx.addIssue({
-        code: 'custom',
-        path: ['estimatedMinutes'],
-        message: 'Estimate changes require an explicit extension.',
+        code: "custom",
+        path: ["estimatedMinutes"],
+        message: "Estimate changes require an explicit extension.",
       });
     }
   });

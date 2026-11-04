@@ -1,12 +1,12 @@
-import 'server-only';
-import { randomUUID } from 'node:crypto';
-import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
-import { Prisma, type PlannerDraft } from '@/generated/prisma/client';
-import { prisma } from '@/lib/prisma';
-import { fingerprint, loadSnapshot, type Snapshot } from '../proposals/snapshot';
-import { documentSchema, type ProposalDocument } from '../proposals/schema';
-import { wallInstant } from '../proposals/time';
+import "server-only";
+import { randomUUID } from "node:crypto";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { Prisma, type PlannerDraft } from "@/generated/prisma/client";
+import { prisma } from "@/lib/prisma";
+import { fingerprint, loadSnapshot, type Snapshot } from "../proposals/snapshot";
+import { documentSchema, type ProposalDocument } from "../proposals/schema";
+import { wallInstant } from "../proposals/time";
 import {
   applyDraftSchema,
   cancelDraftSchema,
@@ -14,7 +14,7 @@ import {
   draftStateSchema,
   slotDraftSchema,
   type DraftState,
-} from './schema';
+} from "./schema";
 import {
   applyDocument,
   draftAcceptanceConflicts,
@@ -23,12 +23,12 @@ import {
   validateDraft,
   scheduleHash,
   withDraft,
-} from './state';
+} from "./state";
 
 const day = (date: string) => new Date(`${date}T00:00:00Z`);
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-const conflict = (message = 'The draft changed in another tab. Reload it before editing.') =>
-  new TRPCError({ code: 'CONFLICT', message });
+const conflict = (message = "The draft changed in another tab. Reload it before editing.") =>
+  new TRPCError({ code: "CONFLICT", message });
 const MAX_REVISIONS = 100;
 type Command = z.output<typeof draftCommandSchema>;
 
@@ -36,7 +36,7 @@ type Command = z.output<typeof draftCommandSchema>;
 // writers which do not participate in owner advisory locks. Never hold over AI calls.
 export async function draftTransaction<T>(
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
-  write = false
+  write = false,
 ): Promise<T> {
   try {
     return await prisma.$transaction(
@@ -47,16 +47,16 @@ export async function draftTransaction<T>(
         }
         return operation(tx);
       },
-      { isolationLevel: write ? 'ReadCommitted' : 'RepeatableRead', timeout: 15000, maxWait: 5000 }
+      { isolationLevel: write ? "ReadCommitted" : "RepeatableRead", timeout: 15000, maxWait: 5000 },
     );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
-      (['P2034', 'P2002'].includes(error.code) ||
-        (error.code === 'P2010' && ['40001', '40P01', '55P03'].includes(String(error.meta?.code))))
+      (["P2034", "P2002"].includes(error.code) ||
+        (error.code === "P2010" && ["40001", "40P01", "55P03"].includes(String(error.meta?.code))))
     ) {
       throw conflict(
-        'Planning data is busy or changed. Reload and retry with the same request ID.'
+        "Planning data is busy or changed. Reload and retry with the same request ID.",
       );
     }
     throw error;
@@ -68,13 +68,13 @@ async function currentState(tx: Prisma.TransactionClient, row: PlannerDraft) {
       await tx.plannerDraftRevision.findUniqueOrThrow({
         where: { draftId_sequence: { draftId: row.id, sequence: row.cursor } },
       })
-    ).state
+    ).state,
   );
 }
 function assertFresh(row: PlannerDraft, s: Snapshot, state: DraftState) {
   if (row.baseHash !== inputHash(s, state)) {
     throw conflict(
-      'The active schedule or relevant planning inputs changed. Your draft is saved; refresh its inputs or cancel it before starting again.'
+      "The active schedule or relevant planning inputs changed. Your draft is saved; refresh its inputs or cancel it before starting again.",
     );
   }
 }
@@ -82,14 +82,14 @@ function validateNet(
   s: Snapshot,
   base: DraftState,
   state: DraftState,
-  policy: 'manual' | 'acceptance' = 'manual'
+  policy: "manual" | "acceptance" = "manual",
 ) {
   try {
     return validateDraft(s, base, state, new Date(), policy);
   } catch (error) {
     throw new TRPCError({
-      code: 'BAD_REQUEST',
-      message: error instanceof Error ? error.message : 'Invalid draft.',
+      code: "BAD_REQUEST",
+      message: error instanceof Error ? error.message : "Invalid draft.",
     });
   }
 }
@@ -98,10 +98,10 @@ async function open(
   userId: string,
   input: Command,
   s: Snapshot,
-  create: boolean
+  create: boolean,
 ) {
   let row = await tx.plannerDraft.findFirst({
-    where: { userId, planDate: day(input.date), status: 'OPEN' },
+    where: { userId, planDate: day(input.date), status: "OPEN" },
   });
   if (!row && create && input.draftId === null && input.expectedVersion === 0) {
     const base = initialState(s);
@@ -113,7 +113,7 @@ async function open(
         basePlanId: s.plan?.id,
         baseHash: inputHash(s, base),
         baseState: json(base),
-        revisions: { create: { sequence: 0, state: json(base), label: 'Initial schedule' } },
+        revisions: { create: { sequence: 0, state: json(base), label: "Initial schedule" } },
       },
     });
     return row;
@@ -131,9 +131,9 @@ async function request<T extends Command>(
     tx: Prisma.TransactionClient,
     s: Snapshot,
     row: PlannerDraft,
-    state: DraftState
+    state: DraftState,
   ) => Promise<unknown>,
-  create = false
+  create = false,
 ) {
   const requestHash = fingerprint({ action, input });
   return draftTransaction(async (tx) => {
@@ -142,7 +142,7 @@ async function request<T extends Command>(
     });
     if (previous) {
       if (previous.requestHash !== requestHash) {
-        throw conflict('This request ID was already used for a different draft action.');
+        throw conflict("This request ID was already used for a different draft action.");
       }
       return previous.result;
     }
@@ -167,17 +167,27 @@ async function append(
   row: PlannerDraft,
   state: DraftState,
   s: Snapshot,
-  label: string
+  label: string,
+  generationAvailability?: { snapshot: unknown; hash: string },
 ) {
   await tx.plannerDraftRevision.deleteMany({
     where: { draftId: row.id, sequence: { gt: row.cursor } },
   });
   await tx.plannerDraftRevision.create({
-    data: { draftId: row.id, sequence: row.nextRevision, state: json(state), label },
+    data: {
+      draftId: row.id,
+      sequence: row.nextRevision,
+      state: json(state),
+      label,
+      generationAvailabilitySnapshot: generationAvailability
+        ? json(generationAvailability.snapshot)
+        : undefined,
+      generationAvailabilityHash: generationAvailability?.hash,
+    },
   });
   const revisions = await tx.plannerDraftRevision.findMany({
     where: { draftId: row.id },
-    orderBy: { sequence: 'desc' },
+    orderBy: { sequence: "desc" },
     select: { sequence: true },
     skip: MAX_REVISIONS,
   });
@@ -203,23 +213,23 @@ export const draftService = {
     return request(
       userId,
       input,
-      'slot',
+      "slot",
       async (tx, s, row, state) => {
         assertFresh(row, s, state);
         const next = draftStateSchema.parse(state);
         const old = next.slots.find((slot) => slot.id === input.slotId);
-        if (input.action !== 'add' && (!old || new Date(old.startsAt) < new Date())) {
+        if (input.action !== "add" && (!old || new Date(old.startsAt) < new Date())) {
           throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Choose a future category reservation.',
+            code: "BAD_REQUEST",
+            message: "Choose a future category reservation.",
           });
         }
         next.slots = next.slots.filter((slot) => slot.id !== input.slotId);
-        if (input.action !== 'remove') {
+        if (input.action !== "remove") {
           if (!input.startsAt || !input.endsAt || (!old && !input.category)) {
             throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'Choose category and start/end times.',
+              code: "BAD_REQUEST",
+              message: "Choose category and start/end times.",
             });
           }
           next.slots.push({
@@ -227,21 +237,23 @@ export const draftService = {
             category: old?.category ?? input.category!,
             startsAt: input.startsAt,
             endsAt: input.endsAt,
-            source: 'MANUAL',
+            source: "MANUAL",
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
-        const updated = await append(tx, row, next, s, 'Edit category reservation');
+        validateNet(s, draftStateSchema.parse(row.baseState), next, "manual");
+        const updated = await append(tx, row, next, s, "Edit category reservation");
         return { draftId: row.id, version: updated.version };
       },
-      true
+      true,
     );
   },
   async applyGenerated(
     userId: string,
     raw: Command,
     document: ProposalDocument,
-    generationInputHash: string
+    generationInputHash: string,
+    generationAvailability: { snapshot: unknown; hash: string },
+    generationSnapshotHash: string,
   ) {
     const command = draftCommandSchema.parse(raw);
     const hasChanges =
@@ -252,26 +264,38 @@ export const draftService = {
     const parsed = hasChanges ? documentSchema.parse(document) : document;
     return request(
       userId,
-      { ...command, document: parsed, generationInputHash },
-      'generate',
+      {
+        ...command,
+        document: parsed,
+        generationInputHash,
+        generationAvailability,
+        generationSnapshotHash,
+      },
+      "generate",
       async (tx, s, row, state) => {
+        if (s.hash !== generationSnapshotHash) {
+          throw conflict(
+            "Planning inputs changed while AI planning was running. The draft is unchanged; reload and retry.",
+          );
+        }
         assertFresh(row, s, state);
-        if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
-          throw conflict('This day is finalized.');
+        if (s.plan && ["FINALIZED", "ARCHIVED"].includes(s.plan.status)) {
+          throw conflict("This day is finalized.");
         }
         let next;
         try {
-          next = applyDocument(s, state, parsed, 'ai');
+          next = applyDocument(s, state, parsed, "ai");
         } catch (error) {
           throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: error instanceof Error ? error.message : 'Invalid generated draft.',
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Invalid generated draft.",
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
-        const updated = await append(tx, row, next, s, 'Generate schedule');
+        validateNet(s, draftStateSchema.parse(row.baseState), next, "manual");
+        const updated = await append(tx, row, next, s, "Generate schedule", generationAvailability);
         return { draftId: row.id, version: updated.version, generationInputHash };
-      }
+      },
+      true,
     );
   },
   async byRequest(userId: string, requestId: string) {
@@ -283,7 +307,7 @@ export const draftService = {
     return draftTransaction(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
       const row = await tx.plannerDraft.findFirst({
-        where: { userId, planDate: day(date), status: 'OPEN' },
+        where: { userId, planDate: day(date), status: "OPEN" },
       });
       if (!row) {
         return { draft: null, activePlanId: s.plan?.id ?? null };
@@ -292,12 +316,12 @@ export const draftService = {
       const base = draftStateSchema.parse(row.baseState);
       const revisions = await tx.plannerDraftRevision.findMany({
         where: { draftId: row.id },
-        orderBy: { sequence: 'asc' },
+        orderBy: { sequence: "asc" },
         select: { sequence: true, label: true, createdAt: true },
       });
       const conflicts: string[] = [];
       if (row.baseHash !== inputHash(s, state)) {
-        conflicts.push('The active schedule or relevant planning inputs changed.');
+        conflicts.push("The active schedule or relevant planning inputs changed.");
       }
       conflicts.push(...draftAcceptanceConflicts(s, state));
       return {
@@ -323,9 +347,9 @@ export const draftService = {
     return request(
       userId,
       input,
-      'begin',
+      "begin",
       async (_tx, _s, row) => ({ draftId: row.id, version: row.version }),
-      true
+      true,
     );
   },
   async apply(userId: string, raw: z.input<typeof applyDraftSchema>) {
@@ -333,11 +357,11 @@ export const draftService = {
     return request(
       userId,
       input,
-      'apply',
+      "apply",
       async (tx, s, row, state) => {
         assertFresh(row, s, state);
-        if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
-          throw conflict('This day is finalized.');
+        if (s.plan && ["FINALIZED", "ARCHIVED"].includes(s.plan.status)) {
+          throw conflict("This day is finalized.");
         }
         let next;
         try {
@@ -347,25 +371,25 @@ export const draftService = {
             input.document,
             input.origin,
             new Date(),
-            input.preserveIntent
+            input.preserveIntent,
           );
         } catch (error) {
           throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: error instanceof Error ? error.message : 'Invalid draft edit.',
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Invalid draft edit.",
           });
         }
-        validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
+        validateNet(s, draftStateSchema.parse(row.baseState), next, "manual");
         const updated = await append(tx, row, next, s, input.label);
         return { draftId: row.id, version: updated.version };
       },
-      true
+      true,
     );
   },
   async history(
     userId: string,
     raw: z.input<typeof draftCommandSchema>,
-    direction: 'undo' | 'redo'
+    direction: "undo" | "redo",
   ) {
     const input = draftCommandSchema.parse(raw);
     return request(userId, input, direction, async (tx, s, row, state) => {
@@ -373,12 +397,12 @@ export const draftService = {
       const target = await tx.plannerDraftRevision.findFirst({
         where: {
           draftId: row.id,
-          sequence: direction === 'undo' ? { lt: row.cursor } : { gt: row.cursor },
+          sequence: direction === "undo" ? { lt: row.cursor } : { gt: row.cursor },
         },
-        orderBy: { sequence: direction === 'undo' ? 'desc' : 'asc' },
+        orderBy: { sequence: direction === "undo" ? "desc" : "asc" },
       });
       if (!target) {
-        throw new TRPCError({ code: 'BAD_REQUEST', message: `Nothing to ${direction}.` });
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Nothing to ${direction}.` });
       }
       const next = draftStateSchema.parse(target.state);
       const updated = await tx.plannerDraft.update({
@@ -390,19 +414,19 @@ export const draftService = {
   },
   async cancel(userId: string, raw: z.input<typeof cancelDraftSchema>) {
     const input = cancelDraftSchema.parse(raw);
-    return request(userId, input, 'cancel', async (tx, _s, row, state) => {
+    return request(userId, input, "cancel", async (tx, _s, row, state) => {
       if (
         !input.confirmed &&
         scheduleHash(state) !== scheduleHash(draftStateSchema.parse(row.baseState))
       ) {
         throw new TRPCError({
-          code: 'PRECONDITION_FAILED',
-          message: 'Confirm cancellation of this modified draft.',
+          code: "PRECONDITION_FAILED",
+          message: "Confirm cancellation of this modified draft.",
         });
       }
       await tx.plannerDraft.update({
         where: { id: row.id },
-        data: { status: 'CANCELLED', version: { increment: 1 } },
+        data: { status: "CANCELLED", version: { increment: 1 } },
       });
       return { cancelled: true, draftId: row.id };
     });
@@ -411,7 +435,7 @@ export const draftService = {
   // unchanged and the complete draft still passes current deterministic validation.
   async refresh(userId: string, raw: z.input<typeof draftCommandSchema>) {
     const input = draftCommandSchema.parse(raw);
-    return request(userId, input, 'refresh', async (tx, s, row, state) => {
+    return request(userId, input, "refresh", async (tx, s, row, state) => {
       if (
         s.timezone !== row.timezone ||
         s.user.timezone !== row.timezone ||
@@ -419,10 +443,10 @@ export const draftService = {
         scheduleHash(initialState(s)) !== scheduleHash(draftStateSchema.parse(row.baseState))
       ) {
         throw conflict(
-          'The active schedule changed. Keep this saved draft for comparison, or cancel it and start from the new active schedule.'
+          "The active schedule changed. Keep this saved draft for comparison, or cancel it and start from the new active schedule.",
         );
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), state, 'manual');
+      validateNet(s, draftStateSchema.parse(row.baseState), state, "manual");
       const updated = await tx.plannerDraft.update({
         where: { id: row.id },
         data: { baseHash: inputHash(s, state), version: { increment: 1 } },
@@ -432,18 +456,18 @@ export const draftService = {
   },
   async accept(userId: string, raw: z.input<typeof draftCommandSchema>) {
     const input = draftCommandSchema.parse(raw);
-    return request(userId, input, 'accept', async (tx, s, row, state) => {
+    return request(userId, input, "accept", async (tx, s, row, state) => {
       assertFresh(row, s, state);
-      if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
-        throw conflict('This day is finalized.');
+      if (s.plan && ["FINALIZED", "ARCHIVED"].includes(s.plan.status)) {
+        throw conflict("This day is finalized.");
       }
       if (wallInstant(input.date, 1440, row.timezone) <= new Date()) {
         throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Past-day drafts remain saved and cannot be activated.',
+          code: "BAD_REQUEST",
+          message: "Past-day drafts remain saved and cannot be activated.",
         });
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), state, 'acceptance');
+      validateNet(s, draftStateSchema.parse(row.baseState), state, "acceptance");
       await tx.dailyPlan.updateMany({
         where: { userId, planDate: row.planDate, isCurrent: true },
         data: { isCurrent: false },
@@ -453,15 +477,17 @@ export const draftService = {
           userId,
           planDate: row.planDate,
           timezone: row.timezone,
-          status: 'ACTIVE',
+          status: "ACTIVE",
           isCurrent: true,
           version: (s.plans.at(-1)?.version ?? 0) + 1,
-          generatedBy: 'MANUAL',
+          generatedBy: "MANUAL",
           explanationJson: json({
             draftId: row.id,
             draftVersion: row.version,
             generation: state.generation,
           }),
+          availabilitySnapshot: json(s.availabilitySnapshot),
+          availabilityHash: s.availabilityHash,
         },
       });
       const occurrenceIds = new Map<string, string>();
@@ -477,9 +503,9 @@ export const draftService = {
                 taskId: block.taskId,
                 occurrenceDate: row.planDate,
                 origin: s.tasks.find((t) => t.id === block.taskId)?.isRecurring
-                  ? 'RECURRENCE'
-                  : 'MANUAL',
-                status: 'SCHEDULED',
+                  ? "RECURRENCE"
+                  : "MANUAL",
+                status: "SCHEDULED",
               },
             });
             occurrenceId = occurrence.id;
@@ -532,7 +558,7 @@ export const draftService = {
       const receipt = { draftId: row.id, planId: plan.id, version: plan.version, blockIds };
       await tx.plannerDraft.update({
         where: { id: row.id },
-        data: { status: 'ACCEPTED', version: { increment: 1 }, receipt: json(receipt) },
+        data: { status: "ACCEPTED", version: { increment: 1 }, receipt: json(receipt) },
       });
       return receipt;
     });
@@ -541,7 +567,7 @@ export const draftService = {
     return draftTransaction(async (tx) => {
       const s = await loadSnapshot(tx, userId, date);
       const row = await tx.plannerDraft.findFirst({
-        where: { userId, planDate: day(date), status: 'OPEN' },
+        where: { userId, planDate: day(date), status: "OPEN" },
       });
       if (!row) {
         return { snapshot: s, draft: null };
@@ -562,7 +588,7 @@ export async function mutateDraft<T extends Command>(
   userId: string,
   input: T,
   action: string,
-  build: (s: Snapshot) => ProposalDocument
+  build: (s: Snapshot) => ProposalDocument,
 ) {
   return request(
     userId,
@@ -570,25 +596,25 @@ export async function mutateDraft<T extends Command>(
     action,
     async (tx, s, row, state) => {
       assertFresh(row, s, state);
-      if (s.plan && ['FINALIZED', 'ARCHIVED'].includes(s.plan.status)) {
-        throw conflict('This day is finalized.');
+      if (s.plan && ["FINALIZED", "ARCHIVED"].includes(s.plan.status)) {
+        throw conflict("This day is finalized.");
       }
       let next;
       try {
-        next = applyDocument(s, state, documentSchema.parse(build(withDraft(s, state))), 'manual');
+        next = applyDocument(s, state, documentSchema.parse(build(withDraft(s, state))), "manual");
       } catch (error) {
         if (error instanceof TRPCError) {
           throw error;
         }
         throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: error instanceof Error ? error.message : 'Invalid draft edit.',
+          code: "BAD_REQUEST",
+          message: error instanceof Error ? error.message : "Invalid draft edit.",
         });
       }
-      validateNet(s, draftStateSchema.parse(row.baseState), next, 'manual');
-      const updated = await append(tx, row, next, s, 'Manual calendar edit');
+      validateNet(s, draftStateSchema.parse(row.baseState), next, "manual");
+      const updated = await append(tx, row, next, s, "Manual calendar edit");
       return { draftId: row.id, version: updated.version };
     },
-    true
+    true,
   );
 }

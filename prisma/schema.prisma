@@ -50,6 +50,7 @@ model User {
   dateAvailabilityOverrides DateAvailabilityOverride[]
   plannerTimezonePeriods    PlannerTimezonePeriod[]
   plannerGenerationSettings PlannerGenerationSettings?
+  plannerGenerationAttempts PlannerGenerationAttempt[]
   plannerConversations      PlannerConversation[]
   aiConversations           AiConversation[]
   aiModelSettings           UserAiModelSetting[]
@@ -276,7 +277,7 @@ model AvailabilityTemplateRevisionSlot {
   policyCategories PlanningCategory[]           @default([])
 
   @@unique([revisionId, position])
-  @@unique([revisionId, logicalSlotId])
+  @@unique([revisionId, logicalSlotId], map: "availability_template_revision_slots_revisionId_logicalSlotId_k")
   @@index([logicalSlotId])
   @@map("availability_template_revision_slots")
 }
@@ -292,8 +293,8 @@ model WeeklyAvailabilityAssignment {
   template      AvailabilityTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
   createdAt     DateTime              @default(now())
 
-  @@unique([userId, weekday, effectiveDate])
-  @@index([userId, weekday, effectiveDate])
+  @@unique([userId, weekday, effectiveDate], map: "weekly_availability_assignments_userId_weekday_effectiveDate_ke")
+  @@index([userId, weekday, effectiveDate], map: "weekly_availability_assignments_userId_weekday_effectiveDate_id")
   @@index([templateId])
   @@map("weekly_availability_assignments")
 }
@@ -1253,6 +1254,28 @@ model PlanningProposal {
   @@unique([userId, requestId])
   @@index([userId, planDate, createdAt])
   @@map("planning_proposals")
+}
+
+// Failed AI planning attempts only. Details are sanitized and bounded by the
+// application; successful generation provenance lives on draft revisions.
+model PlannerGenerationAttempt {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId       String   @db.Uuid
+  planDate        DateTime @db.Date
+  stage           String   @db.VarChar(32)
+  errorCode       String   @db.VarChar(64)
+  provider        String?  @db.VarChar(64)
+  modelId         String?  @db.VarChar(200)
+  failureClass    String   @db.VarChar(100)
+  detail          String   @db.VarChar(500)
+  validationPaths String[] @default([])
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, requestId])
+  @@map("planner_generation_attempts")
 }
 
 // Whole-day intended schedule; never a source of task outcomes or actual progress.

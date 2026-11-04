@@ -1,14 +1,15 @@
-import 'server-only';
-import { createHash } from 'node:crypto';
-import { TRPCError } from '@trpc/server';
-import { z } from 'zod';
-import { generateDaySchema } from '../generation/schema';
-import { generateDayPlan } from '../generation/service';
-import { existingBlocks } from '../proposals/validate';
-import type { ProposalDocument } from '../proposals/schema';
-import { draftCommandSchema } from './schema';
-import { draftService } from './service';
-import { wallInstant } from '../proposals/time';
+import "server-only";
+import { createHash } from "node:crypto";
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { generateDaySchema } from "../generation/schema";
+import { generateDayPlan } from "../generation/service";
+import { existingBlocks } from "../proposals/validate";
+import type { ProposalDocument } from "../proposals/schema";
+import { draftCommandSchema } from "./schema";
+import { draftService } from "./service";
+import { wallInstant } from "../proposals/time";
+import type { GenerationDiagnostics } from "@/lib/ai/diagnostics";
 
 export const generateDraftSchema = draftCommandSchema
   .extend({
@@ -20,72 +21,63 @@ export const generateDraftSchema = draftCommandSchema
     rebuild: z.boolean().default(false),
   })
   .strict();
-const derivedId = (id: string) => {
-  const hash = createHash('sha256').update(`draft-begin:${id}`).digest('hex');
-  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
-};
-
 export async function generateWorkingDraft(
   userId: string,
   raw: z.input<typeof generateDraftSchema>,
-  onDiagnostics?: (details: import('@/lib/ai/diagnostics').GenerationDiagnostics) => void
+  onDiagnostics?: (details: GenerationDiagnostics) => void,
 ) {
   const input = generateDraftSchema.parse(raw);
   // Retry the exact saved operation without another inference. The service still
   // checks request identity/payload when saving; generated request metadata is kept
   // in the saved revision request below.
   const saved = await draftService.byRequest(userId, input.requestId);
-  const originalHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+  const originalHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
   if (saved) {
     const result = saved.result as { generationInputHash?: string };
     if (result.generationInputHash !== originalHash) {
       throw new TRPCError({
-        code: 'CONFLICT',
-        message: 'This request ID was already used for different generation inputs.',
+        code: "CONFLICT",
+        message: "This request ID was already used for different generation inputs.",
       });
     }
     return saved.result;
   }
-  let command = {
+  const command = {
     date: input.date,
     requestId: input.requestId,
     draftId: input.draftId,
     expectedVersion: input.expectedVersion,
   };
-  if (!command.draftId) {
-    const opened = (await draftService.begin(userId, {
-      ...command,
-      requestId: derivedId(input.requestId),
-    })) as { draftId: string; version: number };
-    command = { ...command, draftId: opened.draftId, expectedVersion: opened.version };
-  }
   const { snapshot: s, draft } = await draftService.snapshot(userId, input.date);
-  if (!draft || draft.id !== command.draftId || draft.version !== command.expectedVersion) {
+  if (
+    (draft && (draft.id !== command.draftId || draft.version !== command.expectedVersion)) ||
+    (!draft && (command.draftId !== null || command.expectedVersion !== 0))
+  ) {
     throw new TRPCError({
-      code: 'CONFLICT',
-      message: 'The draft changed. Reload before generating.',
+      code: "CONFLICT",
+      message: "The draft changed. Reload before generating.",
     });
   }
   const cutoff = new Date(Math.max(Date.now(), wallInstant(input.date, 0, s.timezone).getTime()));
   const removable = existingBlocks(s).filter(
     (b) =>
-      b.status === 'PLANNED' &&
+      b.status === "PLANNED" &&
       b.startsAt >= cutoff &&
       !b.calendarEventId &&
       !b.isFixed &&
       !b.isLocked &&
       !b.mealKind &&
-      (input.rebuild || (b.source !== 'MANUAL' && !b.manualOverride))
+      (input.rebuild || (b.source !== "MANUAL" && !b.manualOverride)),
   );
   const ids = new Set(removable.map((b) => b.id));
   const pruned = { ...s, blocks: s.blocks.filter((b) => !ids.has(b.id)) };
-  const removals: ProposalDocument['operations'] = removable.map((b) => ({
-    type: 'remove',
+  const removals: ProposalDocument["operations"] = removable.map((b) => ({
+    type: "remove",
     blockId: b.id,
     explicit: true,
     explanation: input.rebuild
-      ? 'Explicitly rebuild eligible future schedule.'
-      : 'Regenerate automatic future placements.',
+      ? "Explicitly rebuild eligible future schedule."
+      : "Regenerate automatic future placements.",
   }));
   let receipt: unknown;
   const generated = await generateDayPlan(
@@ -108,24 +100,36 @@ export async function generateWorkingDraft(
           userId,
           command,
           { ...document, operations: [...removals, ...document.operations] },
-          originalHash
+          originalHash,
+          { snapshot: s.availabilitySnapshot, hash: s.availabilityHash },
+          s.hash,
         );
-        return { id: draft.id };
+        return { id: (receipt as { draftId: string }).draftId };
       },
-    }
+    },
   );
+  if (s.effectiveAvailability.slots.length === 0) {
+    return {
+      draftId: draft?.id ?? null,
+      version: draft?.version ?? 0,
+      unchanged: true,
+      summary: generated.report.selectionSummary ?? generated.report.summary,
+    };
+  }
   if (!receipt) {
     receipt = await draftService.applyGenerated(
       userId,
       command,
       { schemaVersion: 1, operations: removals, generation: generated.report },
-      originalHash
+      originalHash,
+      { snapshot: s.availabilitySnapshot, hash: s.availabilityHash },
+      s.hash,
     );
   }
   return (
     receipt ?? {
-      draftId: draft.id,
-      version: draft.version,
+      draftId: draft?.id,
+      version: draft?.version,
       unchanged: true,
       summary: generated.report.summary,
     }
