@@ -9,7 +9,7 @@ export async function locked<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>
       async (tx) => {
         await tx.$executeRaw`SET LOCAL lock_timeout = '5s'`;
         // Same ordering as proposal acceptance. Covers legacy writers and phantoms.
-        await tx.$executeRaw`LOCK TABLE "user", "themes", "tasks", "task_dependencies", "task_occurrences", "availability_windows", "day_overrides", "date_availability_windows", "calendar_events", "planner_generation_settings", "daily_plans", "daily_blocks", "daily_plan_category_slots", "planning_proposals", "planner_conversations", "planner_conversation_turns" IN SHARE ROW EXCLUSIVE MODE`;
+        await tx.$executeRaw`LOCK TABLE "user", "themes", "tasks", "task_dependencies", "task_occurrences", "availability_windows", "day_overrides", "date_availability_windows", "availability_templates", "availability_template_slots", "availability_template_revisions", "availability_template_revision_slots", "weekly_availability_assignments", "date_availability_overrides", "date_availability_slots", "planner_timezone_periods", "calendar_events", "planner_generation_settings", "daily_plans", "daily_blocks", "daily_plan_category_slots", "planning_proposals", "planner_conversations", "planner_conversation_turns" IN SHARE ROW EXCLUSIVE MODE`;
         return fn(tx);
       },
       { timeout: 15000, maxWait: 5000 }

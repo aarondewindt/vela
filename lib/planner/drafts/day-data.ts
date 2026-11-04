@@ -24,6 +24,8 @@ export function draftDayData(
         isCurrent: false,
         generatedBy: 'MANUAL',
         explanationJson: null,
+        availabilitySnapshot: null,
+        availabilityHash: null,
         createdAt: stamp,
         updatedAt: stamp,
         finalizedAt: null,

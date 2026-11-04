@@ -40,6 +40,21 @@ The configured tracker is [GitHub Issues](agents/issue-tracker.md). The configur
 - `code-review`, `to-spec` and `to-tickets` consume the issue-tracker and domain configuration created by `setup-matt-pocock-skills`.
 - Supporting templates, scripts and references stay inside their owning skill directory. The CLI installs and updates them with the skill; do not copy them between skills.
 
+### ChatGPT Project reference export
+
+ChatGPT Projects without native skill support can use the generated [planning skill bundle](agents/chatgpt-skills.md) and the accompanying [Project Instructions snippet](agents/chatgpt-project-instructions.md). The bundle is a deterministic, path-preserving Markdown export of the selected Matt Pocock planning skills, their required cross-skill dependencies, their in-skill Markdown templates/references, and Vela's issue-tracker/domain configuration. It does not modify the canonical `.agents/skills/` tree.
+
+Regenerate it after changing a selected source skill or either included Vela configuration document:
+
+```sh
+yarn skills:export-chatgpt
+yarn skills:export-chatgpt:check
+```
+
+Commit the refreshed `docs/agents/chatgpt-skills.md` with the generator and source/configuration changes. The check command fails when the committed export is stale. Review its dependency report: it distinguishes required dependencies, intentionally unexpanded optional routes from `ask-matt`, and unresolved runtime/project references. Do not edit the generated bundle by hand.
+
+The current single bundle is suitable for upload as one Project reference file. If ChatGPT has trouble retrieving it reliably, split only at skill boundaries into three thematic bundles—**planning flow** (`grilling`, `grill-with-docs`, `to-spec`, `to-tickets`), **design vocabulary** (`domain-modeling`, `codebase-design`), and **setup/routing** (`setup-matt-pocock-skills`, `ask-matt`)—with the same shared index and Vela configuration files in each applicable bundle.
+
 `ask-matt` documents the complete upstream catalog and can mention skills that Vela has not installed, including `triage`, `prototype`, `implement-spec`, `pr`, `retro`, `wayfinder`, `research`, `wizard` and others. Those mentions are optional routes, not missing dependencies of Vela's installed collection. Check `.agents/skills/<name>/SKILL.md` before assuming a recommendation is available.
 
 ## Vela-specific precedence

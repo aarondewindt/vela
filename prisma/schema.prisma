@@ -45,6 +45,10 @@ model User {
   checkins                  Checkin[]
   automationRuns            AutomationRun[]
   availabilityWindows       AvailabilityWindow[]
+  availabilityTemplates     AvailabilityTemplate[]
+  weeklyAvailabilityAssignments WeeklyAvailabilityAssignment[]
+  dateAvailabilityOverrides DateAvailabilityOverride[]
+  plannerTimezonePeriods    PlannerTimezonePeriod[]
   plannerGenerationSettings PlannerGenerationSettings?
   plannerConversations      PlannerConversation[]
   aiConversations           AiConversation[]
@@ -204,6 +208,149 @@ model AvailabilityWindow {
   @@unique([userId, weekday, startMinute, endMinute])
   @@index([userId, weekday, isActive])
   @@map("availability_windows")
+}
+
+enum SlotCategoryPolicyMode {
+  ALL
+  ALLOW_ONLY
+  EXCLUDE
+}
+
+// Stable user-owned identity. Names and slot values live on immutable revisions.
+model AvailabilityTemplate {
+  id              String                         @id @default(uuid()) @db.Uuid
+  userId          String
+  user            User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archivedAt      DateTime?
+  createdAt       DateTime                       @default(now())
+  updatedAt       DateTime                       @updatedAt
+  logicalSlots    AvailabilityTemplateSlot[]
+  revisions       AvailabilityTemplateRevision[]
+  assignments     WeeklyAvailabilityAssignment[]
+  sourceDateSlots DateAvailabilitySlot[]         @relation("DateSlotSourceTemplate")
+
+  @@index([userId, archivedAt])
+  @@map("availability_templates")
+}
+
+// Stable identity retained while one template slot is edited across revisions.
+model AvailabilityTemplateSlot {
+  id              String                             @id @default(uuid()) @db.Uuid
+  templateId      String                             @db.Uuid
+  template        AvailabilityTemplate               @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                           @default(now())
+  revisionSlots   AvailabilityTemplateRevisionSlot[]
+  sourceDateSlots DateAvailabilitySlot[]             @relation("DateSlotSourceLogicalSlot")
+
+  @@index([templateId])
+  @@map("availability_template_slots")
+}
+
+model AvailabilityTemplateRevision {
+  id              String                             @id @default(uuid()) @db.Uuid
+  templateId      String                             @db.Uuid
+  template        AvailabilityTemplate               @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  effectiveDate   DateTime                           @db.Date
+  name            String                             @db.VarChar(120)
+  createdAt       DateTime                           @default(now())
+  slots           AvailabilityTemplateRevisionSlot[]
+  sourceDateSlots DateAvailabilitySlot[]             @relation("DateSlotSourceTemplateRevision")
+
+  @@unique([templateId, effectiveDate])
+  @@index([templateId, effectiveDate])
+  @@map("availability_template_revisions")
+}
+
+model AvailabilityTemplateRevisionSlot {
+  id               String                       @id @default(uuid()) @db.Uuid
+  revisionId       String                       @db.Uuid
+  revision         AvailabilityTemplateRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  logicalSlotId    String                       @db.Uuid
+  logicalSlot      AvailabilityTemplateSlot     @relation(fields: [logicalSlotId], references: [id], onDelete: Cascade)
+  position         Int
+  startMinute      Int
+  endMinute        Int
+  name             String?                      @db.VarChar(120)
+  guidance         String?                      @db.VarChar(1000)
+  policyMode       SlotCategoryPolicyMode       @default(ALL)
+  policyCategories PlanningCategory[]           @default([])
+
+  @@unique([revisionId, position])
+  @@unique([revisionId, logicalSlotId])
+  @@index([logicalSlotId])
+  @@map("availability_template_revision_slots")
+}
+
+// A nullable template is an effective-dated unassignment marker.
+model WeeklyAvailabilityAssignment {
+  id            String                @id @default(uuid()) @db.Uuid
+  userId        String
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekday       Int
+  effectiveDate DateTime              @db.Date
+  templateId    String?               @db.Uuid
+  template      AvailabilityTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdAt     DateTime              @default(now())
+
+  @@unique([userId, weekday, effectiveDate])
+  @@index([userId, weekday, effectiveDate])
+  @@index([templateId])
+  @@map("weekly_availability_assignments")
+}
+
+model DateAvailabilityOverride {
+  id        String                 @id @default(uuid()) @db.Uuid
+  userId    String
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime               @db.Date
+  source    String                 @default("manual") @db.VarChar(64)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  slots     DateAvailabilitySlot[]
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("date_availability_overrides")
+}
+
+model DateAvailabilitySlot {
+  id                       String                        @id @default(uuid()) @db.Uuid
+  overrideId               String                        @db.Uuid
+  override                 DateAvailabilityOverride      @relation(fields: [overrideId], references: [id], onDelete: Cascade)
+  position                 Int
+  startMinute              Int
+  endMinute                Int
+  name                     String?                       @db.VarChar(120)
+  guidance                 String?                       @db.VarChar(1000)
+  policyMode               SlotCategoryPolicyMode        @default(ALL)
+  policyCategories         PlanningCategory[]            @default([])
+  sourceTemplateId         String?                       @db.Uuid
+  sourceTemplate           AvailabilityTemplate?         @relation("DateSlotSourceTemplate", fields: [sourceTemplateId], references: [id], onDelete: SetNull)
+  sourceTemplateRevisionId String?                       @db.Uuid
+  sourceTemplateRevision   AvailabilityTemplateRevision? @relation("DateSlotSourceTemplateRevision", fields: [sourceTemplateRevisionId], references: [id], onDelete: SetNull)
+  sourceLogicalSlotId      String?                       @db.Uuid
+  sourceLogicalSlot        AvailabilityTemplateSlot?     @relation("DateSlotSourceLogicalSlot", fields: [sourceLogicalSlotId], references: [id], onDelete: SetNull)
+  createdAt                DateTime                      @default(now())
+
+  @@unique([overrideId, position])
+  @@index([overrideId])
+  @@index([sourceTemplateId])
+  @@index([sourceTemplateRevisionId])
+  @@index([sourceLogicalSlotId])
+  @@map("date_availability_slots")
+}
+
+model PlannerTimezonePeriod {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  effectiveDate DateTime @db.Date
+  timezone      String   @db.VarChar(64)
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, effectiveDate])
+  @@index([userId, effectiveDate])
+  @@map("planner_timezone_periods")
 }
 
 model Session {
@@ -830,6 +977,8 @@ model DailyPlan {
   isCurrent       Boolean              @default(true)
   generatedBy     PlanGenerationSource @default(MANUAL)
   explanationJson Json?                @db.JsonB
+  availabilitySnapshot Json?           @db.JsonB
+  availabilityHash String?             @db.Char(64)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   finalizedAt     DateTime?
@@ -1136,6 +1285,8 @@ model PlannerDraftRevision {
   sequence    Int
   state       Json     @db.JsonB
   label       String   @db.VarChar(240)
+  generationAvailabilitySnapshot Json? @db.JsonB
+  generationAvailabilityHash String? @db.Char(64)
   createdAt   DateTime @default(now())
 
   @@id([draftId, sequence])
